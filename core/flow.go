@@ -3,8 +3,6 @@ package core
 import (
 	"context"
 	"io"
-	"reflect"
-	"strings"
 	"sync"
 )
 
@@ -29,7 +27,7 @@ func (f *Flow) UseFunc(fn HandlerFunc) *Flow {
 }
 
 // Run executes the flow with the given input
-func (f *Flow) Run(ctx context.Context, input any) (any, error) {
+func (f *Flow) Run(ctx context.Context, input any, converters ...Converter) (any, error) {
 	if len(f.handlers) == 0 {
 		return input, nil
 	}
@@ -46,7 +44,7 @@ func (f *Flow) Run(ctx context.Context, input any) (any, error) {
 	}
 
 	// Convert input to reader
-	reader, inputType, err := f.inputToReader(input)
+	reader, inputType, err := f.inputToReaderBuiltIn(input, converters...)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +65,10 @@ func (f *Flow) Run(ctx context.Context, input any) (any, error) {
 		finalReader = inputReader
 	}
 
-	//  Runs all handlers concurrently in goroutines
+	//  Runs all handlers concurrently in goroutines for streaming
+	//  Handler1: [========]
+	//  Handler2:   [========]
+	//  Handler3:     [========]
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(f.handlers))
 
@@ -98,7 +99,7 @@ func (f *Flow) Run(ctx context.Context, input any) (any, error) {
 	}
 	outputDone := make(chan outputResult, 1)
 	go func() {
-		result, err := f.readerToOutput(finalReader, inputType)
+		result, err := f.readerToOutputBuiltIn(finalReader, inputType, converters...)
 		outputDone <- outputResult{result, err}
 	}()
 
@@ -119,59 +120,4 @@ func (f *Flow) Run(ctx context.Context, input any) (any, error) {
 		result := <-outputDone
 		return result.data, result.err
 	}
-}
-
-type inputType int
-
-const (
-	typeString inputType = iota
-	typeBytes
-	typeReader
-	typeStruct
-)
-
-// inputToReader converts any input to io.Reader and remembers the type
-func (f *Flow) inputToReader(input any) (io.Reader, inputType, error) {
-	switch v := input.(type) {
-	case string:
-		return strings.NewReader(v), typeString, nil
-	case []byte:
-		return strings.NewReader(string(v)), typeBytes, nil
-	case io.Reader:
-		return v, typeReader, nil
-	default:
-		// For structs/complex types, marshal to bytes first
-		// Middleware can unmarshal back to their expected types
-		data := f.marshalStruct(v)
-		return strings.NewReader(string(data)), typeStruct, nil
-	}
-}
-
-// readerToOutput converts io.Reader back to the expected output type
-func (f *Flow) readerToOutput(reader io.Reader, originalType inputType) (any, error) {
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-
-	switch originalType {
-	case typeString:
-		return string(data), nil
-	case typeBytes:
-		return data, nil
-	case typeReader:
-		return strings.NewReader(string(data)), nil
-	case typeStruct:
-		// Return as bytes for middleware to unmarshal
-		return data, nil
-	default:
-		return string(data), nil
-	}
-}
-
-// Simple struct marshaling (can be enhanced)
-func (f *Flow) marshalStruct(v any) []byte {
-	// Simple approach - convert to string representation
-	// Real implementation might use JSON/YAML/etc
-	return []byte(reflect.ValueOf(v).String())
 }
