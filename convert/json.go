@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"strings"
 
 	"github.com/calque-ai/calque-pipe/core"
 )
@@ -21,6 +22,19 @@ func (jsonConverter) ToReader(input any) (io.Reader, error) {
 			return nil, err
 		}
 		return bytes.NewReader(data), nil
+	case string: // a string that is valid JSON
+		var temp any
+		if err := json.Unmarshal([]byte(v), &temp); err != nil {
+			return nil, core.ErrUnsupportedType
+		}
+		return strings.NewReader(v), nil
+	case []byte: // a byte slice that is valid JSON
+		// Validate it's valid JSON first
+		var temp any
+		if err := json.Unmarshal(v, &temp); err != nil {
+			return nil, core.ErrUnsupportedType
+		}
+		return bytes.NewReader(v), nil
 	default:
 		return nil, core.ErrUnsupportedType
 	}
