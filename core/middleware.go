@@ -2,10 +2,11 @@ package core
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"strings"
+	"log"
 	"time"
 )
 
@@ -20,9 +21,10 @@ import (
 // The same input is replayed for each retry attempt.
 //
 // Example:
-//   retryHandler := core.Retry(someHandler, 3)
-//   flow.Use(retryHandler)
-func Retry(handler Handler, maxAttempts int) Handler {
+//
+//	retryHandler := core.Retry(someHandler, 3)
+//	flow.Use(retryHandler)
+func Retry[T any](handler Handler, maxAttempts int) Handler {
 	return HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
 		input, err := io.ReadAll(r)
 		if err != nil {
@@ -31,10 +33,10 @@ func Retry(handler Handler, maxAttempts int) Handler {
 
 		var lastErr error
 		for attempt := range maxAttempts {
-			var output strings.Builder
-			err := handler.ServeFlow(ctx, strings.NewReader(string(input)), &output)
+			var output bytes.Buffer
+			err := handler.ServeFlow(ctx, bytes.NewReader(input), &output)
 			if err == nil {
-				_, writeErr := w.Write([]byte(output.String()))
+				_, writeErr := w.Write(output.Bytes())
 				return writeErr
 			}
 			lastErr = err
@@ -49,40 +51,10 @@ func Retry(handler Handler, maxAttempts int) Handler {
 	})
 }
 
-// Branch creates conditional routing based on input content evaluation.
-//
-// Input: any data type (buffered - reads entire input into memory)
-// Output: depends on which handler is executed (ifHandler or elseHandler)
-// Behavior: BUFFERED - must read entire input to evaluate condition
-//
-// The condition function receives the entire input as a string and returns a boolean.
-// If true, ifHandler is executed; if false, elseHandler is executed.
-// Both handlers receive the same original input.
-//
-// Example:
-//   jsonBranch := core.Branch(
-//     func(s string) bool { return strings.HasPrefix(s, "{") },
-//     jsonHandler,
-//     textHandler,
-//   )
-func Branch(condition func(string) bool, ifHandler Handler, elseHandler Handler) Handler {
-	return HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
-		if err != nil {
-			return err
-		}
-
-		if condition(string(input)) {
-			return ifHandler.ServeFlow(ctx, strings.NewReader(string(input)), w)
-		}
-		return elseHandler.ServeFlow(ctx, strings.NewReader(string(input)), w)
-	})
-}
-
 // Parallel executes multiple handlers concurrently with the same input stream.
 //
 // Input: any data type (streaming - uses io.Pipe for efficient fan-out)
-// Output: string containing all handler outputs separated by "\n---\n"
+// Output: bytes containing all handler outputs separated by "\n---\n"
 // Behavior: STREAMING - input is fanned out to all handlers simultaneously
 //
 // Each handler receives the same input stream via io.Pipe. All handlers start
@@ -93,9 +65,10 @@ func Branch(condition func(string) bool, ifHandler Handler, elseHandler Handler)
 // results in pass-through behavior.
 //
 // Example:
-//   parallel := core.Parallel(handler1, handler2, handler3)
-//   // All three handlers process the same input concurrently
-func Parallel(handlers ...Handler) Handler {
+//
+//	parallel := core.Parallel[[]byte](handler1, handler2, handler3)
+//	// All three handlers process the same input concurrently
+func Parallel[T any](handlers ...Handler) Handler {
 	return HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
 		if len(handlers) == 0 {
 			_, err := io.Copy(w, r)
@@ -105,7 +78,7 @@ func Parallel(handlers ...Handler) Handler {
 		// Create pipe pairs for each handler
 		readers := make([]*io.PipeReader, len(handlers))
 		writers := make([]*io.PipeWriter, len(handlers))
-		
+
 		for i := range handlers {
 			readers[i], writers[i] = io.Pipe()
 		}
@@ -130,7 +103,7 @@ func Parallel(handlers ...Handler) Handler {
 		}()
 
 		type result struct {
-			output string
+			output []byte
 			err    error
 		}
 
@@ -139,13 +112,13 @@ func Parallel(handlers ...Handler) Handler {
 		// Run handlers concurrently on their streams
 		for i, handler := range handlers {
 			go func(h Handler, reader io.Reader) {
-				var output strings.Builder
+				var output bytes.Buffer
 				err := h.ServeFlow(ctx, reader, &output)
-				results <- result{output.String(), err}
+				results <- result{output.Bytes(), err}
 			}(handler, readers[i])
 		}
 
-		var outputs []string
+		var outputs [][]byte
 		for range handlers {
 			select {
 			case <-ctx.Done():
@@ -159,8 +132,9 @@ func Parallel(handlers ...Handler) Handler {
 		}
 
 		// Combine results
-		combined := strings.Join(outputs, "\n---\n")
-		_, err := w.Write([]byte(combined))
+
+		combined := bytes.Join(outputs, []byte("\n---\n"))
+		_, err := w.Write(combined)
 		return err
 	})
 }
@@ -176,9 +150,10 @@ func Parallel(handlers ...Handler) Handler {
 // Uses io.MultiWriter for efficient simultaneous copying.
 //
 // Example:
-//   logFile, _ := os.Create("flow.log")
-//   tee := core.TeeReader(logFile, os.Stdout)
-//   flow.Use(tee) // Input goes to logFile, stdout, AND next handler
+//
+//	logFile, _ := os.Create("flow.log")
+//	tee := core.TeeReader(logFile, os.Stdout)
+//	flow.Use(tee) // Input goes to logFile, stdout, AND next handler
 func TeeReader(destinations ...io.Writer) Handler {
 	return HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
 		// Create MultiWriter to write to all destinations plus the output
@@ -186,71 +161,6 @@ func TeeReader(destinations ...io.Writer) Handler {
 		multiWriter := io.MultiWriter(allWriters...)
 
 		_, err := io.Copy(multiWriter, r)
-		return err
-	})
-}
-
-// Transform applies a function to transform the entire input content.
-//
-// Input: any data type (buffered - reads entire input into memory)
-// Output: string (result of transformation function)
-// Behavior: BUFFERED - must read entire input to apply transformation
-//
-// The transformation function receives the entire input as a string and
-// returns the transformed string. Useful for text processing, formatting,
-// or content modification that requires the complete input.
-//
-// Example:
-//   upperCase := core.Transform(strings.ToUpper)
-//   reverse := core.Transform(func(s string) string {
-//     runes := []rune(s)
-//     for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-//       runes[i], runes[j] = runes[j], runes[i]
-//     }
-//     return string(runes)
-//   })
-func Transform(fn func(string) string) Handler {
-	return HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
-		if err != nil {
-			return err
-		}
-
-		output := fn(string(input))
-		_, err = w.Write([]byte(output))
-		return err
-	})
-}
-
-// Filter conditionally processes input based on content evaluation.
-//
-// Input: any data type (buffered - reads entire input into memory)
-// Output: depends on condition - either handler output or original input
-// Behavior: BUFFERED - must read entire input to evaluate condition
-//
-// If the condition function returns true, the input is processed by the handler.
-// If false, the original input passes through unchanged. The condition function
-// receives the entire input as a string.
-//
-// Example:
-//   jsonFilter := core.Filter(
-//     func(s string) bool { return json.Valid([]byte(s)) },
-//     jsonProcessor,
-//   )
-//   // Only valid JSON gets processed, everything else passes through
-func Filter(condition func(string) bool, handler Handler) Handler {
-	return HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
-		if err != nil {
-			return err
-		}
-
-		if condition(string(input)) {
-			return handler.ServeFlow(ctx, strings.NewReader(string(input)), w)
-		}
-
-		// Pass through unchanged
-		_, err = w.Write(input)
 		return err
 	})
 }
@@ -263,27 +173,34 @@ func Filter(condition func(string) bool, handler Handler) Handler {
 //
 // Logs a preview of the input (first 100 bytes) with the specified prefix,
 // then passes the complete input through unchanged. Uses buffered peeking
-// to avoid consuming the input stream.
+// to avoid consuming the input stream. Optionally accepts a custom logger,
+// defaults to log.Default() if none provided.
 //
 // Example:
-//   logger := core.Logger("STEP1")
-//   flow.Use(logger) // Prints: [STEP1] Processing: {"key":"value"}...
-func Logger(prefix string) Handler {
+//
+//	logger := core.Logger("STEP1")                    // Uses default logger
+//	customLogger := core.Logger("STEP1", myLogger)   // Uses custom logger
+//	flow.Use(logger) // Logs: [STEP1] Processing: [123 34 107 101 121 ...]
+func Logger(prefix string, logger ...LoggerInterface) Handler {
+	var l LoggerInterface
+	if len(logger) > 0 {
+		l = logger[0]
+	} else {
+		l = log.Default()
+	}
+
 	return HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
 		bufReader := bufio.NewReader(r)
-		
+
 		// Peek at first line for logging without consuming
 		firstLine, err := bufReader.Peek(100)
 		if err != nil && err != io.EOF {
 			return err
 		}
-		
-		// Log truncated preview
-		preview := string(firstLine)
-		if len(firstLine) == 100 {
-			preview += "..."
-		}
-		fmt.Printf("[%s] Processing: %s\n", prefix, preview)
+
+		// Log smart formatted preview
+		preview := formatPreview(firstLine)
+		l.Printf("[%s] Processing: %s\n", prefix, preview)
 
 		// Pass through unchanged using buffered reader
 		_, err = io.Copy(w, bufReader)
@@ -291,35 +208,106 @@ func Logger(prefix string) Handler {
 	})
 }
 
-// LineProcessor transforms input line-by-line using buffered scanning.
-//
-// Input: any data type (streaming - uses bufio.Scanner for line-by-line processing)
-// Output: string (processed lines separated by newlines)
-// Behavior: STREAMING - processes each line as it's read, memory efficient
-//
-// Reads input line by line and applies the transformation function to each line.
-// Output lines are written immediately, making this memory efficient for large
-// inputs. Each output line ends with a newline character.
-//
-// Example:
-//   addLineNumbers := core.LineProcessor(func(line string) string {
-//     return fmt.Sprintf("%d: %s", lineNum, line)
-//   })
-//   csvProcessor := core.LineProcessor(func(line string) string {
-//     return strings.ToUpper(line) // Convert CSV to uppercase
-//   })
-func LineProcessor(fn func(string) string) Handler {
-	return HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		scanner := bufio.NewScanner(r)
-		
-		for scanner.Scan() {
-			line := scanner.Text()
-			processed := fn(line)
-			if _, err := fmt.Fprintln(w, processed); err != nil {
-				return err
+// LoggerInterface allows custom logging implementations
+type LoggerInterface interface {
+	Printf(format string, v ...any)
+}
+
+// formatPreview creates a readable preview of data, handling both text and binary content
+func formatPreview(data []byte) string {
+	if len(data) == 0 {
+		return "<empty>"
+	}
+
+	// Try to detect if it's printable text
+	if isPrintable(data) {
+		preview := string(data)
+		if len(data) == 100 {
+			preview += "..."
+		}
+		return preview
+	}
+
+	// For binary data, show hex summary
+	if len(data) > 20 {
+		return fmt.Sprintf("binary data (%d bytes): %x...", len(data), data[:20])
+	}
+	return fmt.Sprintf("binary data: %x", data)
+}
+
+// isPrintable checks if all bytes are printable ASCII characters
+func isPrintable(data []byte) bool {
+	for _, b := range data {
+		if b < 32 || b > 126 {
+			// Allow common whitespace characters
+			if b != '\t' && b != '\n' && b != '\r' {
+				return false
 			}
 		}
-		
-		return scanner.Err()
+	}
+	return true
+}
+
+// Timeout wraps a handler with timeout protection.
+//
+// Input: any data type (passes through unchanged)
+// Output: same as wrapped handler's output
+// Behavior: STREAMING - cancels context if timeout exceeded
+//
+// The handler execution is cancelled if it takes longer than the specified timeout.
+// Uses context cancellation for clean shutdown. If the context is already cancelled
+// or has a deadline, the shorter timeout takes precedence.
+//
+// Example:
+//
+//	timeoutHandler := core.Timeout[string](someHandler, 30*time.Second)
+//	flow.Use(timeoutHandler)
+func Timeout[T any](handler Handler, timeout time.Duration) Handler {
+	return HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		done := make(chan error, 1)
+		go func() {
+			done <- handler.ServeFlow(timeoutCtx, r, w)
+		}()
+
+		select {
+		case err := <-done:
+			return err
+		case <-timeoutCtx.Done():
+			return fmt.Errorf("handler timeout after %v: %w", timeout, timeoutCtx.Err())
+		}
+	})
+}
+
+// Branch creates conditional routing based on input content evaluation.
+//
+// Input: any data type (buffered - reads entire input into memory)
+// Output: depends on which handler is executed (ifHandler or elseHandler)
+// Behavior: BUFFERED - must read entire input to evaluate condition
+//
+// The condition function receives the entire input as bytes and returns a boolean.
+// If true, ifHandler is executed; if false, elseHandler is executed.
+// Both handlers receive the same original input.
+//
+// Example:
+//
+//	jsonBranch := core.Branch[[]byte](
+//	  func(b []byte) bool { return bytes.HasPrefix(b, []byte("{")) },
+//	  jsonHandler,
+//	  textHandler,
+//	)
+func Branch[T any](condition func([]byte) bool, ifHandler Handler, elseHandler Handler) Handler {
+	return HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+		input, err := io.ReadAll(r)
+		if err != nil {
+			return err
+		}
+
+		if condition(input) {
+			return ifHandler.ServeFlow(ctx, bytes.NewReader(input), w)
+		}
+		return elseHandler.ServeFlow(ctx, bytes.NewReader(input), w)
 	})
 }

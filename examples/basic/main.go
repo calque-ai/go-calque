@@ -7,23 +7,24 @@ import (
 	"strings"
 
 	"github.com/calque-ai/calque-pipe/core"
+	str "github.com/calque-ai/calque-pipe/middleware/strings"
 )
 
 func main() {
 	flow := core.New()
 
 	flow.
-		Use(core.Logger("STEP1")).            // Add logging middleware
-		Use(core.Transform(strings.ToUpper)). // Add transformation to uppercase
-		Use(core.Branch(                      // Add conditional branching
+		Use(core.Logger("STEP1")).           // Add logging middleware
+		Use(str.Transform(strings.ToUpper)). // Add transformation to uppercase
+		Use(str.Branch(                      // Add conditional branching
 			func(s string) bool { return strings.Contains(s, "HELLO") },
-			core.Transform(func(s string) string { return s + " [GREETING DETECTED]" }),
-			core.Transform(func(s string) string { return s + " [NO GREETING]" }),
+			str.Transform(func(s string) string { return s + " [GREETING DETECTED]" }),
+			str.Transform(func(s string) string { return s + " [NO GREETING]" }),
 		)).
-		Use(core.Parallel( // Add parallel processing
-			core.Transform(func(s string) string { return "Length: " + fmt.Sprint(len(s)) }),
-			core.Transform(func(s string) string { return "Words: " + fmt.Sprint(len(strings.Fields(s))) }),
-			core.Transform(func(s string) string { return "Reversed: " + reverse(s) }),
+		Use(core.Parallel[string]( // Add parallel processing
+			str.Transform(func(s string) string { return "Length: " + fmt.Sprint(len(s)) }),
+			str.Transform(func(s string) string { return "Words: " + fmt.Sprint(len(strings.Fields(s))) }),
+			str.Transform(func(s string) string { return "Reversed: " + reverse(s) }),
 		))
 
 	// Run the flow
