@@ -180,7 +180,7 @@ func TeeReader(destinations ...io.Writer) Handler {
 //
 //	logger := core.Logger("STEP1")                    // Uses default logger
 //	customLogger := core.Logger("STEP1", myLogger)   // Uses custom logger
-//	flow.Use(logger) // Logs: [STEP1] Processing: [123 34 107 101 121 ...]
+//	flow.Use(logger) // Logs: [STEP1]: Hello, world!
 func Logger(prefix string, logger ...LoggerInterface) Handler {
 	var l LoggerInterface
 	if len(logger) > 0 {
@@ -200,7 +200,7 @@ func Logger(prefix string, logger ...LoggerInterface) Handler {
 
 		// Log smart formatted preview
 		preview := formatPreview(firstLine)
-		l.Printf("[%s] Processing: %s\n", prefix, preview)
+		l.Printf("[%s]: %s\n", prefix, preview)
 
 		// Pass through unchanged using buffered reader
 		_, err = io.Copy(w, bufReader)

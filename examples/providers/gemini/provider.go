@@ -16,7 +16,7 @@ type GeminiProvider struct {
 }
 
 // NewGeminiProvider creates a new Gemini provider
-// If apiKey is empty, it will try to read from GEMINI_API_KEY environment variable
+// If apiKey is empty, it will try to read from GOOGLE_API_KEY environment variable
 func NewGeminiProvider(apiKey, model string) (*GeminiProvider, error) {
 	if apiKey == "" {
 		apiKey = os.Getenv("GOOGLE_API_KEY")
