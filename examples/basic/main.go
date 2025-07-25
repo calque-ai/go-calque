@@ -7,28 +7,29 @@ import (
 	"strings"
 
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/calque-ai/calque-pipe/middleware/flow"
 	str "github.com/calque-ai/calque-pipe/middleware/strings"
 )
 
 func main() {
-	flow := core.New()
+	pipe := core.New()
 
-	flow.
-		Use(core.Logger("STEP1")).           // Add logging middleware
+	pipe.
+		Use(flow.Logger("STEP1")).           // Add logging middleware
 		Use(str.Transform(strings.ToUpper)). // Add transformation to uppercase
 		Use(str.Branch(                      // Add conditional branching
 			func(s string) bool { return strings.Contains(s, "HELLO") },
 			str.Transform(func(s string) string { return s + " [GREETING DETECTED]" }),
 			str.Transform(func(s string) string { return s + " [NO GREETING]" }),
 		)).
-		Use(core.Parallel[string]( // Add parallel processing
+		Use(flow.Parallel[string]( // Add parallel processing
 			str.Transform(func(s string) string { return "Length: " + fmt.Sprint(len(s)) }),
 			str.Transform(func(s string) string { return "Words: " + fmt.Sprint(len(strings.Fields(s))) }),
 			str.Transform(func(s string) string { return "Reversed: " + reverse(s) }),
 		))
 
-	// Run the flow
-	result, err := flow.Run(context.Background(), "hello world")
+	// Run the pipe
+	result, err := pipe.Run(context.Background(), "hello world")
 	if err != nil {
 		log.Fatal(err)
 	}

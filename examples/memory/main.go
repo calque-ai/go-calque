@@ -7,6 +7,7 @@ import (
 
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/examples/providers/ollama"
+	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/memory"
 )
@@ -33,12 +34,12 @@ func conversationExample(provider llm.LLMProvider) {
 
 	convMem := memory.NewConversation() // Create conversation memory with default in-memory store
 
-	// Create flow with conversation memory
-	flow := core.New()
-	flow.
-		Use(core.Logger("INPUT")).
+	// Create pipe with conversation memory
+	pipe := core.New()
+	pipe.
+		Use(flow.Logger("INPUT")).
 		Use(convMem.Input("user123")). // Store input with user ID
-		Use(core.Logger("WITH_HISTORY")).
+		Use(flow.Logger("WITH_HISTORY")).
 		Use(llm.SystemPrompt("You are a helpful coding assistant. Keep responses brief.")).
 		Use(llm.Chat(provider)).       // Get LLM response
 		Use(convMem.Output("user123")) // Store response with user ID
@@ -52,7 +53,7 @@ func conversationExample(provider llm.LLMProvider) {
 
 	for i, input := range inputs {
 		fmt.Printf("\n--- Message %d ---\n", i+1)
-		result, err := flow.Run(context.Background(), input)
+		result, err := pipe.Run(context.Background(), input)
 		if err != nil {
 			log.Printf("Error: %v", err)
 			continue
@@ -88,17 +89,17 @@ func customStoreExample(provider llm.LLMProvider) {
 	userConvMem := memory.NewConversationWithStore(userStore)
 	adminConvMem := memory.NewConversationWithStore(adminStore)
 
-	// User flow
-	userFlow := core.New()
-	userFlow.
+	// User pipe
+	userPipe := core.New()
+	userPipe.
 		Use(userConvMem.Input("session1")).
 		Use(llm.SystemPrompt("You are a helpful user assistant.")).
 		Use(llm.Chat(provider)).
 		Use(userConvMem.Output("session1"))
 
-	// Admin flow
-	adminFlow := core.New()
-	adminFlow.
+	// Admin pipe
+	adminPipe := core.New()
+	adminPipe.
 		Use(adminConvMem.Input("admin1")).
 		Use(llm.SystemPrompt("You are a technical admin assistant.")).
 		Use(llm.Chat(provider)).
@@ -106,13 +107,13 @@ func customStoreExample(provider llm.LLMProvider) {
 
 	// Test user conversation
 	fmt.Println("\n--- User Conversation ---")
-	result, _ := userFlow.Run(context.Background(), "How do I reset my password?")
+	result, _ := userPipe.Run(context.Background(), "How do I reset my password?")
 	fmt.Printf("User: How do I reset my password?\n")
 	fmt.Printf("Assistant: %s\n", result)
 
 	// Test admin conversation
 	fmt.Println("\n--- Admin Conversation ---")
-	result, _ = adminFlow.Run(context.Background(), "Show me server logs")
+	result, _ = adminPipe.Run(context.Background(), "Show me server logs")
 	fmt.Printf("Admin: Show me server logs\n")
 	fmt.Printf("Assistant: %s\n", result)
 
@@ -132,12 +133,12 @@ func contextExample(provider llm.LLMProvider) {
 
 	contextMem := memory.NewContext() // Create context memory with default in-memory store
 
-	// Create flow with context memory (small limit for demo)
-	flow := core.New()
-	flow.
-		Use(core.Logger("INPUT")).
+	// Create pipe with context memory (small limit for demo)
+	pipe := core.New()
+	pipe.
+		Use(flow.Logger("INPUT")).
 		Use(contextMem.Input("session456", 200)). // Keep last 200 tokens
-		Use(core.Logger("WITH_CONTEXT")).
+		Use(flow.Logger("WITH_CONTEXT")).
 		Use(llm.SystemPrompt("You are a helpful assistant. Be concise.")).
 		Use(llm.Chat(provider)).                  // Get LLM response
 		Use(contextMem.Output("session456", 200)) // Store response in context
@@ -159,7 +160,7 @@ func contextExample(provider llm.LLMProvider) {
 			fmt.Printf("Context: %d/%d tokens\n exists: %v", tokenCount, maxTokens, exists)
 		}
 
-		result, err := flow.Run(context.Background(), input)
+		result, err := pipe.Run(context.Background(), input)
 		if err != nil {
 			log.Printf("Error: %v", err)
 			continue

@@ -8,6 +8,7 @@ import (
 
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/examples/providers/gemini"
+	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/joho/godotenv"
 )
@@ -27,18 +28,18 @@ func main() {
 		log.Fatal("Failed to create Gemini provider:", err)
 	}
 
-	// Create flow with LLM integration
-	flow := core.New()
+	// Create pipe with LLM integration
+	pipe := core.New()
 
-	flow.
-		Use(core.Logger("INPUT")).                                                  // Log input
+	pipe.
+		Use(flow.Logger("INPUT")).                                                  // Log input
 		Use(llm.Prompt("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt
-		Use(core.Logger("PROMPT")).                                                 // Log formatted prompt
-		Use(core.Timeout[string](llm.Chat(provider), 30*time.Second)).              // LLM with timeout
-		Use(core.Logger("RESPONSE"))                                                // Log response
+		Use(flow.Logger("PROMPT")).                                                 // Log formatted prompt
+		Use(flow.Timeout[string](llm.Chat(provider), 30*time.Second)).              // LLM with timeout
+		Use(flow.Logger("RESPONSE"))                                                // Log response
 
-	// Run the flow
-	result, err := flow.Run(context.Background(), "What is the Go programming language?")
+	// Run the pipe
+	result, err := pipe.Run(context.Background(), "What is the Go programming language?")
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -7,17 +7,18 @@ import (
 
 	"github.com/calque-ai/calque-pipe/convert"
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/calque-ai/calque-pipe/middleware/flow"
 )
 
 func main() {
-	flow := core.New()
+	pipe := core.New()
 
-	flow.
-		Use(core.Logger("STEP1")) // Add logging middleware
+	pipe.
+		Use(flow.Logger("STEP1")) // Add logging middleware
 
-	// Run the flow
+	// Run the pipe
 	jsonMap := map[string]any{"key": "value"}
-	result, err := flow.Run(context.Background(), jsonMap, convert.JSON)
+	result, err := pipe.Run(context.Background(), jsonMap, convert.JSON)
 	if err != nil {
 		log.Fatal(err)
 	}

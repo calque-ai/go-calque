@@ -7,6 +7,7 @@ import (
 
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/examples/providers/ollama"
+	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
 )
 
@@ -28,14 +29,14 @@ func main() {
 func basicTemplateExample(provider llm.LLMProvider) {
 	fmt.Println("=== Basic Template Example ===")
 
-	flow := core.New()
-	flow.
-		Use(core.Logger("INPUT")).
+	pipe := core.New()
+	pipe.
+		Use(flow.Logger("INPUT")).
 		Use(llm.Prompt("You are a helpful assistant. {{.Input}}")).
-		Use(core.Logger("PROMPT")).
+		Use(flow.Logger("PROMPT")).
 		Use(llm.Chat(provider))
 
-	result, err := flow.Run(context.Background(), "What is Golang?")
+	result, err := pipe.Run(context.Background(), "What is Golang?")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -51,14 +52,14 @@ func templateWithDataExample(provider llm.LLMProvider) {
 		"Language": "Go",
 	}
 
-	flow := core.New()
-	flow.
-		Use(core.Logger("INPUT")).
+	pipe := core.New()
+	pipe.
+		Use(flow.Logger("INPUT")).
 		Use(llm.Prompt("You are a {{.Role}} specializing in {{.Language}}. {{.Input}}", params)).
-		Use(core.Logger("PROMPT")).
+		Use(flow.Logger("PROMPT")).
 		Use(llm.Chat(provider))
 
-	result, err := flow.Run(context.Background(), "How do I handle errors?")
+	result, err := pipe.Run(context.Background(), "How do I handle errors?")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,14 +70,14 @@ func templateWithDataExample(provider llm.LLMProvider) {
 func systemPromptExample(provider llm.LLMProvider) {
 	fmt.Println("=== SystemPrompt Example ===")
 
-	flow := core.New()
-	flow.
-		Use(core.Logger("INPUT")).
+	pipe := core.New()
+	pipe.
+		Use(flow.Logger("INPUT")).
 		Use(llm.SystemPrompt("You are a concise coding expert. Always provide practical examples.")).
-		Use(core.Logger("PROMPT")).
+		Use(flow.Logger("PROMPT")).
 		Use(llm.Chat(provider))
 
-	result, err := flow.Run(context.Background(), "Show me a Go struct example")
+	result, err := pipe.Run(context.Background(), "Show me a Go struct example")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -87,14 +88,14 @@ func systemPromptExample(provider llm.LLMProvider) {
 func chatPromptExample(provider llm.LLMProvider) {
 	fmt.Println("=== ChatPrompt Example ===")
 
-	flow := core.New()
-	flow.
-		Use(core.Logger("INPUT")).
+	pipe := core.New()
+	pipe.
+		Use(flow.Logger("INPUT")).
 		Use(llm.ChatPrompt("assistant", "I'm an AI assistant specialized in programming.")).
-		Use(core.Logger("PROMPT")).
+		Use(flow.Logger("PROMPT")).
 		Use(llm.Chat(provider))
 
-	result, err := flow.Run(context.Background(), "Hello!")
+	result, err := pipe.Run(context.Background(), "Hello!")
 	if err != nil {
 		log.Fatal(err)
 	}

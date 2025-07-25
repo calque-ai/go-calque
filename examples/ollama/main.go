@@ -8,6 +8,7 @@ import (
 
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/examples/providers/ollama"
+	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
 	str "github.com/calque-ai/calque-pipe/middleware/strings"
 )
@@ -20,19 +21,19 @@ func main() {
 	}
 
 	// Create flow with LLM integration
-	flow := core.New()
+	pipe := core.New()
 
-	flow.
-		Use(core.Logger("INPUT")).                // Log input
+	pipe.
+		Use(flow.Logger("INPUT")).                // Log input
 		Use(str.Transform(func(s string) string { // Add context
 			return "Please provide a concise response to: " + s
 		})).
-		Use(core.Logger("PROMPT")).                                    // Log formatted prompt
-		Use(core.Timeout[string](llm.Chat(provider), 60*time.Second)). // LLM with timeout (longer for local)
-		Use(core.Logger("RESPONSE"))                                   // Log response
+		Use(flow.Logger("PROMPT")).                                    // Log formatted prompt
+		Use(flow.Timeout[string](llm.Chat(provider), 60*time.Second)). // LLM with timeout (longer for local)
+		Use(flow.Logger("RESPONSE"))                                   // Log response
 
 	// Run the flow
-	result, err := flow.Run(context.Background(), "What is Go programming language?")
+	result, err := pipe.Run(context.Background(), "What is Go programming language?")
 	if err != nil {
 		log.Fatal(err)
 	}
