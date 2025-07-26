@@ -31,9 +31,9 @@ func basicTemplateExample(provider llm.LLMProvider) {
 
 	pipe := core.New()
 	pipe.
-		Use(flow.Logger("INPUT")).
+		Use(flow.Logger("INPUT", 100)).
 		Use(llm.Prompt("You are a helpful assistant. {{.Input}}")).
-		Use(flow.Logger("PROMPT")).
+		Use(flow.Logger("PROMPT", 100)).
 		Use(llm.Chat(provider))
 
 	result, err := pipe.Run(context.Background(), "What is Golang?")
@@ -54,9 +54,9 @@ func templateWithDataExample(provider llm.LLMProvider) {
 
 	pipe := core.New()
 	pipe.
-		Use(flow.Logger("INPUT")).
+		Use(flow.Logger("INPUT", 100)).
 		Use(llm.Prompt("You are a {{.Role}} specializing in {{.Language}}. {{.Input}}", params)).
-		Use(flow.Logger("PROMPT")).
+		Use(flow.Logger("PROMPT", 200)).
 		Use(llm.Chat(provider))
 
 	result, err := pipe.Run(context.Background(), "How do I handle errors?")
@@ -72,9 +72,9 @@ func systemPromptExample(provider llm.LLMProvider) {
 
 	pipe := core.New()
 	pipe.
-		Use(flow.Logger("INPUT")).
+		Use(flow.Logger("INPUT", 100)).
 		Use(llm.SystemPrompt("You are a concise coding expert. Always provide practical examples.")).
-		Use(flow.Logger("PROMPT")).
+		Use(flow.Logger("PROMPT", 100)).
 		Use(llm.Chat(provider))
 
 	result, err := pipe.Run(context.Background(), "Show me a Go struct example")
@@ -90,9 +90,9 @@ func chatPromptExample(provider llm.LLMProvider) {
 
 	pipe := core.New()
 	pipe.
-		Use(flow.Logger("INPUT")).
+		Use(flow.Logger("INPUT", 100)).
 		Use(llm.ChatPrompt("assistant", "I'm an AI assistant specialized in programming.")).
-		Use(flow.Logger("PROMPT")).
+		Use(flow.Logger("PROMPT", 100)).
 		Use(llm.Chat(provider))
 
 	result, err := pipe.Run(context.Background(), "Hello!")

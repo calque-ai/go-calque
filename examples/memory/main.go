@@ -25,6 +25,7 @@ func main() {
 
 	conversationExample(provider)
 	contextExample(provider)
+	customStoreExample(provider)
 }
 
 // Example 1: Conversation memory - maintains structured chat history
@@ -37,9 +38,9 @@ func conversationExample(provider llm.LLMProvider) {
 	// Create pipe with conversation memory
 	pipe := core.New()
 	pipe.
-		Use(flow.Logger("INPUT")).
+		Use(flow.Logger("INPUT", 100)).
 		Use(convMem.Input("user123")). // Store input with user ID
-		Use(flow.Logger("WITH_HISTORY")).
+		Use(flow.Logger("WITH_HISTORY", 100)).
 		Use(llm.SystemPrompt("You are a helpful coding assistant. Keep responses brief.")).
 		Use(llm.Chat(provider)).       // Get LLM response
 		Use(convMem.Output("user123")) // Store response with user ID
@@ -136,9 +137,9 @@ func contextExample(provider llm.LLMProvider) {
 	// Create pipe with context memory (small limit for demo)
 	pipe := core.New()
 	pipe.
-		Use(flow.Logger("INPUT")).
+		Use(flow.Logger("INPUT", 100)).
 		Use(contextMem.Input("session456", 200)). // Keep last 200 tokens
-		Use(flow.Logger("WITH_CONTEXT")).
+		Use(flow.Logger("WITH_CONTEXT", 100)).
 		Use(llm.SystemPrompt("You are a helpful assistant. Be concise.")).
 		Use(llm.Chat(provider)).                  // Get LLM response
 		Use(contextMem.Output("session456", 200)) // Store response in context

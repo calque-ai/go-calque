@@ -19,19 +19,18 @@ type LoggerInterface interface {
 //
 // Input: any data type (streaming - uses bufio.Reader.Peek for preview)
 // Output: same as input (pass-through)
-// Behavior: STREAMING - peeks at first 100 bytes without consuming, then streams
+// Behavior: STREAMING - peeks at first N bytes without consuming, then streams
 //
-// Logs a preview of the input (first 100 bytes) with the specified prefix,
-// then passes the complete input through unchanged. Uses buffered peeking
-// to avoid consuming the input stream. Optionally accepts a custom logger,
-// defaults to log.Default() if none provided.
+// Logs a preview of the input with the specified prefix, then passes the
+// complete input through unchanged. Uses buffered peeking to avoid consuming
+// the input stream. Optionally accepts a custom logger, defaults to log.Default().
 //
 // Example:
 //
-//	logger := flow.Logger("STEP1")                    // Uses default logger
-//	customLogger := flow.Logger("STEP1", myLogger)   // Uses custom logger
+//	logger := flow.Logger("STEP1", 100)                    // Default logger, 100 bytes
+//	customLogger := flow.Logger("STEP1", 200, myLogger)   // Custom logger, 200 bytes
 //	pipe.Use(logger) // Logs: [STEP1]: Hello, world!
-func Logger(prefix string, logger ...LoggerInterface) core.Handler {
+func Logger(prefix string, peekBytes int, logger ...LoggerInterface) core.Handler {
 	var l LoggerInterface
 	if len(logger) > 0 {
 		l = logger[0]
@@ -42,8 +41,8 @@ func Logger(prefix string, logger ...LoggerInterface) core.Handler {
 	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
 		bufReader := bufio.NewReader(r)
 
-		// Peek at first line for logging without consuming
-		firstLine, err := bufReader.Peek(100)
+		// Peek at first N bytes for logging without consuming
+		firstLine, err := bufReader.Peek(peekBytes)
 		if err != nil && err != io.EOF {
 			return err
 		}

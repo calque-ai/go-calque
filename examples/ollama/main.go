@@ -24,13 +24,13 @@ func main() {
 	pipe := core.New()
 
 	pipe.
-		Use(flow.Logger("INPUT")).                // Log input
+		Use(flow.Logger("INPUT", 100)).           // Log input
 		Use(str.Transform(func(s string) string { // Add context
 			return "Please provide a concise response to: " + s
 		})).
-		Use(flow.Logger("PROMPT")).                                    // Log formatted prompt
+		Use(flow.Logger("PROMPT", 100)).                               // Log formatted prompt
 		Use(flow.Timeout[string](llm.Chat(provider), 60*time.Second)). // LLM with timeout (longer for local)
-		Use(flow.Logger("RESPONSE"))                                   // Log response
+		Use(flow.Logger("RESPONSE", 100))                              // Log response
 
 	// Run the flow
 	result, err := pipe.Run(context.Background(), "What is Go programming language?")

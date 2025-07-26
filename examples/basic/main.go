@@ -15,7 +15,7 @@ func main() {
 	pipe := core.New()
 
 	pipe.
-		Use(flow.Logger("STEP1")).           // Add logging middleware
+		Use(flow.Logger("STEP1", 100)).      // Add logging middleware
 		Use(str.Transform(strings.ToUpper)). // Add transformation to uppercase
 		Use(str.Branch(                      // Add conditional branching
 			func(s string) bool { return strings.Contains(s, "HELLO") },
