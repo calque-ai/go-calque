@@ -29,7 +29,8 @@ func main() {
 		))
 
 	// Run the pipe
-	result, err := pipe.Run(context.Background(), "hello world")
+	var result string
+	err := pipe.Run(context.Background(), "hello world", &result)
 	if err != nil {
 		log.Fatal(err)
 	}

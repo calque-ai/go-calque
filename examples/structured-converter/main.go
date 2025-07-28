@@ -28,32 +28,32 @@ type JobAnalysis struct {
 	RecommendedCity string   `yaml:"recommended_city" desc:"Best city for their career goals"`
 }
 
-// PersonJSON uses JSON tags instead
-type PersonJSON struct {
-	Name  string `json:"name" desc:"The person's full name"`
-	Age   int    `json:"age" desc:"The person's age in years"`
-	City  string `json:"city" desc:"The city where the person lives"`
-	Email string `json:"email_address"` // Auto-generated: "The person's email address"
+// PersonXML uses XML tags instead
+type PersonXML struct {
+	Name  string `xml:"name" desc:"The person's full name"`
+	Age   int    `xml:"age" desc:"The person's age in years"`
+	City  string `xml:"city" desc:"The city where the person lives"`
+	Email string `xml:"email_address"` // Auto-generated: "The person's email address"
 }
 
 func main() {
-	fmt.Println("🔧 Structured Converter Example")
+	fmt.Println("Structured Converter Example")
 	fmt.Println("================================")
 
 	// Example 1: Basic YAML Conversion
-	fmt.Println("\n📝 Example 1: YAML Struct to String")
+	fmt.Println("\nExample 1: YAML Struct to String")
 	yamlInputExample()
 
-	// Example 2: JSON Conversion
-	fmt.Println("\n📊 Example 2: JSON Struct to String")
-	jsonInputExample()
+	// Example 2: XML Conversion
+	fmt.Println("\nExample 2: XML Struct to String")
+	xmlInputExample()
 
 	// Example 3: Full Pipeline with LLM Simulation
-	fmt.Println("\n🤖 Example 3: Complete LLM Pipeline")
+	fmt.Println("\nExample 3: Complete LLM Pipeline")
 	llmPipelineExample()
 
 	// Example 4: Output Parsing
-	fmt.Println("\n📥 Example 4: Parse LLM Response")
+	fmt.Println("\nExample 4: Parse LLM Response")
 	outputParsingExample()
 }
 
@@ -68,23 +68,22 @@ func yamlInputExample() {
 
 	pipe := core.New()
 	pipe.Use(flow.Logger("INPUT", 500))
+
 	// Run the pipe with a Structured YAML converter and Person schema
-	result, err := pipe.Run(context.Background(), originalPerson, convert.StructuredYAML[Person]())
+	var result Person
+	err := pipe.Run(context.Background(), convert.StructuredYAML(originalPerson), convert.StructuredYAMLOutput[Person](&result))
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return
 	}
 
-	if parsedPerson, ok := result.(Person); ok {
-		fmt.Printf("Parsed back to struct: %+v\n", parsedPerson)
-		fmt.Printf("Round-trip successful: %t\n", originalPerson == parsedPerson)
-	} else {
-		fmt.Printf("Unexpected result type: %T\n", result)
-	}
+	fmt.Printf("Parsed back to struct: %+v\n", result)
+	fmt.Printf("Round-trip successful: %t\n", originalPerson == result)
+
 }
 
-func jsonInputExample() {
-	person := PersonJSON{
+func xmlInputExample() {
+	person := PersonXML{
 		Name:  "Bob Smith",
 		Age:   35,
 		City:  "Seattle",
@@ -93,20 +92,19 @@ func jsonInputExample() {
 
 	pipe := core.New()
 	pipe.Use(flow.Logger("INPUT", 500)) // Use 500 byte peek
-	// Run the pipe with a Structured JSON converter and PersonJson schema
-	result, err := pipe.Run(context.Background(), person, convert.StructuredJSON[PersonJSON]())
+
+	// Run the pipe with a Structured XML converter and PersonXML schema
+	var result PersonXML
+	err := pipe.Run(context.Background(), convert.StructuredXML(person), convert.StructuredXMLOutput[PersonXML](&result))
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return
 	}
 
 	// This should show the parsed struct, not the JSON string
-	if parsedPerson, ok := result.(PersonJSON); ok {
-		fmt.Printf("Parsed back to struct: %+v\n", parsedPerson)
-		fmt.Printf("Round-trip successful: %t\n", person == parsedPerson)
-	} else {
-		fmt.Printf("Unexpected result type: %T, value: %v\n", result, result)
-	}
+	fmt.Printf("Parsed back to struct: %+v\n", result)
+	fmt.Printf("Round-trip successful: %t\n", person == result)
+
 }
 
 func llmPipelineExample() {
@@ -123,22 +121,20 @@ func llmPipelineExample() {
 		Use(flow.Logger("OUTPUT", 500))
 
 	// Run with structured input, but parse result as JobAnalysis
-	result, err := pipeline.Run(context.Background(), person, convert.StructuredYAML[JobAnalysis]())
+	var output JobAnalysis
+	err := pipeline.Run(context.Background(), convert.StructuredYAML(person), convert.StructuredYAMLOutput[JobAnalysis](&output))
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return
 	}
 
-	if jobAnalysis, ok := result.(JobAnalysis); ok {
-		fmt.Printf("LLM processed the structured input and returned:\n")
-		fmt.Printf("  Suitable Roles: %v\n", jobAnalysis.SuitableRoles)
-		fmt.Printf("  Skill Gaps: %v\n", jobAnalysis.SkillGaps)
-		fmt.Printf("  Career Advice: %s\n", jobAnalysis.CareerAdvice)
-		fmt.Printf("  Salary Estimate: $%dk\n", jobAnalysis.SalaryEstimate)
-		fmt.Printf("  Recommended City: %s\n", jobAnalysis.RecommendedCity)
-	} else {
-		fmt.Printf("Unexpected result type: %T, value: %v\n", result, result)
-	}
+	fmt.Printf("LLM processed the structured input and returned:\n")
+	fmt.Printf("  Suitable Roles: %v\n", output.SuitableRoles)
+	fmt.Printf("  Skill Gaps: %v\n", output.SkillGaps)
+	fmt.Printf("  Career Advice: %s\n", output.CareerAdvice)
+	fmt.Printf("  Salary Estimate: $%dk\n", output.SalaryEstimate)
+	fmt.Printf("  Recommended City: %s\n", output.RecommendedCity)
+
 }
 
 func outputParsingExample() {
@@ -155,23 +151,20 @@ func outputParsingExample() {
 		Use(mockResponseHandler(mockLLMResponse)).
 		Use(flow.Logger("OUTPUT", 500))
 
-	result, err := pipeline.Run(context.Background(), "", convert.StructuredYAML[JobAnalysis]())
+	var output JobAnalysis
+	err := pipeline.Run(context.Background(), "", convert.StructuredYAMLOutput[JobAnalysis](&output))
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return
 	}
 
-	// Type assertion to get the structured result
-	if jobAnalysis, ok := result.(JobAnalysis); ok {
-		fmt.Printf("Parsed Job Analysis:\n")
-		fmt.Printf("  Suitable Roles: %v\n", jobAnalysis.SuitableRoles)
-		fmt.Printf("  Skill Gaps: %v\n", jobAnalysis.SkillGaps)
-		fmt.Printf("  Career Advice: %s\n", jobAnalysis.CareerAdvice)
-		fmt.Printf("  Salary Estimate: $%dk\n", jobAnalysis.SalaryEstimate)
-		fmt.Printf("  Recommended City: %s\n", jobAnalysis.RecommendedCity)
-	} else {
-		fmt.Printf("Unexpected result type: %T\n", result)
-	}
+	fmt.Printf("Parsed Job Analysis:\n")
+	fmt.Printf("  Suitable Roles: %v\n", output.SuitableRoles)
+	fmt.Printf("  Skill Gaps: %v\n", output.SkillGaps)
+	fmt.Printf("  Career Advice: %s\n", output.CareerAdvice)
+	fmt.Printf("  Salary Estimate: $%dk\n", output.SalaryEstimate)
+	fmt.Printf("  Recommended City: %s\n", output.RecommendedCity)
+
 }
 
 // Mock handlers for demonstration

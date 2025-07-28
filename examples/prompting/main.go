@@ -36,7 +36,8 @@ func basicTemplateExample(provider llm.LLMProvider) {
 		Use(flow.Logger("PROMPT", 100)).
 		Use(llm.Chat(provider))
 
-	result, err := pipe.Run(context.Background(), "What is Golang?")
+	var result string
+	err := pipe.Run(context.Background(), "What is Golang?", &result)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -59,7 +60,8 @@ func templateWithDataExample(provider llm.LLMProvider) {
 		Use(flow.Logger("PROMPT", 200)).
 		Use(llm.Chat(provider))
 
-	result, err := pipe.Run(context.Background(), "How do I handle errors?")
+	var result string
+	err := pipe.Run(context.Background(), "How do I handle errors?", &result)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -77,7 +79,8 @@ func systemPromptExample(provider llm.LLMProvider) {
 		Use(flow.Logger("PROMPT", 100)).
 		Use(llm.Chat(provider))
 
-	result, err := pipe.Run(context.Background(), "Show me a Go struct example")
+	var result string
+	err := pipe.Run(context.Background(), "Show me a Go struct example", &result)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -95,7 +98,8 @@ func chatPromptExample(provider llm.LLMProvider) {
 		Use(flow.Logger("PROMPT", 100)).
 		Use(llm.Chat(provider))
 
-	result, err := pipe.Run(context.Background(), "Hello!")
+	var result string
+	err := pipe.Run(context.Background(), "Hello!", &result)
 	if err != nil {
 		log.Fatal(err)
 	}

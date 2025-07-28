@@ -34,3 +34,7 @@ Agent Behavior:
    agent.Tool("search_web", webSearchHandler)
 8. agent.Planning(steps) - Multi-step reasoning
 9. agent.Reflection() - Self-evaluation of responses
+
+Converters:
+
+StructuredJsonWithSchema

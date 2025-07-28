@@ -26,10 +26,11 @@ func (f *Flow) UseFunc(fn HandlerFunc) *Flow {
 	return f.Use(fn)
 }
 
-// Run executes the flow with the given input
-func (f *Flow) Run(ctx context.Context, input any, converters ...Converter) (any, error) {
+// Run executes the flow with the given input and writes output to the provided pointer
+func (f *Flow) Run(ctx context.Context, input any, output any) error {
 	if len(f.handlers) == 0 {
-		return input, nil
+		// No handlers, just copy input to output with conversion
+		return f.copyInputToOutput(input, output)
 	}
 
 	// Create a chain of pipes between handlers
@@ -44,9 +45,9 @@ func (f *Flow) Run(ctx context.Context, input any, converters ...Converter) (any
 	}
 
 	// Convert input to reader
-	reader, inputType, err := f.inputToReaderBuiltIn(input, converters...)
+	reader, err := f.inputToReader(input)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Creates inputReader for the first handler's input
@@ -93,14 +94,10 @@ func (f *Flow) Run(ctx context.Context, input any, converters ...Converter) (any
 	}
 
 	// Consume final output in background
-	type outputResult struct {
-		data any
-		err  error
-	}
-	outputDone := make(chan outputResult, 1)
+	outputDone := make(chan error, 1)
 	go func() {
-		result, err := f.readerToOutputBuiltIn(finalReader, inputType, converters...)
-		outputDone <- outputResult{result, err}
+		err := f.readerToOutput(finalReader, output)
+		outputDone <- err
 	}()
 
 	// Waits for either: context cancellation, handler error, or all handlers complete
@@ -112,12 +109,11 @@ func (f *Flow) Run(ctx context.Context, input any, converters ...Converter) (any
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return ctx.Err()
 	case err := <-errCh:
-		return nil, err
+		return err
 	case <-done:
 		// Wait for output collection to complete
-		result := <-outputDone
-		return result.data, result.err
+		return <-outputDone
 	}
 }

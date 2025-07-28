@@ -3,17 +3,19 @@ package core
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 )
 
-// Converter interfaces
+// InputConverter converts data to an io.Reader for processing
 type InputConverter interface {
-	ToReader(input any) (io.Reader, error)
+	ToReader() (io.Reader, error)
 }
 
+// OutputConverter processes an io.Reader into a target
 type OutputConverter interface {
-	FromReader(reader io.Reader) (any, error)
+	FromReader(reader io.Reader) error
 }
 
 type Converter interface {
@@ -23,71 +25,67 @@ type Converter interface {
 
 // Common errors
 var (
-	ErrUnsupportedType  = errors.New("unsupported input type")
-	ErrConversionFailed = errors.New("conversion failed")
+	ErrUnsupportedInputType  = errors.New("unsupported input type")
+	ErrUnsupportedOutputType = errors.New("unsupported output type")
+	ErrConversionFailed      = errors.New("conversion failed")
 )
 
-type builtInType int
-
-const (
-	typeString builtInType = iota
-	typeBytes
-	typeReader
-	typeConverter // Used converter
-)
-
-// inputToReaderBuiltIn handles common types in core
-func (f *Flow) inputToReaderBuiltIn(input any, converters ...Converter) (io.Reader, builtInType, error) {
-	// Try converter first if provided
-	if len(converters) > 0 {
-		reader, err := converters[0].ToReader(input)
-		if err == nil {
-			return reader, typeConverter, nil
-		}
-		// If converter fails, continue to built-in types
+// inputToReader converts input to io.Reader
+func (f *Flow) inputToReader(input any) (io.Reader, error) {
+	// Check if input is a converter with data
+	if conv, ok := input.(InputConverter); ok {
+		return conv.ToReader()
 	}
 
-	// Fall back to built-in types
+	// Handle built-in types
 	switch v := input.(type) {
 	case string:
-		return strings.NewReader(v), typeString, nil
+		return strings.NewReader(v), nil
 	case []byte:
-		return bytes.NewReader(v), typeBytes, nil
+		return bytes.NewReader(v), nil
 	case io.Reader:
-		return v, typeReader, nil
+		return v, nil
 	default:
-		// FALLBACK: Convert unknown types to string representation
-		return strings.NewReader(f.fallbackToString(input)), typeString, nil
+		return nil, fmt.Errorf("unsupported input type: %T", input)
 	}
 }
 
-// readerToOutputBuiltIn converts back using built-in logic or converter
-func (f *Flow) readerToOutputBuiltIn(reader io.Reader, inputType builtInType, converters ...Converter) (any, error) {
-	// If converter was used for input, use it for output too
-	if inputType == typeConverter && len(converters) > 0 {
-		return converters[0].FromReader(reader)
+// readerToOutput writes the final reader data to the output pointer
+func (f *Flow) readerToOutput(reader io.Reader, output any) error {
+	// Check if output is a converter - it handles its own target
+	if conv, ok := output.(OutputConverter); ok {
+		return conv.FromReader(reader)
 	}
 
-	// Handle common output types
+	// Read data for built-in types
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	switch inputType {
-	case typeString:
-		return string(data), nil
-	case typeBytes:
-		return data, nil
-	case typeReader:
-		return bytes.NewReader(data), nil
+	// Handle built-in types
+	switch outPtr := output.(type) {
+	case *string:
+		*outPtr = string(data)
+	case *[]byte:
+		*outPtr = data
+	case *io.Reader:
+		*outPtr = bytes.NewReader(data)
 	default:
-		return string(data), nil
+		return fmt.Errorf("unsupported output type: %T (use a converter for complex types)", output)
 	}
+
+	return nil
 }
 
-// fallbackToString provides a basic string representation for unknown types
-func (f *Flow) fallbackToString(input any) string {
-	// Simple fallback without reflection
-	return "unknown_type"
+// copyInputToOutput handles the case when there are no handlers
+func (f *Flow) copyInputToOutput(input any, output any) error {
+	// convert input to reader
+	reader, err := f.inputToReader(input)
+	if err != nil {
+		return err
+	}
+
+	// Then write reader to output
+	return f.readerToOutput(reader, output)
 }

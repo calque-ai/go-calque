@@ -54,7 +54,8 @@ func conversationExample(provider llm.LLMProvider) {
 
 	for i, input := range inputs {
 		fmt.Printf("\n--- Message %d ---\n", i+1)
-		result, err := pipe.Run(context.Background(), input)
+		var result string
+		err := pipe.Run(context.Background(), input, result)
 		if err != nil {
 			log.Printf("Error: %v", err)
 			continue
@@ -108,13 +109,14 @@ func customStoreExample(provider llm.LLMProvider) {
 
 	// Test user conversation
 	fmt.Println("\n--- User Conversation ---")
-	result, _ := userPipe.Run(context.Background(), "How do I reset my password?")
+	var result string
+	_ = userPipe.Run(context.Background(), "How do I reset my password?", &result)
 	fmt.Printf("User: How do I reset my password?\n")
 	fmt.Printf("Assistant: %s\n", result)
 
 	// Test admin conversation
 	fmt.Println("\n--- Admin Conversation ---")
-	result, _ = adminPipe.Run(context.Background(), "Show me server logs")
+	_ = adminPipe.Run(context.Background(), "Show me server logs", &result)
 	fmt.Printf("Admin: Show me server logs\n")
 	fmt.Printf("Assistant: %s\n", result)
 
@@ -161,7 +163,8 @@ func contextExample(provider llm.LLMProvider) {
 			fmt.Printf("Context: %d/%d tokens\n exists: %v", tokenCount, maxTokens, exists)
 		}
 
-		result, err := pipe.Run(context.Background(), input)
+		var result string
+		err = pipe.Run(context.Background(), input, &result)
 		if err != nil {
 			log.Printf("Error: %v", err)
 			continue

@@ -39,7 +39,8 @@ func main() {
 		Use(flow.Logger("RESPONSE", 200))                                           // Log response
 
 	// Run the pipe
-	result, err := pipe.Run(context.Background(), "What is the Go programming language?")
+	var result string
+	err = pipe.Run(context.Background(), "What is the Go programming language?", &result)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -3,54 +3,70 @@ package convert
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
-
-	"github.com/calque-ai/calque-pipe/core"
 )
 
-// JSON converter - handles JSON data
-var JSON core.Converter = jsonConverter{}
+// Input converter for JSON data -> JSON bytes
+type jsonInputConverter struct {
+	data any
+}
 
-type jsonConverter struct{}
+// Output converter for JSON bytes -> any type
+type jsonOutputConverter struct {
+	target any
+}
 
-func (jsonConverter) ToReader(input any) (io.Reader, error) {
-	switch v := input.(type) {
+// Json creates an input converter: converter.Json(data)
+// Handles: map[string]any, []any, json string, json []byte -> JSON bytes
+func Json(data any) *jsonInputConverter {
+	return &jsonInputConverter{data: data}
+}
+
+// JsonOutput creates an output converter: converter.JsonOutput(&target)
+// Handles: JSON bytes -> target ([]byte, string, or any unmarshallable type)
+func JsonOutput(target any) *jsonOutputConverter {
+	return &jsonOutputConverter{target: target}
+}
+
+// InputConverter interface
+func (j *jsonInputConverter) ToReader() (io.Reader, error) {
+	switch v := j.data.(type) {
 	case map[string]any, []any:
 		data, err := json.Marshal(v)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		return bytes.NewReader(data), nil
 	case string: // a string that is valid JSON
 		var temp any
 		if err := json.Unmarshal([]byte(v), &temp); err != nil {
-			return nil, core.ErrUnsupportedType
+			return nil, fmt.Errorf("invalid JSON string: %w", err)
 		}
 		return strings.NewReader(v), nil
 	case []byte: // a byte slice that is valid JSON
 		// Validate it's valid JSON first
 		var temp any
 		if err := json.Unmarshal(v, &temp); err != nil {
-			return nil, core.ErrUnsupportedType
+			return nil, fmt.Errorf("invalid JSON bytes: %w", err)
 		}
 		return bytes.NewReader(v), nil
 	default:
-		return nil, core.ErrUnsupportedType
+		return nil, fmt.Errorf("unsupported JSON input type: %T", v)
 	}
 }
 
-func (jsonConverter) FromReader(reader io.Reader) (any, error) {
+func (j *jsonOutputConverter) FromReader(reader io.Reader) error {
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to read JSON data: %w", err)
 	}
 
-	var result any
-	if err := json.Unmarshal(data, &result); err != nil {
-		// Return as string if not valid JSON
-		return string(data), nil
+	// Unmarshal directly into the target
+	if err := json.Unmarshal(data, j.target); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 
-	return result, nil
+	return nil
 }
