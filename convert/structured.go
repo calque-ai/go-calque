@@ -67,27 +67,33 @@ func StructuredXMLOutput[T any](target any) *structuredOutputConverter[T] {
 
 // InputConverter interface
 func (s *structuredInputConverter) ToReader() (io.Reader, error) {
-	fmt.Printf("DEBUG ToReader: input type=%T, value=%+v\n", s.data, s.data)
-
 	// Get the struct type and value
 	val := reflect.ValueOf(s.data)
-	typ := reflect.TypeOf(s.data)
+	typ := val.Type()
 
 	// Handle pointers
 	if typ.Kind() == reflect.Ptr {
 		if val.IsNil() {
-			return nil, fmt.Errorf("input is nil pointer")
+			return nil, fmt.Errorf("invalid input: nil pointer")
 		}
 		val = val.Elem()
 		typ = typ.Elem()
 	}
 
-	if typ.Kind() != reflect.Struct {
-		// If input is a string, pass it through as-is for parsing in FromReader
-		if typ.Kind() == reflect.String {
-			return strings.NewReader(s.data.(string)), nil
+	// Handle different input types
+	switch typ.Kind() {
+	case reflect.String:
+		dataStr, ok := s.data.(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid input: expected string, got %T", s.data)
 		}
-		return nil, fmt.Errorf("unsupported structured input type: %T", s.data)
+		return strings.NewReader(dataStr), nil
+	case reflect.Slice:
+		return s.handleSliceInput(typ)
+	case reflect.Struct:
+		// Continue to struct processing below
+	default:
+		return nil, fmt.Errorf("invalid input: unsupported type %T", s.data)
 	}
 
 	// Extract struct information
@@ -96,17 +102,8 @@ func (s *structuredInputConverter) ToReader() (io.Reader, error) {
 		return nil, err
 	}
 
-	// Generate formatted output with descriptions
-	var output []byte
-	switch s.format {
-	case "yaml":
-		output, err = s.generateYAMLWithDesc(structInfo)
-	case "xml":
-		output, err = s.generateXMLWithDesc(structInfo)
-	default:
-		return nil, fmt.Errorf("unsupported format: %s", s.format)
-	}
-
+	// Generate formatted output
+	output, err := s.generateFormattedOutput(structInfo, typ)
 	if err != nil {
 		return nil, err
 	}
@@ -120,55 +117,10 @@ func (s *structuredOutputConverter[T]) FromReader(reader io.Reader) error {
 		return fmt.Errorf("failed to read structured data: %w", err)
 	}
 
-	// First, unmarshal into a map to handle the root wrapper key
-	var wrapper map[string]any
-
-	switch s.format {
-	case "yaml":
-		err = yaml.Unmarshal(data, &wrapper)
-	case "xml":
-		err = xml.Unmarshal(data, &wrapper)
-	default:
-		return fmt.Errorf("unsupported format: %s", s.format)
-	}
-
+	// comments are ignored by parsers
+	err = s.unmarshal(data, s.target)
 	if err != nil {
-		return fmt.Errorf("failed to parse %s wrapper: %w", s.format, err)
-	}
-
-	// Get the struct type name to find the correct wrapper key
-	var zeroT T
-	structName := strings.ToLower(reflect.TypeOf(zeroT).Name())
-
-	// Extract the actual data from under the struct name key
-	actualData, exists := wrapper[structName]
-	if !exists {
-		return fmt.Errorf("expected wrapper key '%s' not found in %s", structName, s.format)
-	}
-
-	// Marshal the actual data back to bytes and unmarshal to the target struct
-	var actualBytes []byte
-	switch s.format {
-	case "yaml":
-		actualBytes, err = yaml.Marshal(actualData)
-	case "xml":
-		actualBytes, err = xml.Marshal(actualData)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to re-marshal actual data: %w", err)
-	}
-
-	// Unmarshal directly into the target
-	switch s.format {
-	case "yaml":
-		err = yaml.Unmarshal(actualBytes, s.target)
-	case "xml":
-		err = xml.Unmarshal(actualBytes, s.target)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal %s: %w", s.format, err)
+		return fmt.Errorf("failed to parse %s: %w", s.format, err)
 	}
 
 	return nil
@@ -189,141 +141,292 @@ type structInfo struct {
 	Fields []structFieldInfo
 }
 
+// handleSliceInput processes slice types using description-aware generation
+func (s *structuredInputConverter) handleSliceInput(typ reflect.Type) (io.Reader, error) {
+	if typ.Kind() != reflect.Slice {
+		return nil, fmt.Errorf("invalid input: expected slice, got %s", typ.Kind())
+	}
+
+	elemType := typ.Elem()
+
+	// Handle pointer elements
+	if elemType.Kind() == reflect.Ptr {
+		elemType = elemType.Elem()
+	}
+
+	if elemType.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("invalid slice: elements must be structs, got %s", elemType.Kind())
+	}
+
+	// Extract struct info from element type (use zero value for schema)
+	sampleElem := reflect.New(elemType).Elem()
+	structInfo, err := s.extractStructInfo(elemType, sampleElem)
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate formatted output
+	output, err := s.generateFormattedOutput(structInfo, typ)
+	if err != nil {
+		return nil, err
+	}
+
+	return bytes.NewReader(output), nil
+}
+
+// generateFormattedOutput generates formatted output with descriptions
+func (s *structuredInputConverter) generateFormattedOutput(structInfo *structInfo, typ reflect.Type) ([]byte, error) {
+	switch s.format {
+	case "yaml":
+		return s.generateYAMLWithDesc(structInfo, typ)
+	case "xml":
+		return s.generateXMLWithDesc(structInfo, typ)
+	default:
+		return nil, fmt.Errorf("invalid format: %s", s.format)
+	}
+}
+
 // extractStructInfo uses reflection to extract struct field information
 func (s *structuredInputConverter) extractStructInfo(typ reflect.Type, val reflect.Value) (*structInfo, error) {
+	// Validate input types
+	if typ.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("invalid input: expected struct, got %s", typ.Kind())
+	}
+	if val.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("invalid input: value type mismatch")
+	}
+
+	// Handle anonymous structs gracefully
+	structName := typ.Name()
+	if structName == "" {
+		structName = "anonymous"
+	}
+
 	info := &structInfo{
-		Name:   strings.ToLower(typ.Name()),
+		Name:   strings.ToLower(structName),
 		Fields: []structFieldInfo{},
 	}
 
+	// Process each field using helper method
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
 		fieldVal := val.Field(i)
 
-		// Skip unexported fields
-		if !field.IsExported() {
-			continue
+		fieldInfo, shouldInclude := s.processStructField(field, fieldVal)
+		if shouldInclude {
+			info.Fields = append(info.Fields, fieldInfo)
 		}
-
-		// Get tag value for the specified tag type
-		tagValue := field.Tag.Get(s.tagName)
-		if tagValue == "" || tagValue == "-" {
-			continue // Skip fields without the required tag
-		}
-
-		// Parse tag (handle "name,omitempty" format)
-		tagParts := strings.Split(tagValue, ",")
-		fieldName := tagParts[0]
-		if fieldName == "" {
-			fieldName = strings.ToLower(field.Name)
-		}
-
-		// Get description from desc tag (optional)
-		description := field.Tag.Get("desc")
-
-		// Get field value
-		var value any
-		if fieldVal.CanInterface() {
-			value = fieldVal.Interface()
-		}
-
-		info.Fields = append(info.Fields, structFieldInfo{
-			Name:        field.Name,
-			FieldName:   fieldName,
-			Description: description,
-			Value:       value,
-			Type:        field.Type.String(),
-		})
 	}
 
 	if len(info.Fields) == 0 {
-		return nil, fmt.Errorf("struct has no fields with %s tags", s.tagName)
+		return nil, fmt.Errorf("invalid struct: no fields with %s tags", s.tagName)
 	}
 
 	return info, nil
 }
 
-// generateYAMLWithDesc creates YAML with description comments
-func (s *structuredInputConverter) generateYAMLWithDesc(info *structInfo) ([]byte, error) {
-	// First, create the data structure for YAML marshaling
-	data := make(map[string]any)
-	fieldData := make(map[string]any)
+// processStructField processes a single struct field and returns field info and whether to include it
+func (s *structuredInputConverter) processStructField(field reflect.StructField, fieldVal reflect.Value) (structFieldInfo, bool) {
+	// Skip unexported fields
+	if !field.IsExported() {
+		return structFieldInfo{}, false
+	}
 
+	// Get tag value for the specified tag type
+	tagValue := field.Tag.Get(s.tagName)
+	if tagValue == "" || tagValue == "-" {
+		return structFieldInfo{}, false
+	}
+
+	// Parse field name from tag
+	fieldName := s.parseFieldNameFromTag(tagValue, field.Name)
+
+	// Get description from desc tag (optional)
+	description := field.Tag.Get("desc")
+
+	// Get field value safely
+	var value any
+	if fieldVal.CanInterface() {
+		value = fieldVal.Interface()
+	}
+
+	return structFieldInfo{
+		Name:        field.Name,
+		FieldName:   fieldName,
+		Description: description,
+		Value:       value,
+		Type:        field.Type.String(),
+	}, true
+}
+
+// parseFieldNameFromTag extracts field name from tag value (handles "name,omitempty" format)
+func (s *structuredInputConverter) parseFieldNameFromTag(tagValue, defaultName string) string {
+	if tagValue == "" {
+		return strings.ToLower(defaultName)
+	}
+
+	// Find first comma
+	for i, c := range tagValue {
+		if c == ',' {
+			if i == 0 {
+				return strings.ToLower(defaultName)
+			}
+			return tagValue[:i]
+		}
+	}
+
+	return tagValue
+}
+
+// generateYAMLWithDesc creates YAML with description comments
+func (s *structuredInputConverter) generateYAMLWithDesc(info *structInfo, originalType reflect.Type) ([]byte, error) {
+	if info == nil {
+		return nil, fmt.Errorf("invalid input: structInfo is nil")
+	}
+	if originalType == nil {
+		return nil, fmt.Errorf("invalid input: originalType is nil")
+	}
+
+	var builder strings.Builder
+	s.generateYAMLComments(&builder, info, originalType)
+
+	// Prepare data for marshaling
+	dataToMarshal, err := s.prepareDataForMarshaling(info, originalType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare data: %w", err)
+	}
+
+	// Marshal the data
+	yamlBytes, err := yaml.Marshal(dataToMarshal)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal YAML: %w", err)
+	}
+
+	// Add the marshaled data
+	builder.WriteString(string(yamlBytes))
+
+	return []byte(builder.String()), nil
+}
+
+// generateYAMLComments generates YAML comments
+func (s *structuredInputConverter) generateYAMLComments(builder *strings.Builder, info *structInfo, originalType reflect.Type) {
+	// Add type metadata as comments
+	builder.WriteString("# Type: ")
+	builder.WriteString(info.Name)
+	builder.WriteByte('\n')
+
+	if originalType.Kind() == reflect.Slice {
+		builder.WriteString("# Format: slice of ")
+		builder.WriteString(info.Name)
+		builder.WriteByte('\n')
+	}
+
+	// Add field descriptions as comments
+	if len(info.Fields) > 0 {
+		builder.WriteString("# Field descriptions:\n")
+		for _, field := range info.Fields {
+			builder.WriteString("# ")
+			builder.WriteString(field.FieldName)
+			builder.WriteString(": ")
+			if field.Description != "" {
+				builder.WriteString(field.Description)
+			}
+			builder.WriteByte('\n')
+		}
+		builder.WriteByte('\n')
+	}
+}
+
+// prepareDataForMarshaling prepares data for YAML/XML marshaling
+func (s *structuredInputConverter) prepareDataForMarshaling(info *structInfo, originalType reflect.Type) (any, error) {
+	if originalType.Kind() == reflect.Slice {
+		// For slices, use data directly
+		return s.data, nil
+	}
+
+	// For structs, build field data with pre-sized map
+	fieldData := make(map[string]any, len(info.Fields))
 	for _, field := range info.Fields {
 		fieldData[field.FieldName] = field.Value
 	}
-	data[info.Name] = fieldData
-
-	// Marshal to get proper YAML structure
-	yamlBytes, err := yaml.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	// Now add comments by parsing the YAML and adding descriptions
-	yamlStr := string(yamlBytes)
-	lines := strings.Split(yamlStr, "\n")
-
-	var result []string
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-
-		// Check if this line contains a field we have a description for
-		trimmed := strings.TrimSpace(line)
-		if strings.Contains(trimmed, ":") && !strings.HasSuffix(trimmed, ":") {
-			// This is a field line, try to add description
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) == 2 {
-				fieldName := strings.TrimSpace(parts[0])
-
-				// Find description for this field
-				for _, field := range info.Fields {
-					if field.FieldName == fieldName && field.Description != "" {
-						line = line + "  # " + field.Description
-						break
-					}
-				}
-			}
-		}
-
-		result = append(result, line)
-	}
-
-	return []byte(strings.Join(result, "\n")), nil
+	return fieldData, nil
 }
 
 // generateXMLWithDesc creates XML with description comments
-func (s *structuredInputConverter) generateXMLWithDesc(info *structInfo) ([]byte, error) {
-	// Create XML structure with root element
-	var xmlBuilder strings.Builder
-	
-	// Write XML declaration
-	xmlBuilder.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
-	
-	// Write root element
-	xmlBuilder.WriteString(fmt.Sprintf("<%s>\n", info.Name))
-	
-	// Write fields with descriptions as comments
-	for _, field := range info.Fields {
-		if field.Description != "" {
-			xmlBuilder.WriteString(fmt.Sprintf("  <!-- %s -->\n", field.Description))
-		}
-		
-		// Marshal field value to XML
-		fieldXML, err := xml.Marshal(field.Value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal field %s: %w", field.Name, err)
-		}
-		
-		// Write field element
-		xmlBuilder.WriteString(fmt.Sprintf("  <%s>%s</%s>\n", field.FieldName, string(fieldXML), field.FieldName))
+func (s *structuredInputConverter) generateXMLWithDesc(info *structInfo, originalType reflect.Type) ([]byte, error) {
+	if info == nil {
+		return nil, fmt.Errorf("invalid input: structInfo is nil")
 	}
-	
-	// Close root element
-	xmlBuilder.WriteString(fmt.Sprintf("</%s>\n", info.Name))
-	
+	if originalType == nil {
+		return nil, fmt.Errorf("invalid input: originalType is nil")
+	}
+
+	var xmlBuilder strings.Builder
+
+	// Write XML declaration
+	xmlBuilder.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	xmlBuilder.WriteByte('\n')
+
+	// Generate comments
+	s.generateXMLComments(&xmlBuilder, info, originalType)
+
+	var xmlBytes []byte
+	var err error
+
+	if originalType.Kind() == reflect.Slice {
+		// For slices, create a simple wrapper struct for XML root element
+		wrapper := struct {
+			Items any `xml:"items"`
+		}{Items: s.data}
+		xmlBytes, err = xml.Marshal(wrapper)
+	} else {
+		// For structs, marshal the original data directly
+		xmlBytes, err = xml.Marshal(s.data)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal XML: %w", err)
+	}
+
+	xmlBuilder.Write(xmlBytes)
 	return []byte(xmlBuilder.String()), nil
 }
 
+// generateXMLComments generates XML comments
+func (s *structuredInputConverter) generateXMLComments(builder *strings.Builder, info *structInfo, originalType reflect.Type) {
+	// Write type metadata as comments
+	builder.WriteString("<!-- Type: ")
+	builder.WriteString(info.Name)
+	builder.WriteString(" -->\n")
+
+	if originalType.Kind() == reflect.Slice {
+		builder.WriteString("<!-- Format: slice of ")
+		builder.WriteString(info.Name)
+		builder.WriteString(" -->\n")
+	}
+
+	// Write field descriptions as comments
+	if len(info.Fields) > 0 {
+		builder.WriteString("<!-- Field descriptions: -->\n")
+		for _, field := range info.Fields {
+			builder.WriteString("<!-- ")
+			builder.WriteString(field.FieldName)
+			builder.WriteString(": ")
+			if field.Description != "" {
+				builder.WriteString(field.Description)
+			}
+			builder.WriteString(" -->\n")
+		}
+	}
+}
+
+func (s *structuredOutputConverter[T]) unmarshal(data []byte, target any) error {
+	switch s.format {
+	case "yaml":
+		return yaml.Unmarshal(data, target)
+	case "xml":
+		return xml.Unmarshal(data, target)
+	default:
+		return fmt.Errorf("unsupported format: %s", s.format)
+	}
+}

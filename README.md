@@ -38,3 +38,33 @@ Agent Behavior:
 Converters:
 
 StructuredJsonWithSchema
+
+1. Slice Support in Converters
+
+// Should work:
+convert.StructuredYAML([]Resume{...}) // Currently fails
+convert.StructuredYAMLOutput[[]Evaluation](&evals) // Currently fails
+
+2. Loop/Map Middleware
+
+// Instead of manual loops:
+Use(flow.Map(createEvaluationHandler(provider))) // Process each item in slice
+Use(flow.ForEach(func(item Resume) Evaluation { ... })) // Functional style
+
+3. Sub-Pipeline Helpers
+
+// Instead of manual sub-pipeline creation:
+Use(flow.SubPipeline(convert.StructuredYAML(data), &result))
+// Or even:
+Use(flow.Convert(convert.StructuredYAML)) // Auto-conversion middleware
+
+4. HandlerFunc Shortcuts
+
+// Instead of verbose HandlerFunc:
+Use(flow.Process(func(data Resume) (Evaluation, error) { ... }))
+Use(flow.Transform(reduceResults)) // Auto-wrap pure functions
+
+5. Better Type Inference
+
+// Remove need for explicit types:
+Use(flow.Batch(handler, 2, 1\*time.Second)) // Auto-infer T from handler

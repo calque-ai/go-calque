@@ -16,7 +16,7 @@ type Person struct {
 	Name  string `yaml:"name" desc:"The person's full name"`
 	Age   int    `yaml:"age" desc:"The person's age in years"`
 	City  string `yaml:"city" desc:"The city where the person lives"`
-	Email string `yaml:"email_address"` // No desc - will be auto-generated
+	Email string `yaml:"email_address"` // No desc
 }
 
 // JobAnalysis represents an analysis of someone's career
@@ -139,7 +139,7 @@ func llmPipelineExample() {
 
 func outputParsingExample() {
 	// Mock LLM response in YAML format
-	mockLLMResponse := `jobanalysis:
+	mockLLMResponse := `
   suitable_roles: ["Senior Engineer", "Tech Lead", "Engineering Manager"]
   skill_gaps: ["Leadership", "System Design"]
   career_advice: "Focus on developing leadership and system design skills for senior roles"
@@ -177,7 +177,7 @@ func mockCareerAnalysisLLM() core.Handler {
 		fmt.Printf("LLM received structured input:\n%s\n", string(input))
 
 		// Mock LLM response
-		response := `jobanalysis:
+		response := `
   suitable_roles: ["Senior Software Engineer", "Tech Lead", "Product Manager"]
   skill_gaps: ["Leadership", "Product Strategy"]
   career_advice: "Consider developing leadership skills and understanding product strategy"

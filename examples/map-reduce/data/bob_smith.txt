@@ -1,0 +1,20 @@
+Bob Smith
+Email: bob@email.com
+Phone: (555) 987-6543
+
+EDUCATION:
+High School Diploma, 2020
+
+EXPERIENCE:
+Junior Developer - Small Company (2021-2024)
+- Fixed bugs in legacy code
+- Basic HTML/CSS modifications
+
+Intern - Another Company (2020-2021)
+- Data entry tasks
+- Simple scripting
+
+SKILLS:
+- HTML, CSS
+- Basic JavaScript
+- Excel

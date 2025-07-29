@@ -1,0 +1,23 @@
+Carol Davis, PhD
+Email: carol@research.edu
+Phone: (555) 456-7890
+
+EDUCATION:
+PhD in Computer Science - Stanford University, 2018
+MS in Computer Science - UC Berkeley, 2015
+BS in Mathematics - Harvard University, 2013
+
+EXPERIENCE:
+Principal Research Scientist - Google Research (2022-2024)
+- Led machine learning research team
+- Published 15+ papers in top-tier venues
+- Developed novel deep learning architectures
+
+Senior Research Engineer - Microsoft Research (2018-2022)
+- Research in computer vision and NLP
+- Shipped ML features to millions of users
+
+SKILLS:
+- Programming: Python, C++, CUDA, TensorFlow, PyTorch
+- Research: Machine Learning, Computer Vision, NLP
+- Leadership: Team management, research strategy

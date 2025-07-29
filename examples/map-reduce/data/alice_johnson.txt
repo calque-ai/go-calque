@@ -1,0 +1,22 @@
+Alice Johnson
+Email: alice@example.com
+Phone: (555) 123-4567
+
+EDUCATION:
+Bachelor of Science in Computer Science
+MIT, 2019
+
+EXPERIENCE:
+Senior Software Engineer - Tech Corp (2020-2024)
+- Led development of microservices architecture
+- Implemented CI/CD pipelines
+- Mentored junior developers
+
+Software Engineer - StartupXYZ (2019-2020)
+- Built React frontend applications
+- Developed REST APIs in Node.js
+
+SKILLS:
+- Programming: Go, Python, JavaScript, Java
+- Cloud: AWS, Docker, Kubernetes
+- Databases: PostgreSQL, MongoDB

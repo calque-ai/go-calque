@@ -41,7 +41,7 @@ func StructuredJSONSchemaOutput[T any](target any) *jsonSchemaOutputConverter[T]
 func (j *jsonSchemaInputConverter) ToReader() (io.Reader, error) {
 	// Get the struct type and value
 	val := reflect.ValueOf(j.data)
-	typ := reflect.TypeOf(j.data)
+	typ := val.Type()
 
 	// Handle pointers
 	if typ.Kind() == reflect.Ptr {

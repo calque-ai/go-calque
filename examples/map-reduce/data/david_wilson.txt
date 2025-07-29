@@ -1,0 +1,20 @@
+David Wilson
+Email: david@freelance.com
+Phone: (555) 234-5678
+
+EDUCATION:
+Associate Degree in Web Design, 2022
+
+EXPERIENCE:
+Freelance Web Developer (2022-2024)
+- Created 5+ WordPress websites
+- Basic e-commerce setup
+
+Part-time Web Assistant (2021-2022)
+- Updated website content
+- Social media management
+
+SKILLS:
+- WordPress
+- Basic PHP
+- Photoshop
