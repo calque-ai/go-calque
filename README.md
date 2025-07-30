@@ -1,4 +1,4 @@
-#Calque-Pipe
+# Calque-Pipe
 
 calque-pipe is a **streaming middleware framework** for building AI agents and data processing pipelines. The core innovation is true concurrent execution where handlers process data as it flows through connected `io.Pipe` instances. The framework excels at memory-efficient processing of large datasets and real-time streaming scenarios, making it particularly well-suited for AI applications where latency and resource usage matter.
 

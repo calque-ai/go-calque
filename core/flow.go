@@ -71,7 +71,7 @@ func (f *Flow) Run(ctx context.Context, input any, output any) error {
 	//  Handler2:   [========]
 	//  Handler3:     [========]
 	var wg sync.WaitGroup
-	errCh := make(chan error, len(f.handlers))
+	errCh := make(chan error, len(f.handlers)+2) //create error chan with small extra buffer
 
 	for i, handler := range f.handlers {
 		wg.Add(1)
