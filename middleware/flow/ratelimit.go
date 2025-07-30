@@ -33,6 +33,13 @@ type rateLimiter struct {
 //	rateLimit := flow.RateLimit[string](10, time.Second) // 10 requests/second
 //	pipe.Use(rateLimit)
 func RateLimit[T any](rate int, per time.Duration) core.Handler {
+	// <= 0 requests per n makes no sense.
+	if rate <= 0 {
+		return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+			return fmt.Errorf("invalid rate limit: rate must be greater than 0, got %d", rate)
+		})
+	}
+
 	limiter := &rateLimiter{
 		tokens:     rate,
 		maxTokens:  rate,

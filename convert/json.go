@@ -53,7 +53,12 @@ func (j *jsonInputConverter) ToReader() (io.Reader, error) {
 		}
 		return bytes.NewReader(v), nil
 	default:
-		return nil, fmt.Errorf("unsupported JSON input type: %T", v)
+		// Try to marshal any other type (structs, slices, etc.)
+		data, err := json.Marshal(j.data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal JSON for type %T: %w", j.data, err)
+		}
+		return bytes.NewReader(data), nil
 	}
 }
 

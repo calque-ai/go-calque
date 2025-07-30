@@ -4,18 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/calque-ai/calque-pipe/convert"
 	"github.com/calque-ai/calque-pipe/core"
-	"github.com/calque-ai/calque-pipe/examples/providers/mock"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
+	"github.com/calque-ai/calque-pipe/middleware/prompt"
 )
 
 // Resume represents a candidate's resume
@@ -40,216 +38,77 @@ type Summary struct {
 	QualifiedNames      []string `yaml:"qualified_names" json:"qualified_names" desc:"Names of qualified candidates"`
 }
 
-func main() {
-	fmt.Println("Map-Reduce Resume Processing Example")
-	fmt.Println("====================================")
-
-	// Create mock provider
-	provider := mock.NewMockProvider("").WithStreamDelay(50)
-
-	// Step 1: Read all resumes (Map phase)
-	fmt.Println("\n1. MAP PHASE: Reading resumes...")
-	resumes, err := readResumes()
-	if err != nil {
-		log.Fatal("Failed to read resumes:", err)
-	}
-	fmt.Printf("Found %d resumes\n", len(resumes))
-
-	// Step 2: Process resumes using framework-native batching
-	fmt.Println("\n2. BATCH PROCESSING: Evaluating resumes...")
-	
-	// Create evaluation pipeline with batching for efficiency
-	evaluationPipeline := core.New().
-		Use(flow.Logger("EVALUATION_INPUT", 200)).
-		Use(flow.Batch[Resume](createEvaluationHandler(provider), 2, 1*time.Second)). // Process 2 at a time
-		Use(flow.Logger("EVALUATION_OUTPUT", 200))
-
-	var evaluations []Evaluation
-	
-	// Process each resume through the batched pipeline
-	for _, resume := range resumes {
-		var result Evaluation
-		err := evaluationPipeline.Run(context.Background(), convert.StructuredYAML(resume), convert.StructuredYAMLOutput[Evaluation](&result))
-		if err != nil {
-			log.Printf("Failed to evaluate resume %s: %v", resume.Filename, err)
-			continue
-		}
-		result.Filename = resume.Filename
-		evaluations = append(evaluations, result)
-	}
-
-	// Step 3: Reduce phase using framework handlers
-	fmt.Println("\n3. REDUCE PHASE: Aggregating results...")
-	
-	// Create reduce pipeline
-	reducePipeline := core.New().
-		Use(flow.Logger("REDUCE_INPUT", 200)).
-		Use(createReduceHandler()).
-		Use(flow.Logger("REDUCE_OUTPUT", 500))
-
-	// Run reduce phase using JSON for slice compatibility
-	var summary Summary
-	err = reducePipeline.Run(context.Background(), convert.Json(evaluations), convert.StructuredYAMLOutput[Summary](&summary))
-	if err != nil {
-		log.Fatal("Reduce phase failed:", err)
-	}
-
-	// Print final summary
-	printSummary(summary)
-}
-
-// createResumeReader creates a handler that reads all resumes and outputs them as structured YAML
-func createResumeReader() core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		resumes, err := readResumes()
-		if err != nil {
-			return err
-		}
-
-		// Use a sub-pipeline to convert to structured YAML
-		pipe := core.New()
-		var yamlResult string
-		err = pipe.Run(ctx, convert.StructuredYAML(resumes), &yamlResult)
-		if err != nil {
-			return err
-		}
-
-		_, err = w.Write([]byte(yamlResult))
-		return err
-	})
-}
-
-// readResumes implements the Map phase - reads all resume files
-func readResumes() ([]Resume, error) {
-	dataDir := filepath.Join(".", "data")
-	var resumes []Resume
-
-	// Create some sample data if directory doesn't exist
-	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
-		if err := createSampleData(dataDir); err != nil {
-			return nil, err
-		}
-	}
-
-	files, err := os.ReadDir(dataDir)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".txt") {
-			content, err := os.ReadFile(filepath.Join(dataDir, file.Name()))
-			if err != nil {
-				continue
-			}
-
-			resumes = append(resumes, Resume{
-				Filename: file.Name(),
-				Content:  string(content),
-			})
-		}
-	}
-
-	return resumes, nil
-}
-
-// evaluateResumes implements batch processing with your framework
-func evaluateResumes(resumes []Resume) ([]Evaluation, error) {
-	// Create mock LLM provider
-	provider := mock.NewMockProvider("").WithStreamDelay(50)
-
-	// Create evaluation pipeline with batching
-	evaluationPipeline := core.New().
-		Use(flow.Logger("BATCH_INPUT", 200)).
-		Use(flow.Batch[Resume](createEvaluationHandler(provider), 3, 2*time.Second)). // Batch of 3 or 2 seconds
-		Use(flow.Logger("BATCH_OUTPUT", 200))
-
-	var evaluations []Evaluation
-
-	// Process each resume through the batched pipeline
-	for _, resume := range resumes {
-		var result Evaluation
-		err := evaluationPipeline.Run(context.Background(), convert.Json(resume), convert.JsonOutput(&result))
-		if err != nil {
-			log.Printf("Failed to evaluate resume %s: %v", resume.Filename, err)
-			continue
-		}
-		result.Filename = resume.Filename
-		evaluations = append(evaluations, result)
-	}
-
-	return evaluations, nil
-}
-
-// createEvaluationHandler creates the LLM evaluation handler that processes YAML resume data
-func createEvaluationHandler(provider llm.LLMProvider) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		// Create a pipeline for evaluation
-		pipeline := core.New().
-			Use(llm.SystemPrompt(`You are an expert HR evaluator. Evaluate resumes for advanced technical roles.
+const systemPrompt = `You are an expert HR evaluator. Evaluate resumes for advanced technical roles.
 
 Criteria for qualification:
 - At least a bachelor's degree in a relevant field  
 - At least 3 years of relevant work experience
 - Strong technical skills relevant to the position
 
-Respond in YAML format:
-candidate_name: [Name]
-qualifies: [true/false] 
-reasons:
-  - [reason 1]
-  - [reason 2]`)).
-			Use(llm.Prompt("Resume data to evaluate: {{.Input}}")).
-			Use(llm.Chat(provider))
+IMPORTANT: Extract the actual candidate name from the resume content. Do not use placeholder text.
 
-		// Process and return result as YAML string
-		var result string
-		input, err := io.ReadAll(r)
-		if err != nil {
-			return err
-		}
-		
-		err = pipeline.Run(ctx, string(input), &result)
-		if err != nil {
-			return err
-		}
-
-		_, err = w.Write([]byte(result))
-		return err
-	})
+Respond ONLY with valid JSON in this exact format:
+{
+  "candidate_name": "actual name from resume",
+  "qualifies": true,
+  "reasons": ["specific reason based on resume", "another specific reason"]
 }
 
-// createReduceHandler creates a handler that aggregates evaluation results
-func createReduceHandler() core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		// Parse input as a slice of evaluations using structured YAML
-		var evaluations []Evaluation
-		input, err := io.ReadAll(r)
+Example response:
+{
+  "candidate_name": "Alice Johnson",
+  "qualifies": true,
+  "reasons": ["Has Bachelor of Science in Computer Science from MIT", "Has 5+ years of software engineering experience"]
+}`
+
+// Uses framework for AI pipeline, Go for data processing
+func main() {
+	fmt.Println("Map-Reduce Resume Processing Example")
+
+	// Create Ollama provider (connects to localhost:11434 by default)
+	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
+	if err != nil {
+		log.Fatal("Failed to create provider:", err)
+	}
+
+	// Step 1: Read in all resumes from files. Files are in yaml format
+	resumes, err := readResumes()
+	if err != nil {
+		log.Fatal("Failed to read resumes:", err)
+	}
+
+	// Create AI evaluation pipeline
+	evaluationPipeline := core.New().
+		Use(flow.Logger("resume evaluation", 200)).
+		Use(prompt.Template("System: {{.System}}\n\nResume data to evaluate: {{.Input}}", map[string]any{
+			"System": systemPrompt,
+		})).
+		Use(flow.Logger("prompt with data", 1000)).
+		Use(llm.Chat(provider)).
+		Use(flow.Logger("llm response", 200))
+
+	// list of evaluation results
+	evaluations := make([]Evaluation, 0, len(resumes))
+
+	// Map phase, use regular Go loop with framework pipeline for each item
+	for i, resume := range resumes {
+		fmt.Printf("Processing resume %d/%d: %s\n", i+1, len(resumes), resume.Filename)
+
+		var evaluation Evaluation
+		err := evaluationPipeline.Run(context.Background(), resume.Content, convert.JsonOutput(&evaluation))
 		if err != nil {
-			return err
+			log.Printf("Failed to evaluate %s: %v", resume.Filename, err)
+			continue
 		}
 
-		// Parse the JSON input (since slice YAML not supported)
-		pipe := core.New()
-		err = pipe.Run(ctx, string(input), convert.JsonOutput(&evaluations))
-		if err != nil {
-			return err
-		}
+		evaluation.Filename = resume.Filename // Ensure filename is set
+		evaluations = append(evaluations, evaluation)
+	}
 
-		// Reduce logic
-		summary := reduceResults(evaluations)
+	// Reduce phase: no need for framework
+	summary := reduceResults(evaluations)
 
-		// Output as structured YAML
-		resultPipe := core.New()
-		var yamlResult string
-		err = resultPipe.Run(ctx, convert.StructuredYAML(summary), &yamlResult)
-		if err != nil {
-			return err
-		}
-
-		_, err = w.Write([]byte(yamlResult))
-		return err
-	})
+	printSummary(summary)
 }
 
 // reduceResults implements the Reduce phase - aggregates all evaluations
@@ -295,6 +154,40 @@ func printSummary(summary Summary) {
 	fmt.Println("\nDetailed Results (JSON):")
 	jsonData, _ := json.MarshalIndent(summary, "", "  ")
 	fmt.Println(string(jsonData))
+}
+
+// readResumes reads all resume files
+func readResumes() ([]Resume, error) {
+	dataDir := filepath.Join(".", "data")
+	var resumes []Resume
+
+	// Create some sample data if directory doesn't exist
+	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
+		if err := createSampleData(dataDir); err != nil {
+			return nil, err
+		}
+	}
+
+	files, err := os.ReadDir(dataDir)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".txt") {
+			content, err := os.ReadFile(filepath.Join(dataDir, file.Name()))
+			if err != nil {
+				continue
+			}
+
+			resumes = append(resumes, Resume{
+				Filename: file.Name(),
+				Content:  string(content),
+			})
+		}
+	}
+
+	return resumes, nil
 }
 
 // createSampleData creates sample resume files for demonstration

@@ -6,14 +6,14 @@ import (
 	"log"
 
 	"github.com/calque-ai/calque-pipe/core"
-	"github.com/calque-ai/calque-pipe/examples/providers/ollama"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
+	"github.com/calque-ai/calque-pipe/middleware/prompt"
 )
 
 func main() {
 	// Create provider for all examples
-	provider, err := ollama.NewOllamaProvider("", "llama3.2:1b")
+	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}
@@ -32,7 +32,7 @@ func basicTemplateExample(provider llm.LLMProvider) {
 	pipe := core.New()
 	pipe.
 		Use(flow.Logger("INPUT", 100)).
-		Use(llm.Prompt("You are a helpful assistant. {{.Input}}")).
+		Use(prompt.Template("You are a helpful assistant. {{.Input}}")).
 		Use(flow.Logger("PROMPT", 100)).
 		Use(llm.Chat(provider))
 
@@ -56,7 +56,7 @@ func templateWithDataExample(provider llm.LLMProvider) {
 	pipe := core.New()
 	pipe.
 		Use(flow.Logger("INPUT", 100)).
-		Use(llm.Prompt("You are a {{.Role}} specializing in {{.Language}}. {{.Input}}", params)).
+		Use(prompt.Template("You are a {{.Role}} specializing in {{.Language}}. {{.Input}}", params)).
 		Use(flow.Logger("PROMPT", 200)).
 		Use(llm.Chat(provider))
 
@@ -75,7 +75,7 @@ func systemPromptExample(provider llm.LLMProvider) {
 	pipe := core.New()
 	pipe.
 		Use(flow.Logger("INPUT", 100)).
-		Use(llm.SystemPrompt("You are a concise coding expert. Always provide practical examples.")).
+		Use(prompt.System("You are a concise coding expert. Always provide practical examples.")).
 		Use(flow.Logger("PROMPT", 100)).
 		Use(llm.Chat(provider))
 
@@ -94,7 +94,7 @@ func chatPromptExample(provider llm.LLMProvider) {
 	pipe := core.New()
 	pipe.
 		Use(flow.Logger("INPUT", 100)).
-		Use(llm.ChatPrompt("assistant", "I'm an AI assistant specialized in programming.")).
+		Use(prompt.Chat("assistant", "I'm an AI assistant specialized in programming.")).
 		Use(flow.Logger("PROMPT", 100)).
 		Use(llm.Chat(provider))
 

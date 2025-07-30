@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bufio"
 	"io"
 )
 
@@ -16,25 +15,7 @@ type PipeReader struct {
 	*io.PipeReader
 }
 
-// ReadString reads a complete string message
-func (r *PipeReader) ReadString() (string, error) {
-	scanner := bufio.NewScanner(r)
-	if scanner.Scan() {
-		return scanner.Text(), nil
-	}
-	if err := scanner.Err(); err != nil {
-		return "", err
-	}
-	return "", io.EOF
-}
-
 // PipeWriter wraps io.PipeWriter with flow-specific methods
 type PipeWriter struct {
 	*io.PipeWriter
-}
-
-// WriteString writes a string message
-func (w *PipeWriter) WriteString(s string) error {
-	_, err := w.Write([]byte(s + "\n"))
-	return err
 }

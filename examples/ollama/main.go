@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/calque-ai/calque-pipe/core"
-	"github.com/calque-ai/calque-pipe/examples/providers/ollama"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
 	str "github.com/calque-ai/calque-pipe/middleware/strings"
@@ -15,7 +14,7 @@ import (
 
 func main() {
 	// Create Ollama provider (connects to localhost:11434 by default)
-	provider, err := ollama.NewOllamaProvider("", "llama3.2:1b")
+	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}

@@ -6,17 +6,17 @@ import (
 	"log"
 
 	"github.com/calque-ai/calque-pipe/core"
-	"github.com/calque-ai/calque-pipe/examples/providers/ollama"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/memory"
+	"github.com/calque-ai/calque-pipe/middleware/prompt"
 )
 
 func main() {
 	// Create a mock provider for demonstration
 	// provider := mock.NewMockProvider("").WithStreamDelay(100) // Slower for demo
 
-	provider, err := ollama.NewOllamaProvider("", "llama3.2:1b")
+	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}
@@ -41,7 +41,7 @@ func conversationExample(provider llm.LLMProvider) {
 		Use(flow.Logger("INPUT", 100)).
 		Use(convMem.Input("user123")). // Store input with user ID
 		Use(flow.Logger("WITH_HISTORY", 100)).
-		Use(llm.SystemPrompt("You are a helpful coding assistant. Keep responses brief.")).
+		Use(prompt.System("You are a helpful coding assistant. Keep responses brief.")).
 		Use(llm.Chat(provider)).       // Get LLM response
 		Use(convMem.Output("user123")) // Store response with user ID
 
@@ -95,7 +95,7 @@ func customStoreExample(provider llm.LLMProvider) {
 	userPipe := core.New()
 	userPipe.
 		Use(userConvMem.Input("session1")).
-		Use(llm.SystemPrompt("You are a helpful user assistant.")).
+		Use(prompt.System("You are a helpful user assistant.")).
 		Use(llm.Chat(provider)).
 		Use(userConvMem.Output("session1"))
 
@@ -103,7 +103,7 @@ func customStoreExample(provider llm.LLMProvider) {
 	adminPipe := core.New()
 	adminPipe.
 		Use(adminConvMem.Input("admin1")).
-		Use(llm.SystemPrompt("You are a technical admin assistant.")).
+		Use(prompt.System("You are a technical admin assistant.")).
 		Use(llm.Chat(provider)).
 		Use(adminConvMem.Output("admin1"))
 
@@ -142,7 +142,7 @@ func contextExample(provider llm.LLMProvider) {
 		Use(flow.Logger("INPUT", 100)).
 		Use(contextMem.Input("session456", 200)). // Keep last 200 tokens
 		Use(flow.Logger("WITH_CONTEXT", 100)).
-		Use(llm.SystemPrompt("You are a helpful assistant. Be concise.")).
+		Use(prompt.System("You are a helpful assistant. Be concise.")).
 		Use(llm.Chat(provider)).                  // Get LLM response
 		Use(contextMem.Output("session456", 200)) // Store response in context
 

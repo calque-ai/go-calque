@@ -20,7 +20,7 @@ type yamlOutputConverter struct {
 }
 
 // Yaml creates an input converter: converter.Yaml(data)
-// Handles: map[string]any, map[any]any, []any, yaml string, yaml []byte -> YAML bytes
+// Handles: map[string]any, map[any]any, []any, yaml string, yaml []byte, structs -> YAML bytes
 func Yaml(data any) *yamlInputConverter {
 	return &yamlInputConverter{data: data}
 }
@@ -55,7 +55,12 @@ func (y *yamlInputConverter) ToReader() (io.Reader, error) {
 		}
 		return bytes.NewReader(v), nil
 	default:
-		return nil, fmt.Errorf("unsupported YAML input type: %T", v)
+		// Try to marshal any other type (structs, slices, etc.)
+		data, err := yaml.Marshal(y.data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal YAML for type %T: %w", y.data, err)
+		}
+		return bytes.NewReader(data), nil
 	}
 }
 

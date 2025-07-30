@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/calque-ai/calque-pipe/core"
-	"github.com/calque-ai/calque-pipe/examples/providers/gemini"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
+	"github.com/calque-ai/calque-pipe/middleware/prompt"
 	"github.com/joho/godotenv"
 )
 
@@ -23,7 +23,7 @@ func main() {
 	}
 
 	// Create Gemini example provider (reads GOOGLE_API_KEY from env)
-	provider, err := gemini.NewGeminiProvider("", "gemini-2.0-flash")
+	provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash")
 	if err != nil {
 		log.Fatal("Failed to create Gemini provider:", err)
 	}
@@ -32,11 +32,11 @@ func main() {
 	pipe := core.New()
 
 	pipe.
-		Use(flow.Logger("INPUT", 100)).                                             // Log input
-		Use(llm.Prompt("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt
-		Use(flow.Logger("PROMPT", 100)).                                            // Log formatted prompt
-		Use(flow.Timeout[string](llm.Chat(provider), 30*time.Second)).              // LLM with timeout
-		Use(flow.Logger("RESPONSE", 200))                                           // Log response
+		Use(flow.Logger("INPUT", 100)).                                                  // Log input
+		Use(prompt.Template("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt
+		Use(flow.Logger("PROMPT", 100)).                                                 // Log formatted prompt
+		Use(flow.Timeout[string](llm.Chat(provider), 30*time.Second)).                   // LLM with timeout
+		Use(flow.Logger("RESPONSE", 200))                                                // Log response
 
 	// Run the pipe
 	var result string
