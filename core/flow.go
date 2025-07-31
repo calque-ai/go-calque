@@ -94,7 +94,7 @@ func (f *Flow) Run(ctx context.Context, input any, output any) error {
 	}
 
 	// Consume final output in background
-	outputDone := make(chan error, 1)
+	outputDone := make(chan error, 2)
 	go func() {
 		err := f.readerToOutput(finalReader, output)
 		outputDone <- err

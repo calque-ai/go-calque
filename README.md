@@ -133,20 +133,30 @@ Input → Handler1 → Handler2 → Handler3 → Output
 
 ### Critical Missing Middleware
 
-#### 1. Tool Calling & Function Execution (`middleware/tools/`)
+#### 1. ✅ Tool Calling & Function Execution (`middleware/tools/`)
 
-**Priority: HIGH** - Essential for AI agents
+**Priority: HIGH** - Essential for AI agents - **COMPLETED**
 
-- `tools.Registry()` - Register available functions
-- `tools.Execute()` - Parse LLM tool calls and execute functions
-- `tools.Format()` - Format tool results back to LLM
+- ✅ `tools.Registry()` - Register available functions
+- ✅ `tools.Execute()` - Parse LLM tool calls and execute functions  
+- ✅ `tools.Format()` - Format tool results back to LLM
+- ✅ `tools.Agent()` - Complete tool-enabled agent
+- ✅ Multiple tool constructors: `Quick()`, `New()`, `HandlerFunc()`
+- ✅ Flexible parsing: JSON, XML, and simple formats
+- ✅ Comprehensive example in `examples/tool-calling/`
 
 ```go
-// Usage example:
+// Simple usage:
+calc := tools.Quick("calculator", func(expr string) string { return evaluate(expr) })
+agent := tools.Agent(llmProvider, calc)
+
+// Advanced usage:
 pipeline := core.New().
-    Use(tools.Registry(webSearchHandler, calculatorHandler)).
+    Use(tools.Registry(webSearchTool, calculatorTool)).
+    Use(tools.Format(tools.FormatStyleDetailed)).
     Use(llm.Chat(provider)).
-    Use(tools.Execute())
+    Use(tools.Execute()).
+    Use(llm.Chat(provider))
 ```
 
 #### 2. RAG Components (`middleware/retrieval/`)
@@ -235,7 +245,7 @@ Use(flow.Batch(handler, 2, 1*time.Second)) // Auto-infer T from handler
 #### AI Agent Essentials (4)
 
 7. 🔲 **rag-pipeline** - Document retrieval + LLM generation
-8. 🔲 **tool-calling** - LLM function calling with multiple tools
+8. ✅ **tool-calling** - LLM function calling with multiple tools
 9. 🔲 **multi-agent-workflow** - Agents collaborating via pipelines
 10. 🔲 **guardrails-validation** - Input/output safety checks
 
