@@ -7,6 +7,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/calque-ai/calque-pipe/core"
 )
 
 type mockLogger struct {
@@ -92,7 +94,9 @@ func TestLogger(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("Logger() error = %v", err)
 				return
@@ -120,7 +124,9 @@ func TestLoggerDefaultLogger(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("test with default logger")
 
-	err := handler.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Logger() with default logger error = %v", err)
 		return
@@ -260,7 +266,9 @@ func TestLoggerWithIOError(t *testing.T) {
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
-	err := handler.ServeFlow(context.Background(), errorReader, &buf)
+	req := core.NewRequest(context.Background(), errorReader)
+	res := core.NewResponse(&buf)
+	err := handler.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Logger() error = %v, want %v", err, io.ErrUnexpectedEOF)
 	}
@@ -281,7 +289,9 @@ func TestLoggerPreservesStreamIntegrity(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader(largeInput)
 
-	err := handler.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Logger() error = %v", err)
 		return

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/calque-ai/calque-pipe/core"
 )
 
 func TestMessage(t *testing.T) {
@@ -243,7 +245,9 @@ func TestConversationMemoryInput(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Input() error = %v, wantErr %v", err, tt.wantErr)
@@ -334,7 +338,9 @@ func TestConversationMemoryOutput(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Output() error = %v, wantErr %v", err, tt.wantErr)
@@ -504,7 +510,9 @@ func TestConversationMemoryFullWorkflow(t *testing.T) {
 	var buf1 bytes.Buffer
 	reader1 := strings.NewReader("Hello, I need help")
 
-	err := inputHandler.ServeFlow(context.Background(), reader1, &buf1)
+	req1 := core.NewRequest(context.Background(), reader1)
+	res1 := core.NewResponse(&buf1)
+	err := inputHandler.ServeFlow(req1, res1)
 	if err != nil {
 		t.Errorf("First input error = %v", err)
 	}
@@ -519,7 +527,9 @@ func TestConversationMemoryFullWorkflow(t *testing.T) {
 	var buf2 bytes.Buffer
 	reader2 := strings.NewReader("Sure, I can help you with that!")
 
-	err = outputHandler.ServeFlow(context.Background(), reader2, &buf2)
+	req2 := core.NewRequest(context.Background(), reader2)
+	res2 := core.NewResponse(&buf2)
+	err = outputHandler.ServeFlow(req2, res2)
 	if err != nil {
 		t.Errorf("Output error = %v", err)
 	}
@@ -533,7 +543,9 @@ func TestConversationMemoryFullWorkflow(t *testing.T) {
 	var buf3 bytes.Buffer
 	reader3 := strings.NewReader("Thank you!")
 
-	err = inputHandler.ServeFlow(context.Background(), reader3, &buf3)
+	req3 := core.NewRequest(context.Background(), reader3)
+	res3 := core.NewResponse(&buf3)
+	err = inputHandler.ServeFlow(req3, res3)
 	if err != nil {
 		t.Errorf("Second input error = %v", err)
 	}
@@ -591,7 +603,9 @@ func TestConversationMemoryErrorHandling(t *testing.T) {
 		var buf bytes.Buffer
 		reader := strings.NewReader("Hello")
 
-		err := handler.ServeFlow(context.Background(), reader, &buf)
+		req := core.NewRequest(context.Background(), reader)
+		res := core.NewResponse(&buf)
+		err := handler.ServeFlow(req, res)
 		if err == nil {
 			t.Error("Expected error from store get failure")
 		}
@@ -607,7 +621,9 @@ func TestConversationMemoryErrorHandling(t *testing.T) {
 		var buf bytes.Buffer
 		reader := strings.NewReader("Hello")
 
-		err := handler.ServeFlow(context.Background(), reader, &buf)
+		req := core.NewRequest(context.Background(), reader)
+		res := core.NewResponse(&buf)
+		err := handler.ServeFlow(req, res)
 		if err == nil {
 			t.Error("Expected error from store set failure")
 		}
@@ -623,7 +639,9 @@ func TestConversationMemoryErrorHandling(t *testing.T) {
 		var buf bytes.Buffer
 		reader := strings.NewReader("Response")
 
-		err := handler.ServeFlow(context.Background(), reader, &buf)
+		req := core.NewRequest(context.Background(), reader)
+		res := core.NewResponse(&buf)
+		err := handler.ServeFlow(req, res)
 		if err == nil {
 			t.Error("Expected error from store get failure")
 		}

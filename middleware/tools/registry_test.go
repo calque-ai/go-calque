@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/calque-ai/calque-pipe/core"
 )
 
 func TestRegistry(t *testing.T) {
@@ -52,9 +54,9 @@ func TestRegistry(t *testing.T) {
 
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
-			ctx := context.Background()
-
-			err := registry.ServeFlow(ctx, reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := registry.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("Registry.ServeFlow() error = %v", err)
 				return
@@ -76,7 +78,9 @@ func TestRegistryStreamIntegrity(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader(input)
 
-	err := registry.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := registry.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Registry streaming error = %v", err)
 		return
@@ -173,7 +177,7 @@ func TestHasTool(t *testing.T) {
 
 func TestHasToolFromEmptyContext(t *testing.T) {
 	ctx := context.Background()
-	
+
 	if HasTool(ctx, "any") {
 		t.Error("HasTool() from empty context should return false")
 	}
@@ -244,13 +248,14 @@ func TestListToolsFromEmptyContext(t *testing.T) {
 func TestRegistryWithIOError(t *testing.T) {
 	calc := Simple("calculator", "Math calculator", func(s string) string { return s })
 	registry := Registry(calc)
-	
+
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
-	err := registry.ServeFlow(context.Background(), errorReader, &buf)
+	req := core.NewRequest(context.Background(), errorReader)
+	res := core.NewResponse(&buf)
+	err := registry.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Registry() with IO error = %v, want %v", err, io.ErrUnexpectedEOF)
 	}
 }
-

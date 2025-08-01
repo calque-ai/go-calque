@@ -2,7 +2,6 @@ package llm
 
 import (
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -40,20 +39,20 @@ func (m *MockProvider) WithStreamDelay(delay time.Duration) *MockProvider {
 }
 
 // Chat implements the LLMProvider interface with simulated streaming
-func (m *MockProvider) Chat(r *core.Request, w *core.Response) error {
+func (m *MockProvider) Chat(req *core.Request, res *core.Response) error {
 	// Check if we should return an error (for testing error handling)
 	if m.shouldError {
 		return fmt.Errorf("mock error: %s", m.errorMessage)
 	}
 
 	// Read input
-	inputBytes, err := io.ReadAll(r.Data)
-	if err != nil {
+	var inputStr string
+	if err := core.Read(req, &inputStr); err != nil {
 		return fmt.Errorf("failed to read input: %w", err)
 	}
 
 	// Use input in response to make it more realistic
-	inputStr := strings.TrimSpace(string(inputBytes))
+	inputStr = strings.TrimSpace(inputStr)
 	response := m.response
 	if response == "" {
 		// Default response that echoes the input
@@ -65,20 +64,20 @@ func (m *MockProvider) Chat(r *core.Request, w *core.Response) error {
 	for i, word := range words {
 		// Check if context is cancelled
 		select {
-		case <-r.Context.Done():
-			return r.Context.Err()
+		case <-req.Context.Done():
+			return req.Context.Err()
 		default:
 		}
 
 		// Add space before word, except first word
 		if i > 0 {
-			if _, err := w.Data.Write([]byte(" ")); err != nil {
+			if _, err := res.Data.Write([]byte(" ")); err != nil {
 				return err
 			}
 		}
 
 		// Write the word
-		if _, err := w.Data.Write([]byte(word)); err != nil {
+		if _, err := res.Data.Write([]byte(word)); err != nil {
 			return err
 		}
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"strings"
 	"testing"
 	"time"
@@ -209,31 +208,31 @@ func TestTeeReaderNoDestinations(t *testing.T) {
 
 func TestParallel(t *testing.T) {
 	handler1 := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
-		input, err := io.ReadAll(req.Data)
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = res.Data.Write([]byte("handler1:" + string(input)))
-		return err
+		return core.Write(res, "handler1:"+input)
 	})
 
 	handler2 := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
-		input, err := io.ReadAll(req.Data)
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = res.Data.Write([]byte("handler2:" + string(input)))
-		return err
+		return core.Write(res, "handler2:"+input)
 	})
 
 	slowHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		time.Sleep(50 * time.Millisecond)
-		input, err := io.ReadAll(req.Data)
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = res.Data.Write([]byte("slow:" + string(input)))
-		return err
+		return core.Write(res, "slow:"+input)
 	})
 
 	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
@@ -348,22 +347,22 @@ func TestParallelNoHandlers(t *testing.T) {
 
 func TestTimeout(t *testing.T) {
 	fastHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
-		input, err := io.ReadAll(req.Data)
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = res.Data.Write([]byte("fast:" + string(input)))
-		return err
+		return core.Write(res, "fast:"+input)
 	})
 
 	slowHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		time.Sleep(200 * time.Millisecond)
-		input, err := io.ReadAll(req.Data)
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = res.Data.Write([]byte("slow:" + string(input)))
-		return err
+		return core.Write(res, "slow:"+input)
 	})
 
 	contextCheckHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
@@ -371,12 +370,12 @@ func TestTimeout(t *testing.T) {
 		case <-req.Context.Done():
 			return req.Context.Err()
 		case <-time.After(50 * time.Millisecond):
-			input, err := io.ReadAll(req.Data)
+			var input string
+			err := core.Read(req, &input)
 			if err != nil {
 				return err
 			}
-			_, err = res.Data.Write([]byte("completed:" + string(input)))
-			return err
+			return core.Write(res, "completed:"+input)
 		}
 	})
 
@@ -460,12 +459,12 @@ func TestRetry(t *testing.T) {
 		if attemptCount < 3 {
 			return errors.New("temporary failure")
 		}
-		input, err := io.ReadAll(req.Data)
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = res.Data.Write([]byte("success:" + string(input)))
-		return err
+		return core.Write(res, "success:"+input)
 	})
 
 	alwaysFailHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
@@ -473,12 +472,12 @@ func TestRetry(t *testing.T) {
 	})
 
 	successHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
-		input, err := io.ReadAll(req.Data)
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = res.Data.Write([]byte("first-try:" + string(input)))
-		return err
+		return core.Write(res, "first-try:"+input)
 	})
 
 	tests := []struct {

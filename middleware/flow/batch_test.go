@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -15,25 +14,23 @@ import (
 )
 
 func TestBatch(t *testing.T) {
-	echoHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
-		if err != nil {
+	echoHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		if err := core.Read(req, &input); err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("processed:" + string(input)))
-		return err
+		return core.Write(res, "processed:"+input)
 	})
 
-	uppercaseHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
-		if err != nil {
+	uppercaseHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		if err := core.Read(req, &input); err != nil {
 			return err
 		}
-		_, err = w.Write([]byte(strings.ToUpper(string(input))))
-		return err
+		return core.Write(res, strings.ToUpper(input))
 	})
 
-	errorHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -109,7 +106,9 @@ func TestBatch(t *testing.T) {
 					var buf bytes.Buffer
 					reader := strings.NewReader(inp)
 
-					err := batchHandler.ServeFlow(context.Background(), reader, &buf)
+					req := core.NewRequest(context.Background(), reader)
+				res := core.NewResponse(&buf)
+				err := batchHandler.ServeFlow(req, res)
 					results[index] = buf.String()
 					errors[index] = err
 				}(i, input)
@@ -137,14 +136,13 @@ func TestBatch(t *testing.T) {
 }
 
 func TestBatchProcessingOrder(t *testing.T) {
-	orderHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
-		if err != nil {
+	orderHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		if err := core.Read(req, &input); err != nil {
 			return err
 		}
 
-		inputStr := string(input)
-		parts := strings.Split(inputStr, "\n---BATCH_SEPARATOR---\n")
+		parts := strings.Split(input, "\n---BATCH_SEPARATOR---\n")
 
 		var processedParts []string
 		for _, part := range parts {
@@ -152,8 +150,7 @@ func TestBatchProcessingOrder(t *testing.T) {
 		}
 
 		result := strings.Join(processedParts, "\n---BATCH_SEPARATOR---\n")
-		_, err = w.Write([]byte(result))
-		return err
+		return core.Write(res, result)
 	})
 
 	batchHandler := Batch[string](orderHandler, 3, 100*time.Millisecond)
@@ -172,7 +169,9 @@ func TestBatchProcessingOrder(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(inp)
 
-			err := batchHandler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := batchHandler.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
 				return
@@ -191,17 +190,16 @@ func TestBatchProcessingOrder(t *testing.T) {
 }
 
 func TestBatchContextCancellation(t *testing.T) {
-	slowHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	slowHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-req.Context.Done():
+			return req.Context.Err()
 		case <-time.After(200 * time.Millisecond):
-			input, err := io.ReadAll(r)
-			if err != nil {
+			var input string
+			if err := core.Read(req, &input); err != nil {
 				return err
 			}
-			_, err = w.Write([]byte("slow:" + string(input)))
-			return err
+			return core.Write(res, "slow:"+input)
 		}
 	})
 
@@ -213,7 +211,9 @@ func TestBatchContextCancellation(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("cancel-test")
 
-	err := batchHandler.ServeFlow(ctx, reader, &buf)
+	req := core.NewRequest(ctx, reader)
+	res := core.NewResponse(&buf)
+	err := batchHandler.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Expected context cancellation error, got nil")
 	}
@@ -224,11 +224,11 @@ func TestBatchContextCancellation(t *testing.T) {
 }
 
 func TestBatchResponseSplittingFailure(t *testing.T) {
-	malformedHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, _ := io.ReadAll(r)
-		t.Logf("Handler received input: %q", string(input))
-		_, err := w.Write([]byte("response-without-separators"))
-		return err
+	malformedHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		core.Read(req, &input)
+		t.Logf("Handler received input: %q", input)
+		return core.Write(res, "response-without-separators")
 	})
 
 	batchHandler := Batch[string](malformedHandler, 2, 100*time.Millisecond)
@@ -246,7 +246,9 @@ func TestBatchResponseSplittingFailure(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(inp)
 
-			err := batchHandler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := batchHandler.ServeFlow(req, res)
 			results[index] = buf.String()
 			errors[index] = err
 			t.Logf("Request %d: result=%q, error=%v", index, results[index], errors[index])
@@ -290,9 +292,8 @@ func TestBatchResponseSplittingFailure(t *testing.T) {
 }
 
 func TestBatchEmptyBatch(t *testing.T) {
-	handler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := w.Write([]byte("should-not-be-called"))
-		return err
+	handler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		return core.Write(res, "should-not-be-called")
 	})
 
 	batcher := &requestBatcher{
@@ -305,15 +306,15 @@ func TestBatchEmptyBatch(t *testing.T) {
 }
 
 func TestBatchConcurrentRequests(t *testing.T) {
-	concurrentHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
-		if err != nil {
+	concurrentHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		if err := core.Read(req, &input); err != nil {
 			return err
 		}
-		t.Logf("Handler processing batch input: %q", string(input))
+		t.Logf("Handler processing batch input: %q", input)
 
 		// Split the batched input and process each part
-		parts := strings.Split(string(input), "\n---BATCH_SEPARATOR---\n")
+		parts := strings.Split(input, "\n---BATCH_SEPARATOR---\n")
 		var processedParts []string
 		for _, part := range parts {
 			processedParts = append(processedParts, "concurrent:"+part)
@@ -321,8 +322,7 @@ func TestBatchConcurrentRequests(t *testing.T) {
 		result := strings.Join(processedParts, "\n---BATCH_SEPARATOR---\n")
 
 		t.Logf("Handler returning: %q", result)
-		_, err = w.Write([]byte(result))
-		return err
+		return core.Write(res, result)
 	})
 
 	batchHandler := Batch[string](concurrentHandler, 5, 200*time.Millisecond)
@@ -341,7 +341,9 @@ func TestBatchConcurrentRequests(t *testing.T) {
 			input := fmt.Sprintf("request-%d", index)
 			reader := strings.NewReader(input)
 
-			err := batchHandler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := batchHandler.ServeFlow(req, res)
 			results[index] = buf.String()
 			errors[index] = err
 		}(i)
@@ -368,14 +370,13 @@ func TestBatchConcurrentRequests(t *testing.T) {
 
 func TestBatchTimerBehavior(t *testing.T) {
 	callCount := 0
-	timerHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	timerHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		callCount++
-		input, err := io.ReadAll(r)
-		if err != nil {
+		var input string
+		if err := core.Read(req, &input); err != nil {
 			return err
 		}
-		_, err = w.Write(fmt.Appendf(nil, "call-%d:%s", callCount, string(input)))
-		return err
+		return core.Write(res, fmt.Sprintf("call-%d:%s", callCount, input))
 	})
 
 	batchHandler := Batch[string](timerHandler, 10, 100*time.Millisecond)
@@ -385,7 +386,9 @@ func TestBatchTimerBehavior(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("timer-test")
 
-	err := batchHandler.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := batchHandler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"strings"
 	"testing"
 	"time"
@@ -13,29 +12,29 @@ import (
 )
 
 func TestFallback(t *testing.T) {
-	successHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	successHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("success:" + string(input)))
-		return err
+		return core.Write(res, "success:"+input)
 	})
 
-	primaryFailHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	primaryFailHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return errors.New("primary failed")
 	})
 
-	fallbackHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	fallbackHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("fallback:" + string(input)))
-		return err
+		return core.Write(res, "fallback:"+input)
 	})
 
-	alwaysFailHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	alwaysFailHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return errors.New("always fails")
 	})
 
@@ -112,7 +111,9 @@ func TestFallback(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Fallback() error = %v, wantErr %v", err, tt.wantErr)
@@ -139,7 +140,9 @@ func TestFallbackNoHandlers(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("test")
 
-	err := handler.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := handler.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Fallback() with no handlers should return error")
 	}
@@ -346,26 +349,26 @@ func TestCircuitBreakerRecordFailure(t *testing.T) {
 
 func TestFallbackWithCircuitBreaker(t *testing.T) {
 	callCount := 0
-	intermittentHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	intermittentHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		callCount++
 		if callCount <= 5 {
 			return errors.New("intermittent failure")
 		}
-		input, err := io.ReadAll(r)
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("recovered:" + string(input)))
-		return err
+		return core.Write(res, "recovered:"+input)
 	})
 
-	fallbackHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	fallbackHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("fallback:" + string(input)))
-		return err
+		return core.Write(res, "fallback:"+input)
 	})
 
 	handler := Fallback[string](intermittentHandler, fallbackHandler)
@@ -376,7 +379,9 @@ func TestFallbackWithCircuitBreaker(t *testing.T) {
 		buf.Reset()
 		reader := strings.NewReader("circuit-test")
 
-		err := handler.ServeFlow(context.Background(), reader, &buf)
+		req := core.NewRequest(context.Background(), reader)
+		res := core.NewResponse(&buf)
+		err := handler.ServeFlow(req, res)
 		if err != nil {
 			t.Errorf("Iteration %d: Fallback() error = %v", i, err)
 			continue
@@ -441,22 +446,22 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 }
 
 func TestFallbackContextCancellation(t *testing.T) {
-	slowHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	slowHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-req.Context.Done():
+			return req.Context.Err()
 		case <-time.After(200 * time.Millisecond):
 			return errors.New("slow handler failed")
 		}
 	})
 
-	fastFallback := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	fastFallback := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("fast-fallback:" + string(input)))
-		return err
+		return core.Write(res, "fast-fallback:"+input)
 	})
 
 	handler := Fallback[string](slowHandler, fastFallback)
@@ -467,7 +472,9 @@ func TestFallbackContextCancellation(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("context-test")
 
-	err := handler.ServeFlow(ctx, reader, &buf)
+	req := core.NewRequest(ctx, reader)
+	res := core.NewResponse(&buf)
+	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Fallback() with context cancellation error = %v", err)
 		return

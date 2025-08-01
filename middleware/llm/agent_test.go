@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/middleware/tools"
 )
 
@@ -20,7 +21,7 @@ type mockLLMProvider struct {
 	shouldErr bool
 }
 
-func (m *mockLLMProvider) Chat(ctx context.Context, input io.Reader, output io.Writer) error {
+func (m *mockLLMProvider) Chat(req *core.Request, res *core.Response) error {
 	if m.shouldErr {
 		return errors.New("LLM provider error")
 	}
@@ -32,8 +33,7 @@ func (m *mockLLMProvider) Chat(ctx context.Context, input io.Reader, output io.W
 	response := m.responses[m.callCount]
 	m.callCount++
 
-	_, err := output.Write([]byte(response))
-	return err
+	return core.Write(res, response)
 }
 
 func (m *mockLLMProvider) reset() {
@@ -116,7 +116,9 @@ func TestAgent(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := agent.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := agent.ServeFlow(req, res)
 
 			if tt.expectError {
 				if err == nil {
@@ -218,7 +220,9 @@ func TestAgentWithConfig(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := agent.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := agent.ServeFlow(req, res)
 
 			if tt.expectError {
 				if err == nil {
@@ -270,7 +274,9 @@ func TestQuickAgent(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("Test input")
 
-	err := agent.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := agent.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("QuickAgent() error = %v", err)
 		return
@@ -486,7 +492,9 @@ func TestAgentWithLLMError(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("Test input")
 
-	err := agent.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := agent.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Agent() with LLM error should return error")
 	}
@@ -504,7 +512,9 @@ func TestAgentWithIOError(t *testing.T) {
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
-	err := agent.ServeFlow(context.Background(), errorReader, &buf)
+	req := core.NewRequest(context.Background(), errorReader)
+	res := core.NewResponse(&buf)
+	err := agent.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Agent() with IO error = %v, want %v", err, io.ErrUnexpectedEOF)
 	}

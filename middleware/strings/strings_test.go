@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"testing"
 
@@ -72,7 +71,9 @@ func TestTransform(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 			
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 			
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Transform() error = %v, wantErr %v", err, tt.wantErr)
@@ -88,17 +89,15 @@ func TestTransform(t *testing.T) {
 
 func TestBranch(t *testing.T) {
 	// Mock handlers for testing
-	mockIfHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := w.Write([]byte("if-handler"))
-		return err
+	mockIfHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		return core.Write(res, "if-handler")
 	})
 	
-	mockElseHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := w.Write([]byte("else-handler"))
-		return err
+	mockElseHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		return core.Write(res, "else-handler")
 	})
 	
-	errorHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -174,7 +173,9 @@ func TestBranch(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 			
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 			
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Branch() error = %v, wantErr %v", err, tt.wantErr)
@@ -190,16 +191,16 @@ func TestBranch(t *testing.T) {
 
 func TestFilter(t *testing.T) {
 	// Mock handler for testing
-	mockHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	mockHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("processed: " + string(input)))
-		return err
+		return core.Write(res, "processed: "+input)
 	})
 	
-	errorHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return errors.New("processing error")
 	})
 
@@ -268,7 +269,9 @@ func TestFilter(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 			
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 			
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Filter() error = %v, wantErr %v", err, tt.wantErr)
@@ -361,7 +364,9 @@ func TestLineProcessor(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 			
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 			
 			if (err != nil) != tt.wantErr {
 				t.Errorf("LineProcessor() error = %v, wantErr %v", err, tt.wantErr)

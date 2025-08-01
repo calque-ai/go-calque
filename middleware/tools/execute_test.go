@@ -32,7 +32,7 @@ func createMockSearch() Tool {
 }
 
 func createErrorTool() Tool {
-	return HandlerFunc("error_tool", "Tool that always errors", func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return HandlerFunc("error_tool", "Tool that always errors", func(req *core.Request, res *core.Response) error {
 		return errors.New("tool execution failed")
 	})
 }
@@ -90,7 +90,9 @@ func TestExecute(t *testing.T) {
 			// Create a pipeline with Registry and Execute
 			pipeline := NewPipelineForTest(tt.tools)
 
-			err := pipeline.ServeFlow(ctx, reader, &buf)
+			req := core.NewRequest(ctx, reader)
+			res := core.NewResponse(&buf)
+			err := pipeline.ServeFlow(req, res)
 			if tt.isError {
 				if err == nil {
 					t.Error("Expected error, got none")
@@ -115,13 +117,14 @@ func TestExecute(t *testing.T) {
 
 // NewPipelineForTest creates a test pipeline that combines Registry and Execute functionality
 func NewPipelineForTest(tools []Tool) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		// Create context with tools (simulating what Registry + Execute should do)
-		ctx = context.WithValue(ctx, toolsContextKey{}, tools)
+		ctx := context.WithValue(req.Context, toolsContextKey{}, tools)
+		req = req.WithContext(ctx)
 
 		// Execute tools directly (this simulates the combined Registry + Execute flow)
 		execute := Execute()
-		return execute.ServeFlow(ctx, r, w)
+		return execute.ServeFlow(req, res)
 	})
 }
 
@@ -176,7 +179,9 @@ func TestExecuteWithOptions(t *testing.T) {
 			// Create pipeline with config
 			pipeline := NewPipelineForTestWithConfig(tt.tools, tt.config)
 
-			err := pipeline.ServeFlow(ctx, reader, &buf)
+			req := core.NewRequest(ctx, reader)
+			res := core.NewResponse(&buf)
+			err := pipeline.ServeFlow(req, res)
 			if tt.expectError {
 				if err == nil {
 					t.Error("Expected error, got none")
@@ -200,13 +205,14 @@ func TestExecuteWithOptions(t *testing.T) {
 }
 
 func NewPipelineForTestWithConfig(tools []Tool, config ExecuteConfig) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		// Create context with tools (simulating what Registry + Execute should do)
-		ctx = context.WithValue(ctx, toolsContextKey{}, tools)
+		ctx := context.WithValue(req.Context, toolsContextKey{}, tools)
+		req = req.WithContext(ctx)
 
 		// Execute tools with config
 		execute := ExecuteWithOptions(config)
-		return execute.ServeFlow(ctx, r, w)
+		return execute.ServeFlow(req, res)
 	})
 }
 
@@ -342,7 +348,9 @@ func TestExecuteWithIOError(t *testing.T) {
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
-	err := execute.ServeFlow(context.Background(), errorReader, &buf)
+	req := core.NewRequest(context.Background(), errorReader)
+	res := core.NewResponse(&buf)
+	err := execute.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Execute() with IO error = %v, want %v", err, io.ErrUnexpectedEOF)
 	}
@@ -354,7 +362,9 @@ func TestExecuteWithEmptyContext(t *testing.T) {
 	reader := strings.NewReader(`{"tool_calls": [{"type": "function", "function": {"name": "test", "arguments": "args"}}]}`)
 
 	// Empty context (no tools)
-	err := execute.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := execute.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Execute() with empty context error = %v", err)
 		return

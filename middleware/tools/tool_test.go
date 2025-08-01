@@ -20,13 +20,13 @@ type mockHandler struct {
 	transform   func(string) string
 }
 
-func (m *mockHandler) ServeFlow(ctx context.Context, r io.Reader, w io.Writer) error {
+func (m *mockHandler) ServeFlow(req *core.Request, res *core.Response) error {
 	if m.returnError {
 		return errors.New("mock handler error")
 	}
 
 	var input string
-	if err := core.Read(r, &input); err != nil {
+	if err := core.Read(req, &input); err != nil {
 		return err
 	}
 
@@ -37,7 +37,7 @@ func (m *mockHandler) ServeFlow(ctx context.Context, r io.Reader, w io.Writer) e
 		output = "processed: " + input
 	}
 
-	return core.Write(w, output)
+	return core.Write(res, output)
 }
 
 func TestNew(t *testing.T) {
@@ -76,7 +76,7 @@ func TestNew(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := &mockHandler{transform: tt.transform}
-			
+
 			// Create a basic schema for testing
 			properties := orderedmap.New[string, *jsonschema.Schema]()
 			properties.Set("input", &jsonschema.Schema{
@@ -88,7 +88,7 @@ func TestNew(t *testing.T) {
 				Properties: properties,
 				Required:   []string{"input"},
 			}
-			
+
 			tool := New(tt.toolName, tt.description, schema, handler)
 
 			// Test metadata
@@ -104,7 +104,9 @@ func TestNew(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := tool.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := tool.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("ServeFlow() error = %v", err)
 				return
@@ -119,7 +121,7 @@ func TestNew(t *testing.T) {
 
 func TestNewWithError(t *testing.T) {
 	handler := &mockHandler{returnError: true}
-	
+
 	// Create a basic schema for testing
 	properties := orderedmap.New[string, *jsonschema.Schema]()
 	properties.Set("input", &jsonschema.Schema{
@@ -131,13 +133,15 @@ func TestNewWithError(t *testing.T) {
 		Properties: properties,
 		Required:   []string{"input"},
 	}
-	
+
 	tool := New("error_tool", "Tool that errors", schema, handler)
 
 	var buf bytes.Buffer
 	reader := strings.NewReader("test")
 
-	err := tool.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := tool.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Expected error from tool execution, got nil")
 	}
@@ -168,7 +172,9 @@ func TestSimple(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("input")
 
-	err := tool.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := tool.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("ServeFlow() error = %v", err)
 		return
@@ -184,14 +190,14 @@ func TestHandlerFunc(t *testing.T) {
 	name := "inline_tool"
 	description := "Tool created with HandlerFunc"
 
-	tool := HandlerFunc(name, description, func(ctx context.Context, r io.Reader, w io.Writer) error {
+	tool := HandlerFunc(name, description, func(req *core.Request, res *core.Response) error {
 		var input string
-		if err := core.Read(r, &input); err != nil {
+		if err := core.Read(req, &input); err != nil {
 			return err
 		}
 
 		result := fmt.Sprintf("inline: %s", input)
-		return core.Write(w, result)
+		return core.Write(res, result)
 	})
 
 	// Test metadata
@@ -207,7 +213,9 @@ func TestHandlerFunc(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("test")
 
-	err := tool.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := tool.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("ServeFlow() error = %v", err)
 		return
@@ -220,14 +228,16 @@ func TestHandlerFunc(t *testing.T) {
 }
 
 func TestHandlerFuncWithError(t *testing.T) {
-	tool := HandlerFunc("error_tool", "Tool that returns error", func(ctx context.Context, r io.Reader, w io.Writer) error {
+	tool := HandlerFunc("error_tool", "Tool that returns error", func(req *core.Request, res *core.Response) error {
 		return errors.New("handler function error")
 	})
 
 	var buf bytes.Buffer
 	reader := strings.NewReader("test")
 
-	err := tool.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := tool.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Expected error from HandlerFunc, got nil")
 	}
@@ -259,7 +269,7 @@ func TestToolInterfaceCompliance(t *testing.T) {
 	tools = append(tools, Simple("test", "desc", func(s string) string { return s }))
 
 	// HandlerFunc
-	tools = append(tools, HandlerFunc("test", "desc", func(ctx context.Context, r io.Reader, w io.Writer) error {
+	tools = append(tools, HandlerFunc("test", "desc", func(req *core.Request, res *core.Response) error {
 		return nil
 	}))
 
@@ -278,7 +288,9 @@ func TestToolInterfaceCompliance(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader("test")
 
-			err := tool.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := tool.ServeFlow(req, res)
 			// We don't check for specific errors here, just that the method exists
 			_ = err
 		})
@@ -291,7 +303,9 @@ func TestToolWithIOReadError(t *testing.T) {
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
-	err := tool.ServeFlow(context.Background(), errorReader, &buf)
+	req := core.NewRequest(context.Background(), errorReader)
+	res := core.NewResponse(&buf)
+	err := tool.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Expected io.ErrUnexpectedEOF, got %v", err)
 	}
@@ -316,7 +330,9 @@ func TestToolWithLargeInput(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader(largeInput)
 
-	err := tool.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := tool.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("ServeFlow() with large input error = %v", err)
 		return
