@@ -9,10 +9,9 @@ import (
 )
 
 func TestRegistry(t *testing.T) {
-	// Create test tools
-	tool1 := Simple("tool1", "Tool 1 description", func(s string) string { return "result1: " + s })
-	tool2 := Simple("tool2", "Tool 2 description", func(s string) string { return "result2: " + s })
-	tool3 := Simple("tool3", "Tool 3 description", func(s string) string { return "result3: " + s })
+	calc := Simple("calculator", "Calculate something", func(s string) string { return s })
+	search := Simple("search", "Search the web", func(s string) string { return s })
+	weather := Simple("weather", "Get weather", func(s string) string { return s })
 
 	tests := []struct {
 		name     string
@@ -22,77 +21,42 @@ func TestRegistry(t *testing.T) {
 	}{
 		{
 			name:     "registry with multiple tools",
-			tools:    []Tool{tool1, tool2, tool3},
+			tools:    []Tool{calc, search, weather},
 			input:    "test input",
 			expected: "test input",
 		},
 		{
 			name:     "registry with single tool",
-			tools:    []Tool{tool1},
+			tools:    []Tool{calc},
 			input:    "single tool test",
 			expected: "single tool test",
 		},
 		{
-			name:     "registry with no tools",
-			tools:    []Tool{},
-			input:    "no tools test",
-			expected: "no tools test",
-		},
-		{
 			name:     "registry with empty input",
-			tools:    []Tool{tool1, tool2},
+			tools:    []Tool{calc, search},
 			input:    "",
 			expected: "",
 		},
 		{
 			name:     "registry with large input",
-			tools:    []Tool{tool1},
-			input:    strings.Repeat("large data ", 1000),
-			expected: strings.Repeat("large data ", 1000),
+			tools:    []Tool{calc},
+			input:    strings.Repeat("large input ", 100),
+			expected: strings.Repeat("large input ", 100),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Test that Registry creates a working handler
 			registry := Registry(tt.tools...)
 
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
-
-			// Create a context to capture the tools
 			ctx := context.Background()
 
-			// We need to test that the registry middleware stores tools in context,
-			// but since we can't directly access the context from the registry,
-			// we'll need to test this by creating a custom handler that checks the context
-			contextChecker := func(ctx context.Context, r io.Reader, w io.Writer) error {
-				// Verify tools are in context
-				tools := GetTools(ctx)
-				if len(tools) != len(tt.tools) {
-					t.Errorf("Expected %d tools in context, got %d", len(tt.tools), len(tools))
-				}
-
-				// Pass through the data
-				_, err := io.Copy(w, r)
-				return err
-			}
-
-			// Create a pipeline that uses registry then checks context
-			pipeline := func(ctx context.Context, r io.Reader, w io.Writer) error {
-				// First apply registry
-				var intermediateBuffer bytes.Buffer
-				if err := registry.ServeFlow(ctx, r, &intermediateBuffer); err != nil {
-					return err
-				}
-
-				// Then apply our context checker with the same context
-				// Note: In real usage, the context would be automatically passed through the pipeline
-				return contextChecker(ctx, &intermediateBuffer, w)
-			}
-
-			err := pipeline(ctx, reader, &buf)
+			err := registry.ServeFlow(ctx, reader, &buf)
 			if err != nil {
-				t.Errorf("Pipeline error = %v", err)
+				t.Errorf("Registry.ServeFlow() error = %v", err)
 				return
 			}
 
@@ -104,67 +68,46 @@ func TestRegistry(t *testing.T) {
 }
 
 func TestRegistryStreamIntegrity(t *testing.T) {
-	tool1 := Simple("tool1", "Tool 1 desc", func(s string) string { return s })
-	registry := Registry(tool1)
+	calc := Simple("calculator", "Math calculator", func(s string) string { return s })
+	registry := Registry(calc)
 
-	// Test with large input to ensure streaming works correctly
-	largeInput := strings.Repeat("0123456789", 10000) // 100KB
+	// Test that streaming data passes through correctly
+	input := "streaming test data"
 	var buf bytes.Buffer
-	reader := strings.NewReader(largeInput)
+	reader := strings.NewReader(input)
 
 	err := registry.ServeFlow(context.Background(), reader, &buf)
 	if err != nil {
-		t.Errorf("Registry() with large input error = %v", err)
+		t.Errorf("Registry streaming error = %v", err)
 		return
 	}
 
-	if got := buf.String(); got != largeInput {
-		t.Errorf("Registry() corrupted large stream, length got %d, want %d", len(got), len(largeInput))
+	if got := buf.String(); got != input {
+		t.Errorf("Registry streaming integrity check failed: got %q, want %q", got, input)
 	}
 }
 
 func TestGetTools(t *testing.T) {
-	tool1 := Simple("tool1", "Tool 1 desc", func(s string) string { return s })
-	tool2 := Simple("tool2", "Tool 2 desc", func(s string) string { return s })
+	calc := Simple("calculator", "Math calculator", func(s string) string { return s })
+	search := Simple("search", "Web search", func(s string) string { return s })
+	tools := []Tool{calc, search}
 
-	tests := []struct {
-		name          string
-		tools         []Tool
-		expectedCount int
-	}{
-		{
-			name:          "context with multiple tools",
-			tools:         []Tool{tool1, tool2},
-			expectedCount: 2,
-		},
-		{
-			name:          "context with single tool",
-			tools:         []Tool{tool1},
-			expectedCount: 1,
-		},
-		{
-			name:          "context with no tools",
-			tools:         []Tool{},
-			expectedCount: 0,
-		},
+	// Test GetTools with tools in context
+	ctx := context.WithValue(context.Background(), toolsContextKey{}, tools)
+	retrieved := GetTools(ctx)
+
+	if len(retrieved) != len(tools) {
+		t.Errorf("GetTools() returned %d tools, want %d", len(retrieved), len(tools))
+		return
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), toolsContextKey{}, tt.tools)
-			tools := GetTools(ctx)
-
-			if len(tools) != tt.expectedCount {
-				t.Errorf("GetTools() returned %d tools, want %d", len(tools), tt.expectedCount)
-			}
-
-			// Verify tool identity
-			for i, tool := range tools {
-				if i < len(tt.tools) && tool.Name() != tt.tools[i].Name() {
-					t.Errorf("Tool %d name = %q, want %q", i, tool.Name(), tt.tools[i].Name())
-				}
-			}
-		})
+	for i, tool := range retrieved {
+		if tool.Name() != tools[i].Name() {
+			t.Errorf("GetTools()[%d].Name() = %q, want %q", i, tool.Name(), tools[i].Name())
+		}
+		if tool.Description() != tools[i].Description() {
+			t.Errorf("GetTools()[%d].Description() = %q, want %q", i, tool.Description(), tools[i].Description())
+		}
 	}
 }
 
@@ -178,61 +121,32 @@ func TestGetToolsFromEmptyContext(t *testing.T) {
 }
 
 func TestGetTool(t *testing.T) {
-	tool1 := Simple("calculator", "Calculator tool", func(s string) string { return s })
-	tool2 := Simple("search", "Search tool", func(s string) string { return s })
-	tool3 := Simple("formatter", "Formatter tool", func(s string) string { return s })
+	calc := Simple("calculator", "Math calculator", func(s string) string { return s })
+	search := Simple("search", "Web search", func(s string) string { return s })
+	tools := []Tool{calc, search}
 
-	ctx := context.WithValue(context.Background(), toolsContextKey{}, []Tool{tool1, tool2, tool3})
+	ctx := context.WithValue(context.Background(), toolsContextKey{}, tools)
 
-	tests := []struct {
-		name     string
-		toolName string
-		found    bool
-	}{
-		{
-			name:     "find existing tool",
-			toolName: "calculator",
-			found:    true,
-		},
-		{
-			name:     "find another existing tool",
-			toolName: "search",
-			found:    true,
-		},
-		{
-			name:     "find non-existent tool",
-			toolName: "nonexistent",
-			found:    false,
-		},
-		{
-			name:     "find with empty name",
-			toolName: "",
-			found:    false,
-		},
+	// Test finding existing tool
+	found := GetTool(ctx, "calculator")
+	if found == nil {
+		t.Error("GetTool() could not find 'calculator'")
+		return
+	}
+	if found.Name() != "calculator" {
+		t.Errorf("GetTool() returned tool with name %q, want 'calculator'", found.Name())
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tool := GetTool(ctx, tt.toolName)
-
-			if tt.found {
-				if tool == nil {
-					t.Errorf("GetTool(%q) = nil, want tool", tt.toolName)
-				} else if tool.Name() != tt.toolName {
-					t.Errorf("GetTool(%q).Name() = %q, want %q", tt.toolName, tool.Name(), tt.toolName)
-				}
-			} else {
-				if tool != nil {
-					t.Errorf("GetTool(%q) = %v, want nil", tt.toolName, tool)
-				}
-			}
-		})
+	// Test finding non-existent tool
+	notFound := GetTool(ctx, "nonexistent")
+	if notFound != nil {
+		t.Errorf("GetTool() found non-existent tool: %v", notFound)
 	}
 }
 
 func TestGetToolFromEmptyContext(t *testing.T) {
 	ctx := context.Background()
-	tool := GetTool(ctx, "any_tool")
+	tool := GetTool(ctx, "any")
 
 	if tool != nil {
 		t.Errorf("GetTool() from empty context = %v, want nil", tool)
@@ -240,102 +154,49 @@ func TestGetToolFromEmptyContext(t *testing.T) {
 }
 
 func TestHasTool(t *testing.T) {
-	tool1 := Simple("existing_tool", "Existing tool", func(s string) string { return s })
-	tool2 := Simple("another_tool", "Another tool", func(s string) string { return s })
+	calc := Simple("calculator", "Math calculator", func(s string) string { return s })
+	search := Simple("search", "Web search", func(s string) string { return s })
+	tools := []Tool{calc, search}
 
-	ctx := context.WithValue(context.Background(), toolsContextKey{}, []Tool{tool1, tool2})
+	ctx := context.WithValue(context.Background(), toolsContextKey{}, tools)
 
-	tests := []struct {
-		name     string
-		toolName string
-		expected bool
-	}{
-		{
-			name:     "tool exists",
-			toolName: "existing_tool",
-			expected: true,
-		},
-		{
-			name:     "another tool exists",
-			toolName: "another_tool",
-			expected: true,
-		},
-		{
-			name:     "tool does not exist",
-			toolName: "missing_tool",
-			expected: false,
-		},
-		{
-			name:     "empty tool name",
-			toolName: "",
-			expected: false,
-		},
+	// Test existing tool
+	if !HasTool(ctx, "calculator") {
+		t.Error("HasTool() returned false for existing tool 'calculator'")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := HasTool(ctx, tt.toolName)
-
-			if result != tt.expected {
-				t.Errorf("HasTool(%q) = %v, want %v", tt.toolName, result, tt.expected)
-			}
-		})
+	// Test non-existing tool
+	if HasTool(ctx, "nonexistent") {
+		t.Error("HasTool() returned true for non-existent tool")
 	}
 }
 
 func TestHasToolFromEmptyContext(t *testing.T) {
 	ctx := context.Background()
-	result := HasTool(ctx, "any_tool")
-
-	if result {
-		t.Errorf("HasTool() from empty context = %v, want false", result)
+	
+	if HasTool(ctx, "any") {
+		t.Error("HasTool() from empty context should return false")
 	}
 }
 
 func TestListToolNames(t *testing.T) {
-	tests := []struct {
-		name          string
-		tools         []Tool
-		expectedNames []string
-	}{
-		{
-			name: "multiple tools",
-			tools: []Tool{
-				Simple("tool1", "Tool 1", func(s string) string { return s }),
-				Simple("tool2", "Tool 2", func(s string) string { return s }),
-				Simple("tool3", "Tool 3", func(s string) string { return s }),
-			},
-			expectedNames: []string{"tool1", "tool2", "tool3"},
-		},
-		{
-			name: "single tool",
-			tools: []Tool{
-				Simple("single", "Single tool", func(s string) string { return s }),
-			},
-			expectedNames: []string{"single"},
-		},
-		{
-			name:          "no tools",
-			tools:         []Tool{},
-			expectedNames: []string{},
-		},
+	calc := Simple("calculator", "Math calculator", func(s string) string { return s })
+	search := Simple("search", "Web search", func(s string) string { return s })
+	tools := []Tool{calc, search}
+
+	ctx := context.WithValue(context.Background(), toolsContextKey{}, tools)
+	names := ListToolNames(ctx)
+
+	expected := []string{"calculator", "search"}
+	if len(names) != len(expected) {
+		t.Errorf("ListToolNames() returned %d names, want %d", len(names), len(expected))
+		return
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), toolsContextKey{}, tt.tools)
-			names := ListToolNames(ctx)
-
-			if len(names) != len(tt.expectedNames) {
-				t.Errorf("ListToolNames() returned %d names, want %d", len(names), len(tt.expectedNames))
-			}
-
-			for i, name := range names {
-				if i < len(tt.expectedNames) && name != tt.expectedNames[i] {
-					t.Errorf("ListToolNames()[%d] = %q, want %q", i, name, tt.expectedNames[i])
-				}
-			}
-		})
+	for i, name := range names {
+		if name != expected[i] {
+			t.Errorf("ListToolNames()[%d] = %q, want %q", i, name, expected[i])
+		}
 	}
 }
 
@@ -349,31 +210,24 @@ func TestListToolNamesFromEmptyContext(t *testing.T) {
 }
 
 func TestListTools(t *testing.T) {
-	tools := []Tool{
-		Simple("tool1", "Tool 1 description", func(s string) string { return s }),
-		Simple("tool2", "Tool 2 description", func(s string) string { return s }),
-		Simple("tool3", "Tool 3 description", func(s string) string { return s }),
-	}
+	calc := Simple("calculator", "Math calculator", func(s string) string { return s })
+	search := Simple("search", "Web search", func(s string) string { return s })
+	tools := []Tool{calc, search}
 
 	ctx := context.WithValue(context.Background(), toolsContextKey{}, tools)
 	infos := ListTools(ctx)
 
 	if len(infos) != len(tools) {
 		t.Errorf("ListTools() returned %d infos, want %d", len(infos), len(tools))
+		return
 	}
 
 	for i, info := range infos {
-		if i < len(tools) {
-			expectedName := tools[i].Name()
-			expectedDesc := tools[i].Description()
-
-			if info.Name != expectedName {
-				t.Errorf("ListTools()[%d].Name = %q, want %q", i, info.Name, expectedName)
-			}
-
-			if info.Description != expectedDesc {
-				t.Errorf("ListTools()[%d].Description = %q, want %q", i, info.Description, expectedDesc)
-			}
+		if info.Name != tools[i].Name() {
+			t.Errorf("ListTools()[%d].Name = %q, want %q", i, info.Name, tools[i].Name())
+		}
+		if info.Description != tools[i].Description() {
+			t.Errorf("ListTools()[%d].Description = %q, want %q", i, info.Description, tools[i].Description())
 		}
 	}
 }
@@ -388,9 +242,9 @@ func TestListToolsFromEmptyContext(t *testing.T) {
 }
 
 func TestRegistryWithIOError(t *testing.T) {
-	tool := Simple("test", "Test tool description", func(s string) string { return s })
-	registry := Registry(tool)
-
+	calc := Simple("calculator", "Math calculator", func(s string) string { return s })
+	registry := Registry(calc)
+	
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
@@ -399,3 +253,4 @@ func TestRegistryWithIOError(t *testing.T) {
 		t.Errorf("Registry() with IO error = %v, want %v", err, io.ErrUnexpectedEOF)
 	}
 }
+

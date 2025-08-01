@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/invopop/jsonschema"
+	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
 
 // Mock handler for testing
@@ -74,7 +76,20 @@ func TestNew(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := &mockHandler{transform: tt.transform}
-			tool := New(tt.toolName, tt.description, handler)
+			
+			// Create a basic schema for testing
+			properties := orderedmap.New[string, *jsonschema.Schema]()
+			properties.Set("input", &jsonschema.Schema{
+				Type:        "string",
+				Description: "Test input parameter",
+			})
+			schema := &jsonschema.Schema{
+				Type:       "object",
+				Properties: properties,
+				Required:   []string{"input"},
+			}
+			
+			tool := New(tt.toolName, tt.description, schema, handler)
 
 			// Test metadata
 			if tool.Name() != tt.toolName {
@@ -104,7 +119,20 @@ func TestNew(t *testing.T) {
 
 func TestNewWithError(t *testing.T) {
 	handler := &mockHandler{returnError: true}
-	tool := New("error_tool", "Tool that errors", handler)
+	
+	// Create a basic schema for testing
+	properties := orderedmap.New[string, *jsonschema.Schema]()
+	properties.Set("input", &jsonschema.Schema{
+		Type:        "string",
+		Description: "Test input parameter",
+	})
+	schema := &jsonschema.Schema{
+		Type:       "object",
+		Properties: properties,
+		Required:   []string{"input"},
+	}
+	
+	tool := New("error_tool", "Tool that errors", schema, handler)
 
 	var buf bytes.Buffer
 	reader := strings.NewReader("test")
@@ -215,7 +243,17 @@ func TestToolInterfaceCompliance(t *testing.T) {
 	var tools []Tool
 
 	// New
-	tools = append(tools, New("test", "desc", &mockHandler{}))
+	properties := orderedmap.New[string, *jsonschema.Schema]()
+	properties.Set("input", &jsonschema.Schema{
+		Type:        "string",
+		Description: "Test input parameter",
+	})
+	schema := &jsonschema.Schema{
+		Type:       "object",
+		Properties: properties,
+		Required:   []string{"input"},
+	}
+	tools = append(tools, New("test", "desc", schema, &mockHandler{}))
 
 	// QuickWithDesc
 	tools = append(tools, Simple("test", "desc", func(s string) string { return s }))

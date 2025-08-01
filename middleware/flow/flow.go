@@ -10,6 +10,14 @@ import (
 	"github.com/calque-ai/calque-pipe/core"
 )
 
+// PassThrough creates a simple pass-through handler
+func PassThrough() core.Handler {
+	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+		_, err := io.Copy(w, r)
+		return err
+	})
+}
+
 // Branch creates conditional routing based on input content evaluation.
 //
 // Input: any data type (buffered - reads entire input into memory)

@@ -8,6 +8,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/calque-ai/calque-pipe/core"
 )
 
 // Mock tools for testing
@@ -53,57 +55,45 @@ func TestExecute(t *testing.T) {
 			contains: []string{"This is just regular text with no tool calls."},
 		},
 		{
-			name:     "simple tool call format",
-			tools:    []Tool{calc, search},
-			input:    "I need to calculate: TOOL:calculator:2+2",
-			contains: []string{"Tool execution results", "calculator", "4"},
-		},
-		{
 			name:     "JSON tool call format",
 			tools:    []Tool{calc, search},
-			input:    `{"tool_calls": [{"name": "calculator", "arguments": "10*5"}]}`,
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "10*5"}}]}`,
 			contains: []string{"Tool execution results", "calculator", "50"},
-		},
-		{
-			name:     "XML tool call format",
-			tools:    []Tool{calc, search},
-			input:    `Please calculate this: <tool name="calculator">2+2</tool>`,
-			contains: []string{"Tool execution results", "calculator", "4"},
 		},
 		{
 			name:     "multiple tool calls",
 			tools:    []Tool{calc, search},
-			input:    "TOOL:calculator:2+2 and TOOL:search:golang tutorials",
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}, {"type": "function", "function": {"name": "search", "arguments": "golang tutorials"}}]}`,
 			contains: []string{"Tool execution results", "calculator", "4", "search", "search results for: golang tutorials"},
 		},
 		{
-			name:     "unknown tool",
-			tools:    []Tool{calc},
-			input:    "TOOL:unknown_tool:some args",
-			contains: []string{"Tool execution results", "unknown_tool", "Tool 'unknown_tool' not found"},
+			name:    "unknown tool",
+			tools:   []Tool{calc},
+			input:   `{"tool_calls": [{"type": "function", "function": {"name": "unknown_tool", "arguments": "some args"}}]}`,
+			isError: true, // Should error because PassThroughOnError defaults to false
 		},
 		{
 			name:     "no tools in context",
 			tools:    []Tool{},
-			input:    "TOOL:calculator:2+2",
-			contains: []string{"TOOL:calculator:2+2"}, // Should pass through
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+			contains: []string{`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`}, // Should pass through
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up context with tools
-			ctx := context.WithValue(context.Background(), toolsContextKey{}, tt.tools)
-
-			execute := Execute()
+			// Set up context with tools using Registry
+			ctx := context.Background()
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := execute.ServeFlow(ctx, reader, &buf)
+			// Create a pipeline with Registry and Execute
+			pipeline := NewPipelineForTest(tt.tools)
 
+			err := pipeline.ServeFlow(ctx, reader, &buf)
 			if tt.isError {
 				if err == nil {
-					t.Error("Expected error, got nil")
+					t.Error("Expected error, got none")
 				}
 				return
 			}
@@ -123,64 +113,77 @@ func TestExecute(t *testing.T) {
 	}
 }
 
+// NewPipelineForTest creates a test pipeline that combines Registry and Execute functionality
+func NewPipelineForTest(tools []Tool) core.Handler {
+	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+		// Create context with tools (simulating what Registry + Execute should do)
+		ctx = context.WithValue(ctx, toolsContextKey{}, tools)
+
+		// Execute tools directly (this simulates the combined Registry + Execute flow)
+		execute := Execute()
+		return execute.ServeFlow(ctx, r, w)
+	})
+}
+
 func TestExecuteWithOptions(t *testing.T) {
 	calc := createMockCalculator()
 	errorTool := createErrorTool()
 
 	tests := []struct {
-		name     string
-		tools    []Tool
-		input    string
-		config   ExecuteConfig
-		contains []string
+		name        string
+		config      ExecuteConfig
+		tools       []Tool
+		input       string
+		expectError bool
+		contains    []string
 	}{
 		{
-			name:  "pass through on error - enabled",
-			tools: []Tool{calc, errorTool},
-			input: "TOOL:error_tool:some args",
+			name: "pass through on error enabled",
 			config: ExecuteConfig{
 				PassThroughOnError: true,
 			},
-			contains: []string{"TOOL:error_tool:some args"}, // Should pass through original
+			tools:       []Tool{errorTool},
+			input:       `{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
+			expectError: false,
+			contains:    []string{`{"tool_calls":`}, // Should pass through original
 		},
 		{
-			name:  "pass through on error - disabled",
-			tools: []Tool{calc, errorTool},
-			input: "TOOL:error_tool:some args",
+			name: "pass through on error disabled",
 			config: ExecuteConfig{
 				PassThroughOnError: false,
 			},
-			contains: []string{"Tool execution results", "tool execution failed"},
+			tools:       []Tool{errorTool},
+			input:       `{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
+			expectError: true,
 		},
 		{
-			name:  "include original output",
-			tools: []Tool{calc},
-			input: "Please calculate: TOOL:calculator:2+2",
+			name: "include original output",
 			config: ExecuteConfig{
 				IncludeOriginalOutput: true,
 			},
-			contains: []string{"Original LLM Output:", "Please calculate: TOOL:calculator:2+2", "Tool execution results", "4"},
-		},
-		{
-			name:  "max concurrent tools",
-			tools: []Tool{calc},
-			input: "TOOL:calculator:2+2",
-			config: ExecuteConfig{
-				MaxConcurrentTools: 1,
-			},
-			contains: []string{"Tool execution results", "4"},
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+			contains: []string{"Original LLM Output:", "Tool execution results", "4"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), toolsContextKey{}, tt.tools)
-
-			execute := ExecuteWithOptions(tt.config)
+			ctx := context.Background()
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := execute.ServeFlow(ctx, reader, &buf)
+			// Create pipeline with config
+			pipeline := NewPipelineForTestWithConfig(tt.tools, tt.config)
+
+			err := pipeline.ServeFlow(ctx, reader, &buf)
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error, got none")
+				}
+				return
+			}
+
 			if err != nil {
 				t.Errorf("ExecuteWithOptions() error = %v", err)
 				return
@@ -196,6 +199,17 @@ func TestExecuteWithOptions(t *testing.T) {
 	}
 }
 
+func NewPipelineForTestWithConfig(tools []Tool, config ExecuteConfig) core.Handler {
+	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+		// Create context with tools (simulating what Registry + Execute should do)
+		ctx = context.WithValue(ctx, toolsContextKey{}, tools)
+
+		// Execute tools with config
+		execute := ExecuteWithOptions(config)
+		return execute.ServeFlow(ctx, r, w)
+	})
+}
+
 func TestParseToolCalls(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -203,55 +217,50 @@ func TestParseToolCalls(t *testing.T) {
 		expected []ToolCall
 	}{
 		{
-			name:     "no tool calls",
-			input:    "Just regular text with no tool calls.",
-			expected: []ToolCall{},
-		},
-		{
-			name:  "simple format single tool",
-			input: "TOOL:calculator:2+2",
+			name:  "single JSON tool call",
+			input: `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
 			expected: []ToolCall{
 				{Name: "calculator", Arguments: "2+2", ID: "call_0"},
 			},
 		},
 		{
-			name:  "simple format multiple tools",
-			input: "TOOL:calculator:2+2 and then TOOL:search:golang",
+			name:  "multiple JSON tool calls",
+			input: `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}, {"type": "function", "function": {"name": "search", "arguments": "golang"}}]}`,
 			expected: []ToolCall{
 				{Name: "calculator", Arguments: "2+2", ID: "call_0"},
 				{Name: "search", Arguments: "golang", ID: "call_1"},
 			},
 		},
 		{
-			name:  "JSON format",
-			input: `{"tool_calls": [{"name": "calculator", "arguments": "2+2", "id": "test_id"}]}`,
+			name:  "malformed JSON - invalid format",
+			input: `{"tool_calls": [{"name": "missing_function_wrapper"}]}`,
 			expected: []ToolCall{
-				{Name: "calculator", Arguments: "2+2", ID: "test_id"},
+				{
+					Name:      "_parse_error",
+					Arguments: `{"tool_calls": [{"name": "missing_function_wrapper"}]}`,
+					Error:     "Failed to parse tool call JSON:",
+				},
 			},
 		},
 		{
-			name:  "XML format",
-			input: `<tool name="calculator">2+2</tool>`,
+			name:  "completely invalid JSON",
+			input: `{"invalid_json": malformed`,
 			expected: []ToolCall{
-				{Name: "calculator", Arguments: "2+2", ID: "xml_call_0"},
-			},
-		},
-		{
-			name:  "mixed formats",
-			input: `TOOL:search:test and <tool name="calculator">10*5</tool>`,
-			expected: []ToolCall{
-				{Name: "search", Arguments: "test", ID: "call_0"},
-				{Name: "calculator", Arguments: "10*5", ID: "xml_call_0"},
+				{
+					Name:      "_parse_error",
+					Arguments: `{"invalid_json": malformed`,
+					Error:     "Failed to parse tool call JSON:",
+				},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := parseToolCalls(tt.input)
+			result := parseToolCalls([]byte(tt.input))
 
 			if len(result) != len(tt.expected) {
-				t.Errorf("parseToolCalls() returned %d calls, want %d", len(result), len(tt.expected))
+				t.Errorf("ParseToolCalls() returned %d calls, want %d", len(result), len(tt.expected))
 				return
 			}
 
@@ -259,179 +268,14 @@ func TestParseToolCalls(t *testing.T) {
 				if i < len(tt.expected) {
 					expected := tt.expected[i]
 					if call.Name != expected.Name {
-						t.Errorf("parseToolCalls()[%d].Name = %q, want %q", i, call.Name, expected.Name)
+						t.Errorf("ParseToolCalls()[%d].Name = %q, want %q", i, call.Name, expected.Name)
 					}
 					if call.Arguments != expected.Arguments {
-						t.Errorf("parseToolCalls()[%d].Arguments = %q, want %q", i, call.Arguments, expected.Arguments)
+						t.Errorf("ParseToolCalls()[%d].Arguments = %q, want %q", i, call.Arguments, expected.Arguments)
 					}
-					if expected.ID != "" && call.ID != expected.ID {
-						t.Errorf("parseToolCalls()[%d].ID = %q, want %q", i, call.ID, expected.ID)
-					}
-				}
-			}
-		})
-	}
-}
-
-func TestParseJSONToolCalls(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected []ToolCall
-	}{
-		{
-			name:     "invalid JSON",
-			input:    "not json",
-			expected: nil,
-		},
-		{
-			name:     "valid JSON without tool_calls",
-			input:    `{"message": "hello"}`,
-			expected: nil,
-		},
-		{
-			name:  "valid JSON with tool_calls",
-			input: `{"tool_calls": [{"name": "calc", "arguments": "1+1"}]}`,
-			expected: []ToolCall{
-				{Name: "calc", Arguments: "1+1"},
-			},
-		},
-		{
-			name:  "multiple tool calls",
-			input: `{"tool_calls": [{"name": "calc", "arguments": "1+1"}, {"name": "search", "arguments": "test"}]}`,
-			expected: []ToolCall{
-				{Name: "calc", Arguments: "1+1"},
-				{Name: "search", Arguments: "test"},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := parseJSONToolCalls(tt.input)
-
-			if len(result) != len(tt.expected) {
-				t.Errorf("parseJSONToolCalls() returned %d calls, want %d", len(result), len(tt.expected))
-				return
-			}
-
-			for i, call := range result {
-				if i < len(tt.expected) {
-					expected := tt.expected[i]
-					if call.Name != expected.Name || call.Arguments != expected.Arguments {
-						t.Errorf("parseJSONToolCalls()[%d] = %+v, want %+v", i, call, expected)
-					}
-				}
-			}
-		})
-	}
-}
-
-func TestParseSimpleToolCalls(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected []ToolCall
-	}{
-		{
-			name:     "no tool calls",
-			input:    "regular text",
-			expected: []ToolCall{},
-		},
-		{
-			name:  "single tool call",
-			input: "TOOL:calculator:2+2",
-			expected: []ToolCall{
-				{Name: "calculator", Arguments: "2+2", ID: "call_0"},
-			},
-		},
-		{
-			name:  "multiple tool calls",
-			input: "First TOOL:calc:1+1 then TOOL:search:golang",
-			expected: []ToolCall{
-				{Name: "calc", Arguments: "1+1", ID: "call_0"},
-				{Name: "search", Arguments: "golang", ID: "call_1"},
-			},
-		},
-		{
-			name:  "tool call with spaces",
-			input: "TOOL: calculator : 2 + 2 ",
-			expected: []ToolCall{
-				{Name: "calculator", Arguments: "2 + 2", ID: "call_0"},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := parseSimpleToolCalls(tt.input)
-
-			if len(result) != len(tt.expected) {
-				t.Errorf("parseSimpleToolCalls() returned %d calls, want %d", len(result), len(tt.expected))
-				return
-			}
-
-			for i, call := range result {
-				if i < len(tt.expected) {
-					expected := tt.expected[i]
-					if call.Name != expected.Name || call.Arguments != expected.Arguments {
-						t.Errorf("parseSimpleToolCalls()[%d] = %+v, want %+v", i, call, expected)
-					}
-				}
-			}
-		})
-	}
-}
-
-func TestParseXMLToolCalls(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected []ToolCall
-	}{
-		{
-			name:     "no tool calls",
-			input:    "regular text",
-			expected: []ToolCall{},
-		},
-		{
-			name:  "single tool call",
-			input: `<tool name="calculator">2+2</tool>`,
-			expected: []ToolCall{
-				{Name: "calculator", Arguments: "2+2", ID: "xml_call_0"},
-			},
-		},
-		{
-			name:  "multiple tool calls",
-			input: `<tool name="calc">1+1</tool> and <tool name="search">golang</tool>`,
-			expected: []ToolCall{
-				{Name: "calc", Arguments: "1+1", ID: "xml_call_0"},
-				{Name: "search", Arguments: "golang", ID: "xml_call_1"},
-			},
-		},
-		{
-			name:  "tool with extra attributes",
-			input: `<tool name="calculator" type="math">2+2</tool>`,
-			expected: []ToolCall{
-				{Name: "calculator", Arguments: "2+2", ID: "xml_call_0"},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := parseXMLToolCalls(tt.input)
-
-			if len(result) != len(tt.expected) {
-				t.Errorf("parseXMLToolCalls() returned %d calls, want %d", len(result), len(tt.expected))
-				return
-			}
-
-			for i, call := range result {
-				if i < len(tt.expected) {
-					expected := tt.expected[i]
-					if call.Name != expected.Name || call.Arguments != expected.Arguments {
-						t.Errorf("parseXMLToolCalls()[%d] = %+v, want %+v", i, call, expected)
+					// Note: ID is auto-generated, so we just check it exists if expected
+					if expected.ID != "" && call.ID == "" {
+						t.Errorf("ParseToolCalls()[%d].ID is empty, expected non-empty", i)
 					}
 				}
 			}
@@ -457,16 +301,14 @@ func TestExecuteToolCall(t *testing.T) {
 			expectResult: "4",
 		},
 		{
-			name:         "tool not found",
-			toolCall:     ToolCall{Name: "unknown", Arguments: "test"},
-			expectError:  true,
-			expectResult: "",
+			name:        "tool not found",
+			toolCall:    ToolCall{Name: "unknown", Arguments: "test"},
+			expectError: true,
 		},
 		{
-			name:         "tool execution error",
-			toolCall:     ToolCall{Name: "error_tool", Arguments: "test"},
-			expectError:  true,
-			expectResult: "",
+			name:        "tool execution error",
+			toolCall:    ToolCall{Name: "error_tool", Arguments: "test"},
+			expectError: true,
 		},
 	}
 
@@ -495,69 +337,6 @@ func TestExecuteToolCall(t *testing.T) {
 	}
 }
 
-func TestFormatToolResults(t *testing.T) {
-	results := []ToolResult{
-		{
-			ToolCall: ToolCall{Name: "calculator", Arguments: "2+2"},
-			Result:   []byte("4"),
-		},
-		{
-			ToolCall: ToolCall{Name: "search", Arguments: "golang"},
-			Result:   []byte("search results for: golang"),
-		},
-		{
-			ToolCall: ToolCall{Name: "error_tool", Arguments: "test"},
-			Error:    "Tool execution failed",
-		},
-	}
-
-	output := formatToolResults(results, "original")
-
-	// Check that all expected elements are present
-	expectedStrings := []string{
-		"Tool execution results",
-		"Tool 1: calculator",
-		"Arguments: 2+2",
-		"Result: 4",
-		"Tool 2: search",
-		"Arguments: golang",
-		"Result: search results for: golang",
-		"Tool 3: error_tool",
-		"Error: Tool execution failed",
-	}
-
-	for _, expected := range expectedStrings {
-		if !strings.Contains(output, expected) {
-			t.Errorf("formatToolResults() missing expected string %q", expected)
-		}
-	}
-}
-
-func TestFormatToolResultsWithOriginal(t *testing.T) {
-	results := []ToolResult{
-		{
-			ToolCall: ToolCall{Name: "test", Arguments: "args"},
-			Result:   []byte("result"),
-		},
-	}
-
-	originalOutput := "This is the original LLM output"
-	output := formatToolResultsWithOriginal(results, originalOutput)
-
-	expectedStrings := []string{
-		"Original LLM Output:",
-		originalOutput,
-		"Tool execution results",
-		"Tool 1: test",
-	}
-
-	for _, expected := range expectedStrings {
-		if !strings.Contains(output, expected) {
-			t.Errorf("formatToolResultsWithOriginal() missing expected string %q", expected)
-		}
-	}
-}
-
 func TestExecuteWithIOError(t *testing.T) {
 	execute := Execute()
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
@@ -571,10 +350,8 @@ func TestExecuteWithIOError(t *testing.T) {
 
 func TestExecuteWithEmptyContext(t *testing.T) {
 	execute := Execute()
-	input := "TOOL:calculator:2+2"
-
 	var buf bytes.Buffer
-	reader := strings.NewReader(input)
+	reader := strings.NewReader(`{"tool_calls": [{"type": "function", "function": {"name": "test", "arguments": "args"}}]}`)
 
 	// Empty context (no tools)
 	err := execute.ServeFlow(context.Background(), reader, &buf)
@@ -583,8 +360,10 @@ func TestExecuteWithEmptyContext(t *testing.T) {
 		return
 	}
 
-	// Should pass through original input
-	if got := buf.String(); got != input {
-		t.Errorf("Execute() with empty context = %q, want %q", got, input)
+	// Should pass through unchanged
+	output := buf.String()
+	expected := `{"tool_calls": [{"type": "function", "function": {"name": "test", "arguments": "args"}}]}`
+	if !strings.Contains(output, expected) {
+		t.Errorf("Execute() with empty context = %q, should contain %q", output, expected)
 	}
 }

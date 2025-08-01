@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 
 	"github.com/calque-ai/calque-pipe/core"
@@ -17,6 +16,16 @@ type ToolCall struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments,omitempty"`
 	ID        string `json:"id,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// OpenAIToolCall represents a tool call in OpenAI format
+type OpenAIToolCall struct {
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
 
 // ToolResult represents the result of executing a tool
@@ -26,37 +35,7 @@ type ToolResult struct {
 	Error    string   `json:"error,omitempty"`
 }
 
-// Execute parses LLM output for tool calls and executes them using tools from Registry.
-//
-// Input: string containing LLM output (buffered - needs full response to parse)
-// Output: either original LLM output (if no tools) or formatted tool results
-// Behavior: BUFFERED - must read entire LLM response to parse tool calls
-//
-// The middleware looks for tool calls in various formats:
-// 1. JSON format: {"tool_calls": [{"name": "tool_name", "arguments": "args"}]}
-// 2. Simple format: TOOL:tool_name:arguments
-// 3. XML-like format: <tool name="tool_name">arguments</tool>
-//
-// If no tool calls are found, the original LLM output is passed through unchanged.
-// If tool calls are found, they are executed and results are formatted for output.
-//
-// Example:
-//
-//	execute := tools.Execute()
-//	pipe.Use(tools.Registry(calc, search)).
-//	     Use(llm.Chat(provider)).
-//	     Use(execute) // Executes any tool calls from LLM
-func Execute() core.Handler {
-	return ExecuteWithOptions(ExecuteConfig{
-		PassThroughOnError:    false,
-		MaxConcurrentTools:    0, // No limit
-		IncludeOriginalOutput: false,
-		EnableStreaming:       true,  // Use streaming by default
-		StreamingBufferSize:   200,   // Default buffer size
-	})
-}
-
-// ExecuteWithConfig allows configuring the Execute middleware behavior
+// ExecuteConfig allows configuring the Execute middleware behavior
 type ExecuteConfig struct {
 	// PassThroughOnError - if true, returns original LLM output when tool execution fails
 	PassThroughOnError bool
@@ -64,150 +43,177 @@ type ExecuteConfig struct {
 	MaxConcurrentTools int
 	// IncludeOriginalOutput - if true, includes original LLM output in results
 	IncludeOriginalOutput bool
-	// EnableStreaming - if true, uses streaming mode (buffer first ~200 bytes, then stream if no tools)
-	EnableStreaming bool
-	// StreamingBufferSize - size of initial buffer for streaming mode (defaults to 200)
-	StreamingBufferSize int
 }
 
-// ExecuteWithOptions creates an Execute middleware with custom configuration
-func ExecuteWithOptions(config ExecuteConfig) core.Handler {
-	// Choose between streaming and buffering implementation
-	if config.EnableStreaming {
-		bufferSize := config.StreamingBufferSize
-		if bufferSize <= 0 {
-			bufferSize = 200 // Default buffer size
-		}
-		return ExecuteWithStreaming(config, bufferSize)
-	}
-	
-	// Use traditional buffering approach
-	return executeWithBuffering(config)
-}
-
-// executeWithBuffering implements the traditional full-buffering approach
-func executeWithBuffering(config ExecuteConfig) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		// Get tools from context first
-		tools := GetTools(ctx)
-		if len(tools) == 0 {
-			// No tools available, pass through with streaming
-			_, err := io.Copy(w, r)
-			return err
-		}
-
-		var llmOutput string
-		if err := core.Read(r, &llmOutput); err != nil {
-			return err
-		}
-
-		toolCalls := parseToolCalls(llmOutput)
-		if len(toolCalls) == 0 {
-			return core.Write(w, llmOutput)
-		}
-
-		// Execute tools with configuration
-		results := executeToolCallsWithConfig(ctx, tools, toolCalls, config)
-
-		// Check if we should pass through on error
-		if config.PassThroughOnError {
-			hasErrors := false
-			for _, result := range results {
-				if result.Error != "" {
-					hasErrors = true
-					break
-				}
-			}
-			if hasErrors {
-				return core.Write(w, llmOutput)
-			}
-		}
-
-		// Format results
-		var output string
-		if config.IncludeOriginalOutput {
-			output = formatToolResultsWithOriginal(results, llmOutput)
-		} else {
-			output = formatToolResults(results, llmOutput)
-		}
-
-		return core.Write(w, output)
+// Execute parses LLM output for tool calls and executes them using tools from Registry.
+//
+// Input: LLM output containing tool calls (assumes tool calls are present)
+// Output: formatted tool results
+// Behavior: BUFFERED - reads entire input to parse and execute tools
+//
+// This middleware assumes tool calls are present and will error if none are found.
+// Use tools.Detect() to conditionally route inputs with/without tool calls.
+//
+// Example:
+//
+//	detector := tools.Detect(tools.Execute(), flow.PassThrough())
+//	pipe.Use(tools.Registry(calc, search)).
+//	     Use(llm.Chat(provider)).
+//	     Use(detector)
+func Execute() core.Handler {
+	return ExecuteWithOptions(ExecuteConfig{
+		PassThroughOnError:    false,
+		MaxConcurrentTools:    0, // No limit
+		IncludeOriginalOutput: false,
 	})
 }
 
-// parseToolCalls extracts tool calls from LLM output using multiple parsing strategies
-func parseToolCalls(output string) []ToolCall {
-	var toolCalls []ToolCall
+// ExecuteWithOptions creates an Execute middleware with custom configuration
+// This assumes tool calls are present in the input and will error if none are found
+func ExecuteWithOptions(config ExecuteConfig) core.Handler {
+	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+		tools := GetTools(ctx)
+		if len(tools) == 0 {
+			return fmt.Errorf("no tools available in context")
+		}
 
-	// Strategy 1: JSON format
-	if calls := parseJSONToolCalls(output); len(calls) > 0 {
-		toolCalls = append(toolCalls, calls...)
-	}
+		// Read all input - we assume tools are present so no streaming needed
+		inputBytes, err := io.ReadAll(r)
+		if err != nil {
+			return err
+		}
 
-	// Strategy 2: Simple TOOL:name:args format
-	if calls := parseSimpleToolCalls(output); len(calls) > 0 {
-		toolCalls = append(toolCalls, calls...)
-	}
-
-	// Strategy 3: XML-like format
-	if calls := parseXMLToolCalls(output); len(calls) > 0 {
-		toolCalls = append(toolCalls, calls...)
-	}
-
-	return toolCalls
+		// Parse and execute tools directly from input bytes
+		return executeFromBytes(ctx, inputBytes, w, tools, config)
+	})
 }
 
-// parseJSONToolCalls parses JSON format tool calls
-func parseJSONToolCalls(output string) []ToolCall {
+// executeFromBytes executes tools directly from input bytes (simplified version for Execute)
+func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools []Tool, config ExecuteConfig) error {
+	// Parse tool calls from input
+	toolCalls := parseToolCalls(inputBytes)
+
+	// Error if no tools found since Execute assumes tools are present
+	if len(toolCalls) == 0 {
+		return fmt.Errorf("no tool calls found in input - use tools.Detect() to handle inputs without tools")
+	}
+
+	// Execute tool calls with configuration
+	results := executeToolCallsWithConfig(ctx, tools, toolCalls, config)
+
+	// Check for errors in tool execution
+	hasErrors := false
+	var firstError string
+	for _, result := range results {
+		if result.Error != "" {
+			hasErrors = true
+			if firstError == "" {
+				firstError = result.Error
+			}
+		}
+	}
+
+	// Handle errors based on configuration
+	if hasErrors {
+		if config.PassThroughOnError {
+			// Pass through original LLM output on error
+			return core.Write(w, inputBytes)
+		} else {
+			// Return error when PassThroughOnError is false
+			return fmt.Errorf("tool execution failed: %s", firstError)
+		}
+	}
+
+	// Format results based on configuration
+	var output string
+	if config.IncludeOriginalOutput {
+		output = formatToolResultsWithOriginal(results, inputBytes)
+	} else {
+		output = formatToolResults(results, inputBytes)
+	}
+
+	return core.Write(w, output)
+}
+
+// ParseToolCalls extracts tool calls from LLM output using JSON parsing (OpenAI standard)
+func parseToolCalls(output []byte) []ToolCall {
+	// Only JSON format supported (OpenAI standard)
+	return parseJSONToolCalls(output)
+}
+
+// parseErrorToolCall creates a standardized parse error ToolCall
+func parseErrorToolCall(output []byte, errorMsg string) []ToolCall {
+	return []ToolCall{{
+		Name:      "_parse_error",
+		Arguments: string(output), // Preserve original malformed content
+		Error:     errorMsg,
+	}}
+}
+
+// parseJSONToolCalls parses JSON format tool calls (OpenAI standard)
+// This function is only called when hasToolCalls() detected tool patterns,
+// so we can safely return parse errors for malformed JSON.
+func parseJSONToolCalls(output []byte) []ToolCall {
 	var result struct {
-		ToolCalls []ToolCall `json:"tool_calls"`
+		ToolCalls []OpenAIToolCall `json:"tool_calls"`
 	}
 
-	if err := json.Unmarshal([]byte(output), &result); err != nil {
-		return nil
+	if err := json.Unmarshal(output, &result); err != nil {
+		return parseErrorToolCall(output, fmt.Sprintf("Failed to parse tool call JSON: %v", err))
 	}
 
-	return result.ToolCalls
-}
+	// parses but toolCalls is empty
+	if len(result.ToolCalls) == 0 {
+		return parseErrorToolCall(output, "JSON parsed successfully but contains no tool calls")
+	}
 
-// parseSimpleToolCalls parses TOOL:name:args format
-func parseSimpleToolCalls(output string) []ToolCall {
-	// Pattern: TOOL:tool_name:arguments
-	re := regexp.MustCompile(`TOOL:([^:]+):(.*)`)
-	matches := re.FindAllStringSubmatch(output, -1)
+	// Convert OpenAI format to our internal format and validate structure
+	toolCalls := make([]ToolCall, len(result.ToolCalls))
+	for i, openaiCall := range result.ToolCalls {
+		// Validate that the tool call has the expected OpenAI structure
+		if openaiCall.Function.Name == "" {
+			return parseErrorToolCall(output, fmt.Sprintf("Tool call %d missing function name - invalid OpenAI format", i))
+		}
 
-	var toolCalls []ToolCall
-	for i, match := range matches {
-		if len(match) >= 3 {
-			toolCalls = append(toolCalls, ToolCall{
-				Name:      strings.TrimSpace(match[1]),
-				Arguments: strings.TrimSpace(match[2]),
-				ID:        fmt.Sprintf("call_%d", i),
-			})
+		toolCalls[i] = ToolCall{
+			Name:      openaiCall.Function.Name,
+			Arguments: openaiCall.Function.Arguments,
+			ID:        fmt.Sprintf("call_%d", i),
 		}
 	}
 
 	return toolCalls
 }
 
-// parseXMLToolCalls parses XML-like format tool calls
-func parseXMLToolCalls(output string) []ToolCall {
-	// Pattern: <tool name="tool_name">arguments</tool>
-	re := regexp.MustCompile(`<tool\s+name="([^"]+)"[^>]*>(.*?)</tool>`)
-	matches := re.FindAllStringSubmatch(output, -1)
-
-	var toolCalls []ToolCall
-	for i, match := range matches {
-		if len(match) >= 3 {
-			toolCalls = append(toolCalls, ToolCall{
-				Name:      strings.TrimSpace(match[1]),
-				Arguments: strings.TrimSpace(match[2]),
-				ID:        fmt.Sprintf("xml_call_%d", i),
-			})
+// executeToolCallsWithConfig executes multiple tool calls with configuration
+func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []ToolCall, config ExecuteConfig) []ToolResult {
+	if config.MaxConcurrentTools <= 0 || config.MaxConcurrentTools >= len(toolCalls) {
+		// Execute all concurrently or sequentially if no limit
+		results := make([]ToolResult, len(toolCalls))
+		for i, toolCall := range toolCalls {
+			results[i] = executeToolCall(ctx, tools, toolCall)
 		}
+		return results
 	}
 
-	return toolCalls
+	// Execute with concurrency limit
+	results := make([]ToolResult, len(toolCalls))
+	semaphore := make(chan struct{}, config.MaxConcurrentTools)
+
+	for i, toolCall := range toolCalls {
+		semaphore <- struct{}{} // Acquire
+		go func(index int, call ToolCall) {
+			defer func() { <-semaphore }() // Release
+			results[index] = executeToolCall(ctx, tools, call)
+		}(i, toolCall)
+	}
+
+	// Wait for all to complete
+	for i := 0; i < config.MaxConcurrentTools; i++ {
+		semaphore <- struct{}{}
+	}
+
+	return results
 }
 
 // executeToolCall executes a single tool call
@@ -245,41 +251,10 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 	}
 }
 
-// executeToolCallsWithConfig executes multiple tool calls with configuration
-func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []ToolCall, config ExecuteConfig) []ToolResult {
-	if config.MaxConcurrentTools <= 0 || config.MaxConcurrentTools >= len(toolCalls) {
-		// Execute all concurrently or sequentially if no limit
-		results := make([]ToolResult, len(toolCalls))
-		for i, toolCall := range toolCalls {
-			results[i] = executeToolCall(ctx, tools, toolCall)
-		}
-		return results
-	}
-
-	// Execute with concurrency limit
-	results := make([]ToolResult, len(toolCalls))
-	semaphore := make(chan struct{}, config.MaxConcurrentTools)
-
-	for i, toolCall := range toolCalls {
-		semaphore <- struct{}{} // Acquire
-		go func(index int, call ToolCall) {
-			defer func() { <-semaphore }() // Release
-			results[index] = executeToolCall(ctx, tools, call)
-		}(i, toolCall)
-	}
-
-	// Wait for all to complete
-	for i := 0; i < config.MaxConcurrentTools; i++ {
-		semaphore <- struct{}{}
-	}
-
-	return results
-}
-
 // formatToolResults formats tool execution results for output
-func formatToolResults(results []ToolResult, originalOutput string) string {
+func formatToolResults(results []ToolResult, originalOutput []byte) string {
 	if len(results) == 0 {
-		return originalOutput
+		return string(originalOutput)
 	}
 
 	var output strings.Builder
@@ -303,11 +278,11 @@ func formatToolResults(results []ToolResult, originalOutput string) string {
 }
 
 // formatToolResultsWithOriginal includes the original LLM output
-func formatToolResultsWithOriginal(results []ToolResult, originalOutput string) string {
+func formatToolResultsWithOriginal(results []ToolResult, originalOutput []byte) string {
 	var output strings.Builder
 
 	output.WriteString("Original LLM Output:\n")
-	output.WriteString(originalOutput)
+	output.WriteString(string(originalOutput))
 	output.WriteString("\n\n")
 
 	output.WriteString(formatToolResults(results, originalOutput))
@@ -318,127 +293,7 @@ func formatToolResultsWithOriginal(results []ToolResult, originalOutput string) 
 // hasToolCalls detects if the initial chunk contains tool call patterns
 func hasToolCalls(data []byte) bool {
 	content := string(data)
-	
-	// High confidence patterns - JSON format
-	if strings.Contains(content, `{"tool_calls":`) {
-		return true
-	}
-	
-	// High confidence patterns - XML format  
-	if strings.Contains(content, `<tool name="`) {
-		return true
-	}
-	
-	// Medium confidence patterns - Simple format
-	// Look for TOOL: followed by word characters and a colon to avoid false positives
-	if regexp.MustCompile(`TOOL:\w+:\w`).MatchString(content) {
-		return true
-	}
-	
-	return false
-}
 
-// executeBuffered handles full buffering when tools are detected
-func executeBuffered(ctx context.Context, initialChunk []byte, r io.Reader, w io.Writer, tools []Tool, config ExecuteConfig) error {
-	// Read remaining data and combine with initial chunk
-	remainingData, err := io.ReadAll(r)
-	if err != nil {
-		return err
-	}
-	
-	// Combine initial chunk with remaining data
-	fullOutput := string(initialChunk) + string(remainingData)
-	
-	// Parse and execute tools using existing logic
-	toolCalls := parseToolCalls(fullOutput)
-	if len(toolCalls) == 0 {
-		// No tool calls found after all, just write the full output
-		return core.Write(w, fullOutput)
-	}
-	
-	// Execute tool calls with configuration
-	results := executeToolCallsWithConfig(ctx, tools, toolCalls, config)
-	
-	// Check if we should pass through on error
-	if config.PassThroughOnError {
-		hasErrors := false
-		for _, result := range results {
-			if result.Error != "" {
-				hasErrors = true
-				break
-			}
-		}
-		if hasErrors {
-			return core.Write(w, fullOutput)
-		}
-	}
-	
-	// Format results based on configuration
-	var output string
-	if config.IncludeOriginalOutput {
-		output = formatToolResultsWithOriginal(results, fullOutput)
-	} else {
-		output = formatToolResults(results, fullOutput)
-	}
-	
-	return core.Write(w, output)
-}
-
-// streamWithInitial streams the initial chunk and remaining data
-func streamWithInitial(initialChunk []byte, r io.Reader, w io.Writer) error {
-	// Write the initial chunk first
-	if len(initialChunk) > 0 {
-		if _, err := w.Write(initialChunk); err != nil {
-			return err
-		}
-	}
-	
-	// Stream the rest
-	_, err := io.Copy(w, r)
-	return err
-}
-
-// ExecuteWithStreaming creates a streaming-first Execute middleware
-// 
-// This implementation buffers only the first ~200 bytes to detect tool calls.
-// If no tools are detected, it immediately switches to streaming mode for
-// optimal user experience. If tools are detected, it switches to buffered
-// mode to properly parse and execute tools.
-//
-// Benefits:
-// - No tool call "leakage" to user
-// - Fast streaming for non-tool responses  
-// - Minimal initial delay (~200 bytes vs full response)
-// - Reliable tool detection using proven patterns
-func ExecuteWithStreaming(config ExecuteConfig, bufferSize int) core.Handler {
-	if bufferSize <= 0 {
-		bufferSize = 200 // Default buffer size
-	}
-	
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		tools := GetTools(ctx)
-		if len(tools) == 0 {
-			// No tools available, pure streaming passthrough
-			_, err := io.Copy(w, r)
-			return err
-		}
-		
-		// Buffer initial chunk to detect tool calls
-		initialBuffer := make([]byte, bufferSize)
-		n, err := r.Read(initialBuffer)
-		if err != nil && err != io.EOF {
-			return err
-		}
-		
-		initialChunk := initialBuffer[:n]
-		
-		// Check for tool patterns in initial chunk
-		if hasToolCalls(initialChunk) {
-			// Tool detected - switch to full buffering mode
-			return executeBuffered(ctx, initialChunk, r, w, tools, config)
-		}
-		
-		// No tools detected - stream the rest
-		return streamWithInitial(initialChunk, r, w)
-	})
+	// JSON format (OpenAI standard) - high confidence pattern
+	return strings.Contains(content, `{"tool_calls":`)
 }

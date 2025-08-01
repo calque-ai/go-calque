@@ -10,32 +10,37 @@ import (
 // toolsContextKey is used to store tools in context
 type toolsContextKey struct{}
 
-// Registry stores available tools in the context for later use by Execute middleware.
-// This middleware is streaming - it passes input through unchanged while making
-// tools available to downstream middleware.
+// Registry creates a handler that makes tools available to its own execution context.
+// This is useful for advanced pipeline composition where you want manual control.
+//
+// Note: Due to the streaming architecture, tools are only available within the same
+// handler execution context, not to downstream handlers in a pipeline. For most use cases,
+// prefer llm.Agent() which handles tool registration and execution automatically.
 //
 // Input: any data type (streaming - passes through unchanged)
 // Output: same as input (pass-through)
-// Behavior: STREAMING - adds tools to context, passes data through
-//
-// The tools are stored in the request context and can be retrieved by Execute()
-// or other middleware that needs access to the available tools.
+// Behavior: STREAMING - makes tools available via GetTools() within handler execution
 //
 // Example:
 //
 //	registry := tools.Registry(calculatorTool, searchTool)
-//	pipe.Use(registry) // Tools now available in context for Execute()
+//	// Tools are available within the registry handler's execution context
 func Registry(tools ...Tool) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		// Store tools in context for later retrieval
-		ctx = context.WithValue(ctx, toolsContextKey{}, tools)
+	return &registryHandler{tools: tools}
+}
 
-		// Pass input through unchanged while preserving the enhanced context
-		// Note: We can't directly pass the enhanced context to io.Copy since it doesn't accept context,
-		// but the context enhancement will be available to any downstream handlers
-		_, err := io.Copy(w, r)
-		return err
-	})
+// registryHandler implements the registry with tools stored as instance data
+type registryHandler struct {
+	tools []Tool
+}
+
+func (rh *registryHandler) ServeFlow(ctx context.Context, r io.Reader, w io.Writer) error {
+	// Create a context with tools for this handler's execution
+	ctx = context.WithValue(ctx, toolsContextKey{}, rh.tools)
+	
+	// Pass input through unchanged 
+	_, err := io.Copy(w, r)
+	return err
 }
 
 // GetTools retrieves tools from the context.

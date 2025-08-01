@@ -5,24 +5,28 @@ import (
 	"io"
 
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/invopop/jsonschema"
+	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
 
-// Tool defines a function that can be called by the LLM.
-// Tools are handlers that extend the core Handler interface with metadata.
+// Tool defines a function that can be called by the LLM (OpenAI Function Calling standard).
+// Tools are handlers that extend the core Handler interface with metadata and schema.
 // Tools can be composed, logged, timed, cached like any other handler.
 // Tools are streaming-compatible by default.
 type Tool interface {
-	core.Handler         // ServeFlow method for execution
-	Name() string        // LLMs need to know what to call (e.g., "calculator", "web_search")
-	Description() string // LLMs need context about what the tool does to use it appropriately
+	core.Handler                    // ServeFlow method for execution
+	Name() string                   // Function name (e.g., "get_current_weather")
+	Description() string            // What the function does
+	ParametersSchema() *jsonschema.Schema // JSON schema for function parameters (OpenAI standard)
 }
 
 // toolImpl is the basic implementation of Tool interface
 // Wraps any existing core.Handler and adds metadata.
 type toolImpl struct {
-	name        string
-	description string
-	handler     core.Handler
+	name             string
+	description      string
+	parametersSchema *jsonschema.Schema
+	handler          core.Handler
 }
 
 func (t *toolImpl) Name() string {
@@ -33,25 +37,38 @@ func (t *toolImpl) Description() string {
 	return t.description
 }
 
+func (t *toolImpl) ParametersSchema() *jsonschema.Schema {
+	return t.parametersSchema
+}
+
 func (t *toolImpl) ServeFlow(ctx context.Context, r io.Reader, w io.Writer) error {
 	return t.handler.ServeFlow(ctx, r, w)
 }
 
-// New creates a tool with full control over name, description, and handler.
+// New creates a tool with full control over name, description, schema, and handler.
 // This is the most flexible constructor for complex tools.
 //
 // Example:
 //
+//	schema := &jsonschema.Schema{
+//		Type: "object",
+//		Properties: map[string]*jsonschema.Schema{
+//			"query": {Type: "string", Description: "Search query"},
+//		},
+//		Required: []string{"query"},
+//	}
 //	searchTool := tools.New(
 //	    "web_search",
 //	    "Search the web for current information",
+//	    schema,
 //	    mySearchHandler,
 //	)
-func New(name, description string, handler core.Handler) Tool {
+func New(name, description string, parametersSchema *jsonschema.Schema, handler core.Handler) Tool {
 	return &toolImpl{
-		name:        name,
-		description: description,
-		handler:     handler,
+		name:             name,
+		description:      description,
+		parametersSchema: parametersSchema,
+		handler:          handler,
 	}
 }
 
@@ -68,6 +85,21 @@ func (q *simpleTool) Name() string {
 
 func (q *simpleTool) Description() string {
 	return q.description
+}
+
+func (q *simpleTool) ParametersSchema() *jsonschema.Schema {
+	// Simple tools use a basic schema with a single "input" string parameter
+	properties := orderedmap.New[string, *jsonschema.Schema]()
+	properties.Set("input", &jsonschema.Schema{
+		Type:        "string",
+		Description: "Input for the " + q.name + " tool",
+	})
+	
+	return &jsonschema.Schema{
+		Type:       "object",
+		Properties: properties,
+		Required:   []string{"input"},
+	}
 }
 
 func (q *simpleTool) ServeFlow(ctx context.Context, r io.Reader, w io.Writer) error {
@@ -119,5 +151,18 @@ func Simple(name, description string, fn func(string) string) Tool {
 //	    },
 //	)
 func HandlerFunc(name, description string, fn func(context.Context, io.Reader, io.Writer) error) Tool {
-	return New(name, description, core.HandlerFunc(fn))
+	// HandlerFunc tools use a basic schema with a single "input" string parameter
+	properties := orderedmap.New[string, *jsonschema.Schema]()
+	properties.Set("input", &jsonschema.Schema{
+		Type:        "string",
+		Description: "Input for the " + name + " tool",
+	})
+	
+	schema := &jsonschema.Schema{
+		Type:       "object",
+		Properties: properties,
+		Required:   []string{"input"},
+	}
+	
+	return New(name, description, schema, core.HandlerFunc(fn))
 }

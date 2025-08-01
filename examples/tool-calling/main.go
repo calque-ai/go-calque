@@ -84,7 +84,7 @@ func runSimpleAgentExample() {
 	}
 
 	// Create agent with tools - this handles everything automatically
-	agent := tools.Agent(provider, calculator, dateTime, fileInfo)
+	agent := llm.Agent(provider, calculator, dateTime, fileInfo)
 
 	// Run the agent
 	ctx := context.Background()
@@ -174,9 +174,8 @@ func runAdvancedAgentExample() {
 		})
 
 	// Configure robust agent with error handling
-	config := tools.AgentConfig{
+	config := llm.AgentConfig{
 		MaxIterations: 3,
-		FormatStyle:   tools.FormatStyleJSON,
 		ExecuteConfig: tools.ExecuteConfig{
 			PassThroughOnError:    true, // Continue on tool errors
 			MaxConcurrentTools:    2,    // Limit concurrent execution
@@ -192,7 +191,7 @@ func runAdvancedAgentExample() {
 		return
 	}
 
-	agent := tools.AgentWithConfig(provider, config, calculator, unstableTool)
+	agent := llm.AgentWithConfig(provider, config, calculator, unstableTool)
 
 	ctx := context.Background()
 	input := "Please calculate 10 + 5 using the calculator tool."
