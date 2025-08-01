@@ -2,7 +2,6 @@ package cache
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -45,8 +44,8 @@ func NewCacheWithStore(store CacheStore) *CacheMemory {
 //	cacheM := cache.NewCache()
 //	flow.Use(cacheM.Cache(llmHandler, 1*time.Hour)) // Cache for 1 hour
 func (cm *CacheMemory) Cache(handler core.Handler, ttl time.Duration) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+		input, err := io.ReadAll(r.Data)
 		if err != nil {
 			return err
 		}
@@ -55,13 +54,15 @@ func (cm *CacheMemory) Cache(handler core.Handler, ttl time.Duration) core.Handl
 
 		// Try to get from cache
 		if cached, err := cm.store.Get(key); err == nil && cached != nil {
-			_, err := w.Write(cached)
+			_, err := w.Data.Write(cached)
 			return err
 		}
 
 		// Cache miss - execute handler
 		var output bytes.Buffer
-		if err := handler.ServeFlow(ctx, bytes.NewReader(input), &output); err != nil {
+		handlerReq := core.NewRequest(r.Context, bytes.NewReader(input))
+		handlerRes := core.NewResponse(&output)
+		if err := handler.ServeFlow(handlerReq, handlerRes); err != nil {
 			return err
 		}
 
@@ -73,7 +74,7 @@ func (cm *CacheMemory) Cache(handler core.Handler, ttl time.Duration) core.Handl
 			// Could add optional logger here
 		}
 
-		_, err = w.Write(result)
+		_, err = w.Data.Write(result)
 		return err
 	})
 }

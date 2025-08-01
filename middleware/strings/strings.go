@@ -2,7 +2,6 @@ package strings
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -31,14 +30,14 @@ import (
 //	  return string(runes)
 //	})
 func Transform(fn func(string) string) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
 
 		output := fn(string(input))
-		_, err = w.Write([]byte(output))
+		_, err = res.Data.Write([]byte(output))
 		return err
 	})
 }
@@ -61,16 +60,19 @@ func Transform(fn func(string) string) core.Handler {
 //	  textHandler,
 //	)
 func Branch(condition func(string) bool, ifHandler core.Handler, elseHandler core.Handler) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
 
+		req.Data = strings.NewReader(input)
+
 		if condition(string(input)) {
-			return ifHandler.ServeFlow(ctx, strings.NewReader(string(input)), w)
+			return ifHandler.ServeFlow(req, res)
 		}
-		return elseHandler.ServeFlow(ctx, strings.NewReader(string(input)), w)
+		return elseHandler.ServeFlow(req, res)
 	})
 }
 
@@ -92,18 +94,20 @@ func Branch(condition func(string) bool, ifHandler core.Handler, elseHandler cor
 //	)
 //	// Only valid JSON gets processed, everything else passes through
 func Filter(condition func(string) bool, handler core.Handler) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input string
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
 
-		if condition(string(input)) {
-			return handler.ServeFlow(ctx, strings.NewReader(string(input)), w)
+		if condition(input) {
+			req.Data = strings.NewReader(input)
+			return handler.ServeFlow(req, res)
 		}
 
 		// Pass through unchanged
-		_, err = w.Write(input)
+		err = core.Write(res, input)
 		return err
 	})
 }
@@ -127,13 +131,13 @@ func Filter(condition func(string) bool, handler core.Handler) core.Handler {
 //	  return strings.ToUpper(line) // Convert CSV to uppercase
 //	})
 func LineProcessor(fn func(string) string) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		scanner := bufio.NewScanner(r)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		scanner := bufio.NewScanner(req.Data)
 
 		for scanner.Scan() {
 			line := scanner.Text()
 			processed := fn(line)
-			if _, err := fmt.Fprintln(w, processed); err != nil {
+			if _, err := fmt.Fprintln(res.Data, processed); err != nil {
 				return err
 			}
 		}

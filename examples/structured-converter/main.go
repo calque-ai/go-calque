@@ -169,9 +169,9 @@ func outputParsingExample() {
 
 // Mock handlers for demonstration
 func mockCareerAnalysisLLM() core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
 		// Read the structured input (we'll ignore it for this demo)
-		input, _ := io.ReadAll(r)
+		input, _ := io.ReadAll(r.Data)
 
 		// Log what we received
 		fmt.Printf("LLM received structured input:\n%s\n", string(input))
@@ -184,14 +184,14 @@ func mockCareerAnalysisLLM() core.Handler {
   salary_estimate: 120
   recommended_city: "Austin"`
 
-		_, err := w.Write([]byte(response))
+		_, err := w.Data.Write([]byte(response))
 		return err
 	})
 }
 
 func mockResponseHandler(response string) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := w.Write([]byte(response))
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+		_, err := w.Data.Write([]byte(response))
 		return err
 	})
 }

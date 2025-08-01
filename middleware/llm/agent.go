@@ -65,11 +65,11 @@ func Agent(provider LLMProvider, tools ...tools.Tool) core.Handler {
 
 // AgentWithConfig creates a tool-calling agent with custom configuration
 func AgentWithConfig(provider LLMProvider, config AgentConfig, toolList ...tools.Tool) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
 		// Apply timeout if configured
 		if config.Timeout > 0 {
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, config.Timeout)
+			r.Context, cancel = context.WithTimeout(r.Context, config.Timeout)
 			defer cancel()
 		}
 
@@ -77,15 +77,15 @@ func AgentWithConfig(provider LLMProvider, config AgentConfig, toolList ...tools
 		iterationHandler := buildIterationHandler(provider, config, toolList...)
 
 		// Execute the iteration handler
-		return iterationHandler.ServeFlow(ctx, r, w)
+		return iterationHandler.ServeFlow(r, w)
 	})
 }
 
 // buildIterationHandler creates the iterative tool-calling handler using the framework
 func buildIterationHandler(provider LLMProvider, config AgentConfig, toolList ...tools.Tool) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
 		// Read initial input
-		input, err := io.ReadAll(r)
+		input, err := io.ReadAll(r.Data)
 		if err != nil {
 			return err
 		}
@@ -111,7 +111,7 @@ func buildIterationHandler(provider LLMProvider, config AgentConfig, toolList ..
 
 			// Execute single iteration
 			var output []byte
-			if err := pipe.Run(ctx, currentInput, &output); err != nil {
+			if err := pipe.Run(r.Context, currentInput, &output); err != nil {
 				return fmt.Errorf("iteration %d failed: %w", iteration, err)
 			}
 
@@ -125,7 +125,7 @@ func buildIterationHandler(provider LLMProvider, config AgentConfig, toolList ..
 			if !containsToolResults(outputStr) {
 				// No tools executed - write final output and stop
 				fmt.Printf("No tools detected, terminating at iteration %d\n", iteration)
-				_, err := w.Write(output)
+				_, err := w.Data.Write(output)
 				return err
 			}
 
@@ -141,18 +141,18 @@ func buildIterationHandler(provider LLMProvider, config AgentConfig, toolList ..
 
 // addToolInformation adds tool schema to the input (replaces formatInputWithTools)
 func addToolInformation() core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
 		// Read input
-		input, err := io.ReadAll(r)
+		input, err := io.ReadAll(r.Data)
 		if err != nil {
 			return err
 		}
 
 		// Get tools from context
-		toolList := tools.GetTools(ctx)
+		toolList := tools.GetTools(r.Context)
 		if len(toolList) == 0 {
 			// No tools - pass through unchanged
-			_, err := w.Write(input)
+			_, err := w.Data.Write(input)
 			return err
 		}
 
@@ -162,7 +162,7 @@ func addToolInformation() core.Handler {
 		copy(result, input)
 		copy(result[len(input):], []byte(toolSchema))
 
-		_, err = w.Write(result)
+		_, err = w.Data.Write(result)
 		return err
 	})
 }
@@ -216,7 +216,9 @@ func executeToolLoop(ctx context.Context, provider LLMProvider, initialInput []b
 		)
 
 		// Execute detection and routing
-		if err := detectHandler.ServeFlow(ctx, llmReader, finalOutput); err != nil {
+		req := core.NewRequest(ctx, llmReader)
+		res := core.NewResponse(finalOutput)
+		if err := detectHandler.ServeFlow(req, res); err != nil {
 			return fmt.Errorf("tool detection/execution failed: %w", err)
 		}
 
@@ -271,7 +273,9 @@ func formatInputWithTools(ctx context.Context, input []byte) ([]byte, error) {
 
 // callLLM makes a call to the LLM provider and streams response to writer
 func callLLM(ctx context.Context, provider LLMProvider, input []byte, w io.Writer) error {
-	return provider.Chat(ctx, bytes.NewReader(input), w)
+	req := core.NewRequest(ctx, bytes.NewReader(input))
+	res := core.NewResponse(w)
+	return provider.Chat(req, res)
 }
 
 // containsToolResults checks if the output contains tool execution results

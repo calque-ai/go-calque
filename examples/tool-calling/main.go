@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strconv"
@@ -59,7 +58,7 @@ func runSimpleAgentExample() {
 	})
 
 	fileInfo := tools.HandlerFunc("file_info", "Get information about a file",
-		func(ctx context.Context, r io.Reader, w io.Writer) error {
+		func(r *core.Request, w *core.Response) error {
 			var filename string
 			if err := core.Read(r, &filename); err != nil {
 				return err
@@ -123,7 +122,6 @@ func runFlexiblePipelineExample() {
 	pipeline := core.New().
 		Use(flow.Logger("INPUT", 200)).                // Log input
 		Use(tools.Registry(textProcessor, wordCount)). // Register tools
-		Use(tools.Format(tools.FormatStyleDetailed)).  // Format tool info for LLM
 		Use(flow.Logger("PRE-LLM", 300)).              // Log formatted input
 		Use(llm.Chat(provider)).                       // Send to LLM
 		Use(flow.Logger("LLM-RESPONSE", 300)).         // Log LLM response
@@ -159,7 +157,7 @@ func runAdvancedAgentExample() {
 
 	// Tool that sometimes fails
 	unstableTool := tools.HandlerFunc("unstable_tool", "A tool that sometimes fails",
-		func(ctx context.Context, r io.Reader, w io.Writer) error {
+		func(r *core.Request, w *core.Response) error {
 			var input string
 			if err := core.Read(r, &input); err != nil {
 				return err
@@ -275,7 +273,7 @@ func evaluateExpression(expr string) (float64, error) {
 
 // createTextProcessorHandler creates a handler for text processing
 func createTextProcessorHandler() core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
 		var text string
 		if err := core.Read(r, &text); err != nil {
 			return err

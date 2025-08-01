@@ -2,7 +2,6 @@ package flow
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"log"
@@ -38,8 +37,8 @@ func Logger(prefix string, peekBytes int, logger ...LoggerInterface) core.Handle
 		l = log.Default()
 	}
 
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		bufReader := bufio.NewReader(r)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		bufReader := bufio.NewReader(req.Data)
 
 		// Peek at first N bytes for logging without consuming
 		firstLine, err := bufReader.Peek(peekBytes)
@@ -52,7 +51,7 @@ func Logger(prefix string, peekBytes int, logger ...LoggerInterface) core.Handle
 		l.Printf("[%s]: %s\n", prefix, preview)
 
 		// Pass through unchanged using buffered reader
-		_, err = io.Copy(w, bufReader)
+		_, err = io.Copy(res.Data, bufReader)
 		return err
 	})
 }

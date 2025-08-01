@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"slices"
 	"sort"
 	"strings"
@@ -146,7 +145,7 @@ func mapToAnagramFormat() core.Handler {
 
 // accumulateAnagrams collects all anagram mappings
 func accumulateAnagrams() core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
 		var input string
 		if err := core.Read(r, &input); err != nil {
 			return err

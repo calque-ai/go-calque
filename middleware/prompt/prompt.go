@@ -2,7 +2,6 @@ package prompt
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"text/template"
@@ -26,7 +25,7 @@ func Template(templateStr string, data ...map[string]any) core.Handler {
 	tmpl, err := template.New("prompt").Parse(templateStr)
 	if err != nil {
 		// Return a handler that always returns the parsing error
-		return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+		return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 			return fmt.Errorf("template parse error: %w", err)
 		})
 	}
@@ -129,9 +128,9 @@ func Instruct(instruction string) core.Handler {
 //	tmpl := template.Must(template.New("main").Funcs(funcMap).ParseGlob("*.tmpl"))
 //	prompt.FromTemplate(tmpl.Lookup("system"), data)
 func FromTemplate(tmpl *template.Template, data ...map[string]any) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		// Read input
-		inputBytes, err := io.ReadAll(r)
+		inputBytes, err := io.ReadAll(req.Data)
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -155,7 +154,7 @@ func FromTemplate(tmpl *template.Template, data ...map[string]any) core.Handler 
 		}
 
 		// Write result
-		_, err = w.Write(output.Bytes())
+		_, err = res.Data.Write(output.Bytes())
 		return err
 	})
 }

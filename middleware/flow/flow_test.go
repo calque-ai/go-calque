@@ -13,17 +13,17 @@ import (
 )
 
 func TestBranch(t *testing.T) {
-	mockIfHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := w.Write([]byte("if-executed"))
+	mockIfHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		_, err := res.Data.Write([]byte("if-executed"))
 		return err
 	})
 
-	mockElseHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := w.Write([]byte("else-executed"))
+	mockElseHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		_, err := res.Data.Write([]byte("else-executed"))
 		return err
 	})
 
-	errorHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -108,7 +108,9 @@ func TestBranch(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Branch() error = %v, wantErr %v", err, tt.wantErr)
@@ -162,7 +164,9 @@ func TestTeeReader(t *testing.T) {
 			handler := TeeReader(&teeBuffer1, &teeBuffer2)
 			reader := strings.NewReader(tt.input)
 
-			err := handler.ServeFlow(context.Background(), reader, &output)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&output)
+			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("TeeReader() error = %v, wantErr %v", err, tt.wantErr)
@@ -191,7 +195,9 @@ func TestTeeReaderNoDestinations(t *testing.T) {
 	handler := TeeReader()
 	reader := strings.NewReader(input)
 
-	err := handler.ServeFlow(context.Background(), reader, &output)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&output)
+	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("TeeReader() with no destinations error = %v", err)
 	}
@@ -202,35 +208,35 @@ func TestTeeReaderNoDestinations(t *testing.T) {
 }
 
 func TestParallel(t *testing.T) {
-	handler1 := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	handler1 := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("handler1:" + string(input)))
+		_, err = res.Data.Write([]byte("handler1:" + string(input)))
 		return err
 	})
 
-	handler2 := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	handler2 := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("handler2:" + string(input)))
+		_, err = res.Data.Write([]byte("handler2:" + string(input)))
 		return err
 	})
 
-	slowHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	slowHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		time.Sleep(50 * time.Millisecond)
-		input, err := io.ReadAll(r)
+		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("slow:" + string(input)))
+		_, err = res.Data.Write([]byte("slow:" + string(input)))
 		return err
 	})
 
-	errorHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -284,7 +290,9 @@ func TestParallel(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Parallel() error = %v, wantErr %v", err, tt.wantErr)
@@ -326,7 +334,9 @@ func TestParallelNoHandlers(t *testing.T) {
 	handler := Parallel[[]byte]()
 	reader := strings.NewReader(input)
 
-	err := handler.ServeFlow(context.Background(), reader, &buf)
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Parallel() with no handlers error = %v", err)
 	}
@@ -337,35 +347,35 @@ func TestParallelNoHandlers(t *testing.T) {
 }
 
 func TestTimeout(t *testing.T) {
-	fastHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	fastHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("fast:" + string(input)))
+		_, err = res.Data.Write([]byte("fast:" + string(input)))
 		return err
 	})
 
-	slowHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	slowHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		time.Sleep(200 * time.Millisecond)
-		input, err := io.ReadAll(r)
+		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("slow:" + string(input)))
+		_, err = res.Data.Write([]byte("slow:" + string(input)))
 		return err
 	})
 
-	contextCheckHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	contextCheckHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-req.Context.Done():
+			return req.Context.Err()
 		case <-time.After(50 * time.Millisecond):
-			input, err := io.ReadAll(r)
+			input, err := io.ReadAll(req.Data)
 			if err != nil {
 				return err
 			}
-			_, err = w.Write([]byte("completed:" + string(input)))
+			_, err = res.Data.Write([]byte("completed:" + string(input)))
 			return err
 		}
 	})
@@ -420,7 +430,9 @@ func TestTimeout(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Timeout() error = %v, wantErr %v", err, tt.wantErr)
@@ -443,29 +455,29 @@ func TestTimeout(t *testing.T) {
 
 func TestRetry(t *testing.T) {
 	attemptCount := 0
-	failingHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	failingHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		attemptCount++
 		if attemptCount < 3 {
 			return errors.New("temporary failure")
 		}
-		input, err := io.ReadAll(r)
+		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("success:" + string(input)))
+		_, err = res.Data.Write([]byte("success:" + string(input)))
 		return err
 	})
 
-	alwaysFailHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	alwaysFailHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return errors.New("persistent failure")
 	})
 
-	successHandler := core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	successHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("first-try:" + string(input)))
+		_, err = res.Data.Write([]byte("first-try:" + string(input)))
 		return err
 	})
 
@@ -534,7 +546,9 @@ func TestRetry(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 
 			start := time.Now()
-			err := handler.ServeFlow(context.Background(), reader, &buf)
+			req := core.NewRequest(context.Background(), reader)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 			elapsed := time.Since(start)
 
 			if (err != nil) != tt.wantErr {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/calque-ai/calque-pipe/core"
 	"google.golang.org/genai"
 )
 
@@ -45,9 +46,9 @@ func NewGeminiProvider(apiKey, model string) (*GeminiProvider, error) {
 }
 
 // Chat implements the LLMProvider interface with streaming support
-func (g *GeminiProvider) Chat(ctx context.Context, input io.Reader, output io.Writer) error {
+func (g *GeminiProvider) Chat(r *core.Request, w *core.Response) error {
 	// Read input
-	inputBytes, err := io.ReadAll(input)
+	inputBytes, err := io.ReadAll(r.Data)
 	if err != nil {
 		return fmt.Errorf("failed to read input: %w", err)
 	}
@@ -58,7 +59,7 @@ func (g *GeminiProvider) Chat(ctx context.Context, input io.Reader, output io.Wr
 	}
 
 	// Create a new chat
-	chat, err := g.client.Chats.Create(ctx, g.model, config, nil)
+	chat, err := g.client.Chats.Create(r.Context, g.model, config, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create chat: %w", err)
 	}
@@ -67,13 +68,13 @@ func (g *GeminiProvider) Chat(ctx context.Context, input io.Reader, output io.Wr
 	part := genai.Part{Text: string(inputBytes)}
 
 	// Send message with streaming
-	for result, err := range chat.SendMessageStream(ctx, part) {
+	for result, err := range chat.SendMessageStream(r.Context, part) {
 		if err != nil {
 			return fmt.Errorf("failed to get response: %w", err)
 		}
 
 		// Write each chunk to output as it arrives
-		if _, writeErr := output.Write([]byte(result.Text())); writeErr != nil {
+		if _, writeErr := w.Data.Write([]byte(result.Text())); writeErr != nil {
 			return writeErr
 		}
 	}

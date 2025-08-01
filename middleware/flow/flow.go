@@ -12,8 +12,8 @@ import (
 
 // PassThrough creates a simple pass-through handler
 func PassThrough() core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := io.Copy(w, r)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
 }
@@ -36,16 +36,19 @@ func PassThrough() core.Handler {
 //	  textHandler,
 //	)
 func Branch[T any](condition func([]byte) bool, ifHandler core.Handler, elseHandler core.Handler) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input []byte
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
 
+		req.Data = bytes.NewReader(input)
+
 		if condition(input) {
-			return ifHandler.ServeFlow(ctx, bytes.NewReader(input), w)
+			return ifHandler.ServeFlow(req, res)
 		}
-		return elseHandler.ServeFlow(ctx, bytes.NewReader(input), w)
+		return elseHandler.ServeFlow(req, res)
 	})
 }
 
@@ -65,12 +68,12 @@ func Branch[T any](condition func([]byte) bool, ifHandler core.Handler, elseHand
 //	tee := flow.TeeReader(logFile, os.Stdout)
 //	pipe.Use(tee) // Input goes to logFile, stdout, AND next handler
 func TeeReader(destinations ...io.Writer) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		// Create MultiWriter to write to all destinations plus the output
-		allWriters := append(destinations, w)
+		allWriters := append(destinations, res.Data)
 		multiWriter := io.MultiWriter(allWriters...)
 
-		_, err := io.Copy(multiWriter, r)
+		_, err := io.Copy(multiWriter, req.Data)
 		return err
 	})
 }
@@ -93,9 +96,9 @@ func TeeReader(destinations ...io.Writer) core.Handler {
 //	parallel := flow.Parallel[[]byte](handler1, handler2, handler3)
 //	// All three handlers process the same input concurrently
 func Parallel[T any](handlers ...core.Handler) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		if len(handlers) == 0 {
-			_, err := io.Copy(w, r)
+			_, err := io.Copy(res.Data, req.Data)
 			return err
 		}
 
@@ -123,7 +126,7 @@ func Parallel[T any](handlers ...core.Handler) core.Handler {
 					pw.Close()
 				}
 			}()
-			io.Copy(multiWriter, r)
+			io.Copy(multiWriter, req.Data)
 		}()
 
 		type result struct {
@@ -137,7 +140,10 @@ func Parallel[T any](handlers ...core.Handler) core.Handler {
 		for i, handler := range handlers {
 			go func(h core.Handler, reader io.Reader) {
 				var output bytes.Buffer
-				err := h.ServeFlow(ctx, reader, &output)
+				handlerReq := &core.Request{Context: req.Context, Data: reader}
+				handlerRes := &core.Response{Data: &output}
+
+				err := h.ServeFlow(handlerReq, handlerRes)
 				results <- result{output.Bytes(), err}
 			}(handler, readers[i])
 		}
@@ -145,8 +151,8 @@ func Parallel[T any](handlers ...core.Handler) core.Handler {
 		var outputs [][]byte
 		for range handlers {
 			select {
-			case <-ctx.Done():
-				return ctx.Err()
+			case <-req.Context.Done():
+				return req.Context.Err()
 			case res := <-results:
 				if res.err != nil {
 					return res.err
@@ -158,7 +164,7 @@ func Parallel[T any](handlers ...core.Handler) core.Handler {
 		// Combine results
 
 		combined := bytes.Join(outputs, []byte("\n---\n"))
-		_, err := w.Write(combined)
+		err := core.Write(res, combined)
 		return err
 	})
 }
@@ -178,13 +184,15 @@ func Parallel[T any](handlers ...core.Handler) core.Handler {
 //	timeoutHandler := flow.Timeout[string](someHandler, 30*time.Second)
 //	pipe.Use(timeoutHandler)
 func Timeout[T any](handler core.Handler, timeout time.Duration) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		timeoutCtx, cancel := context.WithTimeout(req.Context, timeout)
 		defer cancel()
+
+		req.Context = timeoutCtx //update req context
 
 		done := make(chan error, 1)
 		go func() {
-			done <- handler.ServeFlow(timeoutCtx, r, w)
+			done <- handler.ServeFlow(req, res)
 		}()
 
 		select {
@@ -211,18 +219,23 @@ func Timeout[T any](handler core.Handler, timeout time.Duration) core.Handler {
 //	retryHandler := flow.Retry(someHandler, 3)
 //	pipe.Use(retryHandler)
 func Retry[T any](handler core.Handler, maxAttempts int) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		var input []byte
+		err := core.Read(req, &input)
 		if err != nil {
 			return err
 		}
 
 		var lastErr error
 		for attempt := range maxAttempts {
+			// Reset the request data for each attempt
+			req.Data = bytes.NewReader(input)
+
 			var output bytes.Buffer
-			err := handler.ServeFlow(ctx, bytes.NewReader(input), &output)
+			tempRes := &core.Response{Data: &output}
+			err := handler.ServeFlow(req, tempRes)
 			if err == nil {
-				_, writeErr := w.Write(output.Bytes())
+				_, writeErr := res.Data.Write(output.Bytes())
 				return writeErr
 			}
 			lastErr = err

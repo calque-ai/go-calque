@@ -87,7 +87,9 @@ func (f *Flow) Run(ctx context.Context, input any, output any) error {
 			}
 
 			// Each handler writes to its own pipe writer, which feeds the next handler
-			if err := h.ServeFlow(ctx, reader, pipes[idx].w); err != nil {
+			req := &Request{Context: ctx, Data: reader}
+			res := &Response{Data: pipes[idx].w}
+			if err := h.ServeFlow(req, res); err != nil {
 				errCh <- err
 			}
 		}(i, handler)

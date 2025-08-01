@@ -1,11 +1,12 @@
 package llm
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"strings"
 	"time"
+
+	"github.com/calque-ai/calque-pipe/core"
 )
 
 // MockProvider implements the LLMProvider interface for testing
@@ -39,14 +40,14 @@ func (m *MockProvider) WithStreamDelay(delay time.Duration) *MockProvider {
 }
 
 // Chat implements the LLMProvider interface with simulated streaming
-func (m *MockProvider) Chat(ctx context.Context, input io.Reader, output io.Writer) error {
+func (m *MockProvider) Chat(r *core.Request, w *core.Response) error {
 	// Check if we should return an error (for testing error handling)
 	if m.shouldError {
 		return fmt.Errorf("mock error: %s", m.errorMessage)
 	}
 
 	// Read input
-	inputBytes, err := io.ReadAll(input)
+	inputBytes, err := io.ReadAll(r.Data)
 	if err != nil {
 		return fmt.Errorf("failed to read input: %w", err)
 	}
@@ -64,20 +65,20 @@ func (m *MockProvider) Chat(ctx context.Context, input io.Reader, output io.Writ
 	for i, word := range words {
 		// Check if context is cancelled
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-r.Context.Done():
+			return r.Context.Err()
 		default:
 		}
 
 		// Add space before word, except first word
 		if i > 0 {
-			if _, err := output.Write([]byte(" ")); err != nil {
+			if _, err := w.Data.Write([]byte(" ")); err != nil {
 				return err
 			}
 		}
 
 		// Write the word
-		if _, err := output.Write([]byte(word)); err != nil {
+		if _, err := w.Data.Write([]byte(word)); err != nil {
 			return err
 		}
 

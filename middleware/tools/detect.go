@@ -39,10 +39,10 @@ func DetectWithBufferSize(ifHandler, elseHandler core.Handler, bufferSize int) c
 		bufferSize = 200 // Default buffer size
 	}
 
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
 		// Buffer initial chunk for detection
 		initialBuffer := make([]byte, bufferSize)
-		n, err := r.Read(initialBuffer)
+		n, err := r.Data.Read(initialBuffer)
 		if err != nil && err != io.EOF {
 			return err
 		}
@@ -51,11 +51,11 @@ func DetectWithBufferSize(ifHandler, elseHandler core.Handler, bufferSize int) c
 
 		if !hasToolCalls(initialChunk) {
 			// No tools detected - stream to elseHandler
-			return streamToHandler(elseHandler, ctx, initialChunk, r, w)
+			return streamToHandler(elseHandler, r.Context, initialChunk, r.Data, w.Data)
 		}
 
 		// Tools detected - buffer full input and pass to ifHandler
-		return bufferToHandler(ifHandler, ctx, initialChunk, r, w)
+		return bufferToHandler(ifHandler, r.Context, initialChunk, r.Data, w.Data)
 	})
 }
 
@@ -63,7 +63,9 @@ func DetectWithBufferSize(ifHandler, elseHandler core.Handler, bufferSize int) c
 func streamToHandler(handler core.Handler, ctx context.Context, initialChunk []byte, r io.Reader, w io.Writer) error {
 	// Create a reader that provides the initial chunk followed by remaining data
 	combinedReader := io.MultiReader(bytes.NewReader(initialChunk), r)
-	return handler.ServeFlow(ctx, combinedReader, w)
+	req := core.NewRequest(ctx, combinedReader)
+	res := core.NewResponse(w)
+	return handler.ServeFlow(req, res)
 }
 
 // bufferToHandler buffers all input and passes it to the given handler
@@ -80,5 +82,7 @@ func bufferToHandler(handler core.Handler, ctx context.Context, initialChunk []b
 	fullInput.Write(remainingData)
 
 	// Pass combined input to handler
-	return handler.ServeFlow(ctx, &fullInput, w)
+	req := core.NewRequest(ctx, &fullInput)
+	res := core.NewResponse(w)
+	return handler.ServeFlow(req, res)
 }

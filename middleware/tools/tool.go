@@ -1,9 +1,6 @@
 package tools
 
 import (
-	"context"
-	"io"
-
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
@@ -14,9 +11,9 @@ import (
 // Tools can be composed, logged, timed, cached like any other handler.
 // Tools are streaming-compatible by default.
 type Tool interface {
-	core.Handler                    // ServeFlow method for execution
-	Name() string                   // Function name (e.g., "get_current_weather")
-	Description() string            // What the function does
+	core.Handler                          // ServeFlow method for execution
+	Name() string                         // Function name (e.g., "get_current_weather")
+	Description() string                  // What the function does
 	ParametersSchema() *jsonschema.Schema // JSON schema for function parameters (OpenAI standard)
 }
 
@@ -41,8 +38,8 @@ func (t *toolImpl) ParametersSchema() *jsonschema.Schema {
 	return t.parametersSchema
 }
 
-func (t *toolImpl) ServeFlow(ctx context.Context, r io.Reader, w io.Writer) error {
-	return t.handler.ServeFlow(ctx, r, w)
+func (t *toolImpl) ServeFlow(r *core.Request, w *core.Response) error {
+	return t.handler.ServeFlow(r, w)
 }
 
 // New creates a tool with full control over name, description, schema, and handler.
@@ -94,7 +91,7 @@ func (q *simpleTool) ParametersSchema() *jsonschema.Schema {
 		Type:        "string",
 		Description: "Input for the " + q.name + " tool",
 	})
-	
+
 	return &jsonschema.Schema{
 		Type:       "object",
 		Properties: properties,
@@ -102,7 +99,7 @@ func (q *simpleTool) ParametersSchema() *jsonschema.Schema {
 	}
 }
 
-func (q *simpleTool) ServeFlow(ctx context.Context, r io.Reader, w io.Writer) error {
+func (q *simpleTool) ServeFlow(r *core.Request, w *core.Response) error {
 	var input string
 	if err := core.Read(r, &input); err != nil {
 		return err
@@ -150,19 +147,19 @@ func Simple(name, description string, fn func(string) string) Tool {
 //	        return core.Write(w, string(content))
 //	    },
 //	)
-func HandlerFunc(name, description string, fn func(context.Context, io.Reader, io.Writer) error) Tool {
+func HandlerFunc(name, description string, fn func(*core.Request, *core.Response) error) Tool {
 	// HandlerFunc tools use a basic schema with a single "input" string parameter
 	properties := orderedmap.New[string, *jsonschema.Schema]()
 	properties.Set("input", &jsonschema.Schema{
 		Type:        "string",
 		Description: "Input for the " + name + " tool",
 	})
-	
+
 	schema := &jsonschema.Schema{
 		Type:       "object",
 		Properties: properties,
 		Required:   []string{"input"},
 	}
-	
+
 	return New(name, description, schema, core.HandlerFunc(fn))
 }

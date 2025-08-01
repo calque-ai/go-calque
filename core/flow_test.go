@@ -27,11 +27,11 @@ func TestNew(t *testing.T) {
 func TestFlow_Use(t *testing.T) {
 	flow := New()
 
-	handler1 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handler1 := HandlerFunc(func(req *Request, res *Response) error {
 		return nil
 	})
 
-	handler2 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handler2 := HandlerFunc(func(req *Request, res *Response) error {
 		return nil
 	})
 
@@ -52,7 +52,7 @@ func TestFlow_Use(t *testing.T) {
 func TestFlow_UseFunc(t *testing.T) {
 	flow := New()
 
-	handlerFunc := func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handlerFunc := func(req *Request, res *Response) error {
 		return nil
 	}
 
@@ -120,8 +120,8 @@ func TestFlow_Run_SingleHandler(t *testing.T) {
 	}{
 		{
 			name: "echo handler",
-			handler: HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-				_, err := io.Copy(w, r)
+			handler: HandlerFunc(func(req *Request, res *Response) error {
+				_, err := io.Copy(res.Data, req.Data)
 				return err
 			}),
 			input:    "echo test",
@@ -130,12 +130,12 @@ func TestFlow_Run_SingleHandler(t *testing.T) {
 		},
 		{
 			name: "transform handler",
-			handler: HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-				data, err := io.ReadAll(r)
+			handler: HandlerFunc(func(req *Request, res *Response) error {
+				data, err := io.ReadAll(req.Data)
 				if err != nil {
 					return err
 				}
-				_, err = w.Write([]byte(strings.ToUpper(string(data))))
+				_, err = res.Data.Write([]byte(strings.ToUpper(string(data))))
 				return err
 			}),
 			input:    "transform me",
@@ -144,7 +144,7 @@ func TestFlow_Run_SingleHandler(t *testing.T) {
 		},
 		{
 			name: "error handler",
-			handler: HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+			handler: HandlerFunc(func(req *Request, res *Response) error {
 				return errors.New("handler error")
 			}),
 			input:   "error test",
@@ -173,30 +173,30 @@ func TestFlow_Run_SingleHandler(t *testing.T) {
 
 func TestFlow_Run_MultipleHandlers(t *testing.T) {
 	// Create a pipeline: input -> uppercase -> add prefix -> add suffix
-	uppercaseHandler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		data, err := io.ReadAll(r)
+	uppercaseHandler := HandlerFunc(func(req *Request, res *Response) error {
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte(strings.ToUpper(string(data))))
+		_, err = res.Data.Write([]byte(strings.ToUpper(string(data))))
 		return err
 	})
 
-	prefixHandler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		data, err := io.ReadAll(r)
+	prefixHandler := HandlerFunc(func(req *Request, res *Response) error {
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("PREFIX:" + string(data)))
+		_, err = res.Data.Write([]byte("PREFIX:" + string(data)))
 		return err
 	})
 
-	suffixHandler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		data, err := io.ReadAll(r)
+	suffixHandler := HandlerFunc(func(req *Request, res *Response) error {
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte(string(data) + ":SUFFIX"))
+		_, err = res.Data.Write([]byte(string(data) + ":SUFFIX"))
 		return err
 	})
 
@@ -220,16 +220,16 @@ func TestFlow_Run_MultipleHandlers(t *testing.T) {
 
 func TestFlow_Run_HandlerError(t *testing.T) {
 	// Create handlers where the second one fails
-	handler1 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		data, err := io.ReadAll(r)
+	handler1 := HandlerFunc(func(req *Request, res *Response) error {
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("processed:" + string(data)))
+		_, err = res.Data.Write([]byte("processed:" + string(data)))
 		return err
 	})
 
-	errorHandler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	errorHandler := HandlerFunc(func(req *Request, res *Response) error {
 		return errors.New("processing failed")
 	})
 
@@ -254,13 +254,13 @@ func TestFlow_Run_ConcurrentHandlerError(t *testing.T) {
 	// Note: Due to concurrent execution, any handler might fail first
 	var executionCount int64
 	
-	handler1 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handler1 := HandlerFunc(func(req *Request, res *Response) error {
 		atomic.AddInt64(&executionCount, 1)
 		time.Sleep(10 * time.Millisecond) // Small delay
 		return errors.New("handler1 failed")
 	})
 
-	handler2 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handler2 := HandlerFunc(func(req *Request, res *Response) error {
 		atomic.AddInt64(&executionCount, 1)
 		time.Sleep(5 * time.Millisecond) // Shorter delay, likely to complete first
 		return errors.New("handler2 failed")
@@ -289,13 +289,13 @@ func TestFlow_Run_ConcurrentHandlerError(t *testing.T) {
 
 func TestFlow_Run_ContextCancellation(t *testing.T) {
 	// Create a handler that checks for context cancellation
-	blockingHandler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	blockingHandler := HandlerFunc(func(req *Request, res *Response) error {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-req.Context.Done():
+			return req.Context.Err()
 		case <-time.After(100 * time.Millisecond):
 			// Should not reach here if context is cancelled quickly
-			_, err := w.Write([]byte("completed"))
+			_, err := res.Data.Write([]byte("completed"))
 			return err
 		}
 	})
@@ -324,39 +324,39 @@ func TestFlow_Run_ConcurrentExecution(t *testing.T) {
 	var completeTimes [3]time.Time
 
 	// Create handlers that record timing
-	handler1 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handler1 := HandlerFunc(func(req *Request, res *Response) error {
 		startTimes[0] = time.Now()
-		data, err := io.ReadAll(r)
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
 		// Simulate some processing time
 		time.Sleep(50 * time.Millisecond)
-		_, err = w.Write([]byte("h1:" + string(data)))
+		_, err = res.Data.Write([]byte("h1:" + string(data)))
 		completeTimes[0] = time.Now()
 		return err
 	})
 
-	handler2 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handler2 := HandlerFunc(func(req *Request, res *Response) error {
 		startTimes[1] = time.Now()
-		data, err := io.ReadAll(r)
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
 		time.Sleep(50 * time.Millisecond)
-		_, err = w.Write([]byte("h2:" + string(data)))
+		_, err = res.Data.Write([]byte("h2:" + string(data)))
 		completeTimes[1] = time.Now()
 		return err
 	})
 
-	handler3 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handler3 := HandlerFunc(func(req *Request, res *Response) error {
 		startTimes[2] = time.Now()
-		data, err := io.ReadAll(r)
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
 		time.Sleep(50 * time.Millisecond)
-		_, err = w.Write([]byte("h3:" + string(data)))
+		_, err = res.Data.Write([]byte("h3:" + string(data)))
 		completeTimes[2] = time.Now()
 		return err
 	})
@@ -399,24 +399,24 @@ func TestFlow_Run_StreamingBehavior(t *testing.T) {
 		mu.Unlock()
 	}
 
-	handler1 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handler1 := HandlerFunc(func(req *Request, res *Response) error {
 		addToOrder("h1-start")
-		data, err := io.ReadAll(r)
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("h1:" + string(data)))
+		_, err = res.Data.Write([]byte("h1:" + string(data)))
 		addToOrder("h1-end")
 		return err
 	})
 
-	handler2 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handler2 := HandlerFunc(func(req *Request, res *Response) error {
 		addToOrder("h2-start")
-		data, err := io.ReadAll(r)
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write([]byte("h2:" + string(data)))
+		_, err = res.Data.Write([]byte("h2:" + string(data)))
 		addToOrder("h2-end")
 		return err
 	})
@@ -442,15 +442,15 @@ func TestFlow_Run_StreamingBehavior(t *testing.T) {
 }
 
 func TestFlow_Run_EmptyInput(t *testing.T) {
-	handler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		data, err := io.ReadAll(r)
+	handler := HandlerFunc(func(req *Request, res *Response) error {
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
 		if len(data) == 0 {
-			_, err = w.Write([]byte("empty-processed"))
+			_, err = res.Data.Write([]byte("empty-processed"))
 		} else {
-			_, err = w.Write(data)
+			_, err = res.Data.Write(data)
 		}
 		return err
 	})
@@ -473,18 +473,18 @@ func TestFlow_Run_LargeData(t *testing.T) {
 	// Test with large data to ensure streaming works properly
 	largeInput := strings.Repeat("abcdefghijklmnopqrstuvwxyz", 10000) // ~260KB
 
-	handler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	handler := HandlerFunc(func(req *Request, res *Response) error {
 		// Process data in chunks to simulate streaming
 		buffer := make([]byte, 1024)
 		for {
-			n, err := r.Read(buffer)
+			n, err := req.Data.Read(buffer)
 			if err == io.EOF {
 				break
 			}
 			if err != nil {
 				return err
 			}
-			_, err = w.Write(buffer[:n])
+			_, err = res.Data.Write(buffer[:n])
 			if err != nil {
 				return err
 			}
@@ -509,13 +509,13 @@ func TestFlow_Run_LargeData(t *testing.T) {
 
 func TestFlow_Run_MultipleGoroutines(t *testing.T) {
 	// Test that flow can be used concurrently from multiple goroutines
-	handler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		data, err := io.ReadAll(r)
+	handler := HandlerFunc(func(req *Request, res *Response) error {
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
 		time.Sleep(10 * time.Millisecond) // Simulate processing
-		_, err = w.Write([]byte("processed:" + string(data)))
+		_, err = res.Data.Write([]byte("processed:" + string(data)))
 		return err
 	})
 
@@ -550,21 +550,21 @@ func TestFlow_Run_MultipleGoroutines(t *testing.T) {
 // Edge case tests
 func TestFlow_Run_PipeClosureHandling(t *testing.T) {
 	// Test that pipe closure is handled gracefully
-	closingHandler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	closingHandler := HandlerFunc(func(req *Request, res *Response) error {
 		// Read some data
 		buffer := make([]byte, 10)
-		n, err := r.Read(buffer)
+		n, err := req.Data.Read(buffer)
 		if err != nil && err != io.EOF {
 			return err
 		}
 
 		// Close writer immediately (simulating early closure)
-		if closer, ok := w.(io.Closer); ok {
+		if closer, ok := res.Data.(io.Closer); ok {
 			closer.Close()
 		}
 
 		// Try to write after closing (should handle gracefully)
-		_, writeErr := w.Write(buffer[:n])
+		_, writeErr := res.Data.Write(buffer[:n])
 		return writeErr
 	})
 
@@ -581,8 +581,8 @@ func TestFlow_Run_PipeClosureHandling(t *testing.T) {
 
 func TestFlow_Run_InputOutputTypes(t *testing.T) {
 	// Test various input/output type combinations
-	echoHandler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := io.Copy(w, r)
+	echoHandler := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
 
@@ -644,8 +644,8 @@ func TestFlow_Run_InputOutputTypes(t *testing.T) {
 
 func TestFlow_Run_PartialWrite(t *testing.T) {
 	// Test handler that does partial writes
-	partialHandler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		data, err := io.ReadAll(r)
+	partialHandler := HandlerFunc(func(req *Request, res *Response) error {
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
@@ -657,7 +657,7 @@ func TestFlow_Run_PartialWrite(t *testing.T) {
 			if end > len(input) {
 				end = len(input)
 			}
-			_, err := w.Write([]byte(input[i:end]))
+			_, err := res.Data.Write([]byte(input[i:end]))
 			if err != nil {
 				return err
 			}
@@ -683,9 +683,9 @@ func TestFlow_Run_PartialWrite(t *testing.T) {
 
 func TestFlow_Run_BinaryData(t *testing.T) {
 	// Test handling of binary data
-	binaryHandler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	binaryHandler := HandlerFunc(func(req *Request, res *Response) error {
 		// Copy binary data exactly
-		_, err := io.Copy(w, r)
+		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
 
@@ -725,18 +725,18 @@ func TestFlow_Run_ResourceCleanup(t *testing.T) {
 	// Test that resources are cleaned up properly
 	var resourcesCleaned int64
 
-	resourceHandler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	resourceHandler := HandlerFunc(func(req *Request, res *Response) error {
 		// Simulate resource acquisition
 		defer func() {
 			atomic.AddInt64(&resourcesCleaned, 1)
 		}()
 
-		data, err := io.ReadAll(r)
+		data, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
 
-		_, err = w.Write(data)
+		_, err = res.Data.Write(data)
 		return err
 	})
 
@@ -759,8 +759,8 @@ func TestFlow_Run_ResourceCleanup(t *testing.T) {
 
 // Benchmark tests for performance
 func BenchmarkFlow_Run_SingleHandler(b *testing.B) {
-	handler := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := io.Copy(w, r)
+	handler := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
 
@@ -774,18 +774,18 @@ func BenchmarkFlow_Run_SingleHandler(b *testing.B) {
 }
 
 func BenchmarkFlow_Run_MultipleHandlers(b *testing.B) {
-	handler1 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := io.Copy(w, r)
+	handler1 := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
 
-	handler2 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := io.Copy(w, r)
+	handler2 := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
 
-	handler3 := HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		_, err := io.Copy(w, r)
+	handler3 := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
 

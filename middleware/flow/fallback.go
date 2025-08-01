@@ -2,7 +2,6 @@ package flow
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"sync"
@@ -41,7 +40,7 @@ type circuitBreaker struct {
 //	fallback := flow.Fallback[string](primaryLLM, fallbackLLM, localLLM)
 func Fallback[T any](handlers ...core.Handler) core.Handler {
 	if len(handlers) == 0 {
-		return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+		return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 			return fmt.Errorf("no handlers provided to fallback")
 		})
 	}
@@ -54,8 +53,8 @@ func Fallback[T any](handlers ...core.Handler) core.Handler {
 		}
 	}
 
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
@@ -67,11 +66,13 @@ func Fallback[T any](handlers ...core.Handler) core.Handler {
 			}
 
 			var output bytes.Buffer
-			err := handler.ServeFlow(ctx, bytes.NewReader(input), &output)
+			handlerReq := core.NewRequest(req.Context, bytes.NewReader(input))
+			handlerRes := core.NewResponse(&output)
+			err := handler.ServeFlow(handlerReq, handlerRes)
 
 			if err == nil {
 				breakers[i].RecordSuccess()
-				_, writeErr := w.Write(output.Bytes())
+				_, writeErr := res.Data.Write(output.Bytes())
 				return writeErr
 			}
 

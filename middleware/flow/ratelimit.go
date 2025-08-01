@@ -35,7 +35,7 @@ type rateLimiter struct {
 func RateLimit[T any](rate int, per time.Duration) core.Handler {
 	// <= 0 requests per n makes no sense.
 	if rate <= 0 {
-		return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+		return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 			return fmt.Errorf("invalid rate limit: rate must be greater than 0, got %d", rate)
 		})
 	}
@@ -47,12 +47,12 @@ func RateLimit[T any](rate int, per time.Duration) core.Handler {
 		lastRefill: time.Now(),
 	}
 
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		if err := limiter.Wait(ctx); err != nil {
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		if err := limiter.Wait(req.Context); err != nil {
 			return fmt.Errorf("rate limit exceeded: %w", err)
 		}
 
-		_, err := io.Copy(w, r)
+		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
 }

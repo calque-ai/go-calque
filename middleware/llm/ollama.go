@@ -1,12 +1,12 @@
 package llm
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 
+	"github.com/calque-ai/calque-pipe/core"
 	"github.com/ollama/ollama/api"
 )
 
@@ -49,9 +49,9 @@ func NewOllamaProvider(host, model string) (*OllamaProvider, error) {
 }
 
 // Chat implements the LLMProvider interface with streaming support
-func (o *OllamaProvider) Chat(ctx context.Context, input io.Reader, output io.Writer) error {
+func (o *OllamaProvider) Chat(r *core.Request, w *core.Response) error {
 	// Read input
-	inputBytes, err := io.ReadAll(input)
+	inputBytes, err := io.ReadAll(r.Data)
 	if err != nil {
 		return fmt.Errorf("failed to read input: %w", err)
 	}
@@ -71,14 +71,14 @@ func (o *OllamaProvider) Chat(ctx context.Context, input io.Reader, output io.Wr
 	// Create response handler that writes to output
 	responseFunc := func(resp api.ChatResponse) error {
 		// Write each chunk to output as it arrives
-		if _, writeErr := output.Write([]byte(resp.Message.Content)); writeErr != nil {
+		if _, writeErr := w.Data.Write([]byte(resp.Message.Content)); writeErr != nil {
 			return writeErr
 		}
 		return nil
 	}
 
 	// Send streaming chat request
-	err = o.client.Chat(ctx, req, responseFunc)
+	err = o.client.Chat(r.Context, req, responseFunc)
 	if err != nil {
 		return fmt.Errorf("failed to chat with ollama: %w", err)
 	}

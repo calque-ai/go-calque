@@ -51,32 +51,32 @@ func Batch[T any](handler core.Handler, maxSize int, maxWait time.Duration) core
 
 	go batcher.processBatches()
 
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		input, err := io.ReadAll(r)
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
 		}
 
-		req := &batchRequest{
+		batchReq := &batchRequest{
 			input:    input,
 			response: make(chan batchResponse, 1),
-			ctx:      ctx,
+			ctx:      req.Context,
 		}
 
 		select {
-		case batcher.requests <- req:
+		case batcher.requests <- batchReq:
 			select {
-			case resp := <-req.response:
+			case resp := <-batchReq.response:
 				if resp.err != nil {
 					return resp.err
 				}
-				_, err := w.Write(resp.data)
+				_, err := res.Data.Write(resp.data)
 				return err
-			case <-ctx.Done():
-				return ctx.Err()
+			case <-req.Context.Done():
+				return req.Context.Err()
 			}
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-req.Context.Done():
+			return req.Context.Err()
 		}
 	})
 }
@@ -136,7 +136,9 @@ func (rb *requestBatcher) processBatch(batch []*batchRequest) {
 	// Process the combined batch
 	var output bytes.Buffer
 	ctx := batch[0].ctx // Use context from first request
-	err := rb.handler.ServeFlow(ctx, &combinedInput, &output)
+	req := core.NewRequest(ctx, &combinedInput)
+	res := core.NewResponse(&output)
+	err := rb.handler.ServeFlow(req, res)
 
 	if err != nil {
 		// If batch processing fails, send error to all requests

@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -214,9 +213,9 @@ func (cm *ContextMemory) ListKeys() []string {
 //	ctxMem := memory.NewContext()
 //	flow.Use(ctxMem.Input("session123", 4000))
 func (cm *ContextMemory) Input(key string, maxTokens int) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		// Read current input
-		inputBytes, err := io.ReadAll(r)
+		inputBytes, err := io.ReadAll(req.Data)
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
@@ -250,7 +249,7 @@ func (cm *ContextMemory) Input(key string, maxTokens int) core.Handler {
 		}
 
 		// Write full context to output
-		_, err = w.Write([]byte(fullContext.String()))
+		_, err = res.Data.Write([]byte(fullContext.String()))
 		return err
 	})
 }
@@ -268,15 +267,15 @@ func (cm *ContextMemory) Input(key string, maxTokens int) core.Handler {
 //		Use(llm.Chat(provider)).
 //		Use(ctxMem.Output("session123", 4000))
 func (cm *ContextMemory) Output(key string, maxTokens int) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
+	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		// Create a buffer to capture the response
 		var responseBuffer strings.Builder
 
 		// Use TeeReader to stream to output while capturing
-		teeReader := io.TeeReader(r, &responseBuffer)
+		teeReader := io.TeeReader(req.Data, &responseBuffer)
 
 		// Stream through to output
-		_, err := io.Copy(w, teeReader)
+		_, err := io.Copy(res.Data, teeReader)
 		if err != nil {
 			return fmt.Errorf("failed to stream response: %w", err)
 		}

@@ -71,20 +71,20 @@ func Execute() core.Handler {
 // ExecuteWithOptions creates an Execute middleware with custom configuration
 // This assumes tool calls are present in the input and will error if none are found
 func ExecuteWithOptions(config ExecuteConfig) core.Handler {
-	return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-		tools := GetTools(ctx)
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+		tools := GetTools(r.Context)
 		if len(tools) == 0 {
 			return fmt.Errorf("no tools available in context")
 		}
 
 		// Read all input - we assume tools are present so no streaming needed
-		inputBytes, err := io.ReadAll(r)
+		inputBytes, err := io.ReadAll(r.Data)
 		if err != nil {
 			return err
 		}
 
 		// Parse and execute tools directly from input bytes
-		return executeFromBytes(ctx, inputBytes, w, tools, config)
+		return executeFromBytes(r.Context, inputBytes, w.Data, tools, config)
 	})
 }
 
@@ -117,7 +117,8 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 	if hasErrors {
 		if config.PassThroughOnError {
 			// Pass through original LLM output on error
-			return core.Write(w, inputBytes)
+			_, err := w.Write(inputBytes)
+			return err
 		} else {
 			// Return error when PassThroughOnError is false
 			return fmt.Errorf("tool execution failed: %s", firstError)
@@ -132,7 +133,8 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 		output = formatToolResults(results, inputBytes)
 	}
 
-	return core.Write(w, output)
+	_, err := w.Write([]byte(output))
+	return err
 }
 
 // ParseToolCalls extracts tool calls from LLM output using JSON parsing (OpenAI standard)
@@ -237,8 +239,9 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 	// Execute the tool
 	var result bytes.Buffer
 	args := strings.NewReader(toolCall.Arguments)
-
-	if err := tool.ServeFlow(ctx, args, &result); err != nil {
+	req := core.NewRequest(ctx, args)
+	res := core.NewResponse(&result)
+	if err := tool.ServeFlow(req, res); err != nil {
 		return ToolResult{
 			ToolCall: toolCall,
 			Error:    fmt.Sprintf("Tool execution error: %v", err),
