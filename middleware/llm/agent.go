@@ -1,7 +1,6 @@
 package llm
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -12,9 +11,6 @@ import (
 	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/tools"
 )
-
-// agentToolsKey is used to store tools in context for agent functions
-type agentToolsKey struct{}
 
 // AgentConfig configures the behavior of tool-enabled agents
 type AgentConfig struct {
@@ -81,7 +77,7 @@ func AgentWithConfig(provider LLMProvider, config AgentConfig, toolList ...tools
 	})
 }
 
-// buildIterationHandler creates the iterative tool-calling handler using the framework
+// buildIterationHandler creates a single-pass tool-calling handler with synthesis
 func buildIterationHandler(provider LLMProvider, config AgentConfig, toolList ...tools.Tool) core.Handler {
 	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
 		// Read initial input
@@ -90,52 +86,41 @@ func buildIterationHandler(provider LLMProvider, config AgentConfig, toolList ..
 			return err
 		}
 
-		currentInput := input
-		fmt.Printf("Run Iteration handler \n")
-		for iteration := 0; iteration < config.MaxIterations; iteration++ {
-			fmt.Printf("Begin Iteration %d\n", iteration)
-			// Build the single iteration pipeline with logging
-			pipe := core.New()
-			pipe.Use(flow.Logger(fmt.Sprintf("Iteration-%d", iteration), 200))
-			pipe.Use(tools.Registry(toolList...)) // Register tools for this iteration
-			pipe.Use(flow.Logger("After-Registry", 200))
-			pipe.Use(addToolInformation()) // Add tool schema to input
-			pipe.Use(flow.Logger("After-AddToolInfo", 200))
-			pipe.Use(Chat(provider))
-			pipe.Use(flow.Logger("After-Chat", 200))
-			pipe.Use(tools.Detect(
-				tools.ExecuteWithOptions(config.ExecuteConfig), // Execute tools if found
-				terminateIteration(),                           // No tools - terminate
-			))
-			pipe.Use(flow.Logger("After-Detect", 200))
+		// Build the single-pass pipeline
+		pipe := core.New()
+		// pipe.Use(flow.Logger("Agent", 200))
 
-			// Execute single iteration
-			var output []byte
-			if err := pipe.Run(r.Context, currentInput, &output); err != nil {
-				return fmt.Errorf("iteration %d failed: %w", iteration, err)
-			}
+		// Chain: Registry → AddToolInfo → Chat → Detect → [Execute + Synthesize] OR PassThrough
+		pipe.Use(flow.Chain(
+			tools.Registry(toolList...), // Register tools in context
+			// flow.Logger("After-Registry", 200),
+			addToolInformation(), // Add tool schema using tools from context
+			// flow.Logger("After-AddToolInfo", 800),
+			ChatWithTools(provider, toolList...), // LLM call with tools
+			// flow.Logger("After-Chat", 800),
+			tools.Detect(
+				// If tools detected -> Execute tools, then synthesize final answer
+				flow.Chain(
+					tools.ExecuteWithOptions(config.ExecuteConfig), // Execute tools
+					// flow.Logger("After-Execute", 800),
+					synthesizeFinalAnswer(provider, input), // Second LLM call with original input + results
+				),
+				// No tools detected -> just pass through the LLM response
+				flow.PassThrough(),
+			),
+		))
 
-			// Debug logging
-			outputStr := string(output)
-			fmt.Printf("Iteration %d output length: %d\n", iteration, len(output))
-			fmt.Printf("Iteration %d output preview: %.100s...\n", iteration, outputStr)
-			fmt.Printf("Contains tool results: %v\n", containsToolResults(outputStr))
+		// pipe.Use(flow.Logger("After-Synthesis", 200))
 
-			// Check if we should continue iterating
-			if !containsToolResults(outputStr) {
-				// No tools executed - write final output and stop
-				fmt.Printf("No tools detected, terminating at iteration %d\n", iteration)
-				_, err := w.Data.Write(output)
-				return err
-			}
-
-			// Tools executed - continue with results as next input
-			fmt.Printf("Tools detected, continuing to iteration %d\n", iteration+1)
-			currentInput = output
+		// Execute the pipeline
+		var output []byte
+		if err := pipe.Run(r.Context, input, &output); err != nil {
+			return fmt.Errorf("agent failed: %w", err)
 		}
 
-		// Max iterations reached - return error
-		return fmt.Errorf("agent reached maximum iterations (%d) without completing", config.MaxIterations)
+		// Write final result
+		_, err = w.Data.Write(output)
+		return err
 	})
 }
 
@@ -167,121 +152,27 @@ func addToolInformation() core.Handler {
 	})
 }
 
-// terminateIteration creates a handler that indicates iteration should stop
-func terminateIteration() core.Handler {
-	return flow.PassThrough() // Just pass through - no special termination needed
-}
-
-// func executeTool(ctx context.Context, provider LLMProvider, initialInput []byte, config AgentConfig, w io.Writer) error {
-
-// 	pipe := core.New()
-// 	pipe.Use(tools.Registry(calc, search))
-
-// }
-
-// executeToolLoop handles the iterative tool-calling process using the new tools.Detect pattern
-func executeToolLoop(ctx context.Context, provider LLMProvider, initialInput []byte, config AgentConfig, w io.Writer) error {
-	currentInput := initialInput
-
-	for iteration := 0; iteration < config.MaxIterations; iteration++ {
-		// Format input with tool information
-		formattedInput, err := formatInputWithTools(ctx, currentInput)
+// synthesizeFinalAnswer creates a handler that makes a second LLM call to synthesize a final answer
+// from the original question and tool execution results
+func synthesizeFinalAnswer(provider LLMProvider, originalInput []byte) core.Handler {
+	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+		// Read tool execution results
+		toolResults, err := io.ReadAll(r.Data)
 		if err != nil {
-			return fmt.Errorf("failed to format input: %w", err)
-		}
-
-		// Create pipe to connect LLM output to tool detection
-		llmReader, llmWriter := io.Pipe()
-		var llmErr error
-
-		// Start LLM call in goroutine to stream output
-		go func() {
-			defer llmWriter.Close()
-			llmErr = callLLM(ctx, provider, formattedInput, llmWriter)
-		}()
-
-		// Create the detection handler using the new pattern
-		var toolOutput bytes.Buffer
-		var finalOutput io.Writer = w
-
-		// For intermediate iterations, capture output to continue iteration
-		if iteration < config.MaxIterations-1 {
-			finalOutput = &toolOutput
-		}
-
-		// Create detection handler: if tools detected -> Execute, else -> PassThrough to output
-		detectHandler := tools.Detect(
-			tools.ExecuteWithOptions(config.ExecuteConfig), // Handle tool calls
-			flow.PassThrough(), // No tools - pass through
-		)
-
-		// Execute detection and routing
-		req := core.NewRequest(ctx, llmReader)
-		res := core.NewResponse(finalOutput)
-		if err := detectHandler.ServeFlow(req, res); err != nil {
-			return fmt.Errorf("tool detection/execution failed: %w", err)
-		}
-
-		// Check for LLM errors
-		if llmErr != nil {
-			return fmt.Errorf("LLM call failed: %w", llmErr)
-		}
-
-		// If this was the final iteration or we wrote directly to output, we're done
-		if finalOutput == w {
-			return nil
-		}
-
-		// Check if we need to continue - simple heuristic based on output content
-		outputStr := toolOutput.String()
-		if !containsToolResults(outputStr) {
-			// No tools were executed - write final output and finish
-			_, err := w.Write(toolOutput.Bytes())
 			return err
 		}
 
-		// Tools were executed - continue with tool results as next input
-		currentInput = []byte(outputStr)
-	}
+		// Create synthesis prompt combining original question with tool results
+		synthesisPrompt := fmt.Sprintf(`Original question: %s
 
-	// Max iterations reached
-	return fmt.Errorf("agent reached maximum iterations (%d) without completing", config.MaxIterations)
-}
+Tool execution results:
+%s
 
-// getAgentTools retrieves tools from the agent context
-func getAgentTools(ctx context.Context) []tools.Tool {
-	if toolList, ok := ctx.Value(agentToolsKey{}).([]tools.Tool); ok {
-		return toolList
-	}
-	return nil
-}
+Please provide a complete answer to the original question using the tool results above. Be concise and direct.`,
+			string(originalInput), string(toolResults))
 
-// formatInputWithTools formats the input with tool information using OpenAI standard
-func formatInputWithTools(ctx context.Context, input []byte) ([]byte, error) {
-	toolList := getAgentTools(ctx)
-	if len(toolList) == 0 {
-		return input, nil
-	}
-
-	// Use OpenAI function calling format (no extra instructional text needed)
-	toolSchema := tools.FormatToolsAsOpenAI(toolList)
-	result := make([]byte, len(input)+len(toolSchema))
-	copy(result, input)
-	copy(result[len(input):], []byte(toolSchema))
-	return result, nil
-}
-
-// callLLM makes a call to the LLM provider and streams response to writer
-func callLLM(ctx context.Context, provider LLMProvider, input []byte, w io.Writer) error {
-	req := core.NewRequest(ctx, bytes.NewReader(input))
-	res := core.NewResponse(w)
-	return provider.Chat(req, res)
-}
-
-// containsToolResults checks if the output contains tool execution results
-// This is a simple heuristic to determine if tools were executed
-func containsToolResults(output string) bool {
-	return strings.Contains(output, "Tool execution results:") ||
-		strings.Contains(output, "Tool 1:") ||
-		strings.Contains(output, "Result:")
+		// Make LLM call without tools for synthesis
+		req := core.NewRequest(r.Context, strings.NewReader(synthesisPrompt))
+		return provider.Chat(req, w)
+	})
 }

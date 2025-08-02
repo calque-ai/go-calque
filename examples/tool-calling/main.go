@@ -2,97 +2,101 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/calque-ai/calque-pipe/core"
-	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/tools"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	fmt.Println("=== Tool Calling Example ===")
+
+	// Load environment variables from .env file
+	// Make sure to have GOOGLE_API_KEY set in your .env file
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	fmt.Println("=== Tool Calling Examples ===")
 	fmt.Println("Prerequisites:")
 	fmt.Println("1. Install Ollama: https://ollama.ai/")
 	fmt.Println("2. Pull a model: ollama pull llama3.2:1b")
 	fmt.Println("3. Make sure Ollama is running: ollama serve")
 	fmt.Println()
 
-	// Example 1: Simple Agent with Quick Tools
-	fmt.Println("1. Simple Agent Example:")
-	runSimpleAgentExample()
+	// Example 1: Simple Agent
+	fmt.Println("Example 1: Simple Agent with Two Tools")
+	runSimpleAgent()
 	fmt.Println()
 
-	// Example 2: Flexible Pipeline Composition
-	fmt.Println("2. Flexible Pipeline Example:")
-	runFlexiblePipelineExample()
-	fmt.Println()
-
-	// Example 3: Advanced Agent with Configuration
-	fmt.Println("3. Advanced Agent Example:")
-	runAdvancedAgentExample()
-	fmt.Println()
+	// Example 2: Agent with Configuration
+	fmt.Println("Example 2: Agent with Custom Configuration")
+	runConfiguredAgent()
 }
 
-// runSimpleAgentExample demonstrates the easiest way to create a tool-enabled agent
-func runSimpleAgentExample() {
-	// Create tools using the Quick constructor for simple string-to-string functions
-	calculator := tools.Simple("calculator", "Math Calculator", func(expr string) string {
-		result, err := evaluateExpression(expr)
+// Example 1: Simple agent with basic tools
+func runSimpleAgent() {
+	// Create simple tools that parse JSON arguments
+	calculator := tools.Simple("calculator", "Performs basic math calculations", func(jsonArgs string) string {
+		// Parse JSON arguments
+		var args struct {
+			Input string `json:"input"`
+		}
+		if err := json.Unmarshal([]byte(jsonArgs), &args); err != nil {
+			return fmt.Sprintf("Error parsing arguments: %v", err)
+		}
+
+		result, err := calculate(args.Input)
 		if err != nil {
 			return fmt.Sprintf("Error: %v", err)
 		}
 		return fmt.Sprintf("%.2f", result)
 	})
 
-	dateTime := tools.Simple("datetime", "Get current date and time information", func(format string) string {
+	currentTime := tools.Simple("current_time", "Gets the current date and time. Call with empty string or '2006-01-02 15:04:05' format to get current time in default format.", func(jsonArgs string) string {
+		// Parse JSON arguments
+		var args struct {
+			Input string `json:"input"`
+		}
+		if err := json.Unmarshal([]byte(jsonArgs), &args); err != nil {
+			return fmt.Sprintf("Error parsing arguments: %v", err)
+		}
+
+		format := args.Input
 		if format == "" {
 			format = "2006-01-02 15:04:05"
 		}
 		return time.Now().Format(format)
 	})
 
-	fileInfo := tools.HandlerFunc("file_info", "Get information about a file",
-		func(r *core.Request, w *core.Response) error {
-			var filename string
-			if err := core.Read(r, &filename); err != nil {
-				return err
-			}
-
-			info, err := os.Stat(filename)
-			if err != nil {
-				return core.Write(w, fmt.Sprintf("Error: %v", err))
-			}
-
-			result := fmt.Sprintf("File: %s, Size: %d bytes, Modified: %s",
-				filename, info.Size(), info.ModTime().Format("2006-01-02 15:04:05"))
-			return core.Write(w, result)
-		})
-
-	// Create Ollama provider (make sure Ollama is running with a model)
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
+	// Create Gemini example provider (reads GOOGLE_API_KEY from env)
+	provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash")
 	if err != nil {
-		log.Printf("Failed to create Ollama provider: %v", err)
-		log.Println("Make sure Ollama is running and you have a model installed (e.g., 'ollama pull llama3.2:1b')")
-		return
+		log.Fatal("Failed to create Gemini provider:", err)
 	}
+	// provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
+	// if err != nil {
+	// 	log.Fatal("Failed to create Ollama provider:", err)
+	// }
 
-	// Create agent with tools - this handles everything automatically
-	agent := llm.Agent(provider, calculator, dateTime, fileInfo)
+	// Create simple agent
+	agent := llm.Agent(provider, calculator, currentTime)
 
-	// Run the agent
+	// Test the agent
 	ctx := context.Background()
-	input := "Please calculate 25 times 4, and also tell me what time it is now. Use the available tools to help with this."
+	input := "What is 15 * 8? Also, what time is it right now?"
 
 	var result string
 	err = core.New().Use(agent).Run(ctx, input, &result)
 	if err != nil {
-		log.Printf("Simple agent error: %v", err)
+		log.Printf("Agent error: %v", err)
 		return
 	}
 
@@ -100,104 +104,61 @@ func runSimpleAgentExample() {
 	fmt.Printf("Result: %s\n", result)
 }
 
-// runFlexiblePipelineExample demonstrates manual pipeline composition for maximum control
-func runFlexiblePipelineExample() {
+// Example 2: Agent with custom configuration
+func runConfiguredAgent() {
 	// Create tools with more complex logic
-	textProcessor := tools.New("text_processor", "Process and analyze text",
-		createTextProcessorHandler())
-
-	wordCount := tools.Simple("word_count", "Word counter", func(text string) string {
-		words := strings.Fields(text)
-		return fmt.Sprintf("Word count: %d", len(words))
-	})
-
-	// Create Ollama provider
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
-	if err != nil {
-		log.Printf("Failed to create Ollama provider: %v", err)
-		return
-	}
-
-	// Build pipeline manually for full control
-	pipeline := core.New().
-		Use(flow.Logger("INPUT", 200)).                // Log input
-		Use(tools.Registry(textProcessor, wordCount)). // Register tools
-		Use(flow.Logger("PRE-LLM", 300)).              // Log formatted input
-		Use(llm.Chat(provider)).                       // Send to LLM
-		Use(flow.Logger("LLM-RESPONSE", 300)).         // Log LLM response
-		Use(tools.Execute()).                          // Execute any tool calls
-		Use(flow.Logger("TOOL-RESULTS", 300)).         // Log tool results
-		Use(llm.Chat(provider)).                       // Send results back to LLM
-		Use(flow.Logger("FINAL", 200))                 // Log final output
-
-	ctx := context.Background()
-	input := "Please analyze this text: 'Hello world this is a test'. Use the text processor tool to provide detailed analysis."
-
-	var result string
-	err = pipeline.Run(ctx, input, &result)
-	if err != nil {
-		log.Printf("Flexible pipeline error: %v", err)
-		return
-	}
-
-	fmt.Printf("Input: %s\n", input)
-	fmt.Printf("Result: %s\n", result)
-}
-
-// runAdvancedAgentExample demonstrates advanced configuration and error handling
-func runAdvancedAgentExample() {
-	// Create tools with error handling
-	calculator := tools.Simple("calculator", "Math Calculator", func(expr string) string {
-		result, err := evaluateExpression(expr)
+	calculator := tools.Simple("calculator", "Advanced calculator", func(expression string) string {
+		result, err := calculate(expression)
 		if err != nil {
 			return fmt.Sprintf("Error: %v", err)
 		}
-		return fmt.Sprintf("%.2f", result)
+		return fmt.Sprintf("Result: %.2f", result)
 	})
 
-	// Tool that sometimes fails
-	unstableTool := tools.HandlerFunc("unstable_tool", "A tool that sometimes fails",
-		func(r *core.Request, w *core.Response) error {
-			var input string
-			if err := core.Read(r, &input); err != nil {
-				return err
-			}
+	textAnalyzer := tools.Simple("text_analyzer", "Analyzes text and provides statistics", func(text string) string {
+		words := strings.Fields(text)
+		chars := len(text)
+		sentences := strings.Count(text, ".") + strings.Count(text, "!") + strings.Count(text, "?")
+		if sentences == 0 {
+			sentences = 1
+		}
 
-			// Simulate occasional failure
-			if strings.Contains(input, "fail") {
-				return fmt.Errorf("tool intentionally failed")
-			}
+		return fmt.Sprintf("Text Analysis:\n- Words: %d\n- Characters: %d\n- Sentences: %d\n- Text: %s",
+			len(words), chars, sentences, text)
+	})
 
-			return core.Write(w, "Tool executed successfully with input: "+input)
-		})
-
-	// Configure robust agent with error handling
+	// Configure agent with custom settings
 	config := llm.AgentConfig{
-		MaxIterations: 3,
+		MaxIterations: 3,                // Allow up to 3 tool-calling iterations
+		Timeout:       30 * time.Second, // 30 second timeout
 		ExecuteConfig: tools.ExecuteConfig{
-			PassThroughOnError:    true, // Continue on tool errors
-			MaxConcurrentTools:    2,    // Limit concurrent execution
-			IncludeOriginalOutput: true, // Include LLM output in results
+			PassThroughOnError:    true, // Continue even if a tool fails
+			MaxConcurrentTools:    2,    // Run up to 2 tools concurrently
+			IncludeOriginalOutput: true, // Include LLM output with tool results
 		},
-		Timeout: 30 * time.Second, // Safety timeout
 	}
 
-	// Create Ollama provider
+	// Create Gemini example provider (reads GOOGLE_API_KEY from env)
+	// provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash")
+	// if err != nil {
+	// 	log.Fatal("Failed to create Gemini provider:", err)
+	// }
 	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
 	if err != nil {
-		log.Printf("Failed to create Ollama provider: %v", err)
-		return
+		log.Fatal("Failed to create Ollama provider:", err)
 	}
 
-	agent := llm.AgentWithConfig(provider, config, calculator, unstableTool)
+	// Create configured agent
+	agent := llm.AgentWithConfig(provider, config, calculator, textAnalyzer)
 
+	// Test the agent
 	ctx := context.Background()
-	input := "Please calculate 10 + 5 using the calculator tool."
+	input := "Please calculate 25 + 17, and analyze this text: 'Hello world! This is a test.'"
 
 	var result string
 	err = core.New().Use(agent).Run(ctx, input, &result)
 	if err != nil {
-		log.Printf("Advanced agent error: %v", err)
+		log.Printf("Configured agent error: %v", err)
 		return
 	}
 
@@ -205,13 +166,11 @@ func runAdvancedAgentExample() {
 	fmt.Printf("Result: %s\n", result)
 }
 
-// Helper Functions
+// Helper function for basic math calculations
+func calculate(expression string) (float64, error) {
+	expr := strings.ReplaceAll(expression, " ", "")
 
-// evaluateExpression performs simple math expression evaluation
-func evaluateExpression(expr string) (float64, error) {
-	expr = strings.ReplaceAll(expr, " ", "")
-
-	// Simple calculator - supports +, -, *, /
+	// Handle addition
 	if strings.Contains(expr, "+") {
 		parts := strings.Split(expr, "+")
 		if len(parts) != 2 {
@@ -220,11 +179,12 @@ func evaluateExpression(expr string) (float64, error) {
 		a, err1 := strconv.ParseFloat(parts[0], 64)
 		b, err2 := strconv.ParseFloat(parts[1], 64)
 		if err1 != nil || err2 != nil {
-			return 0, fmt.Errorf("invalid numbers in expression")
+			return 0, fmt.Errorf("invalid numbers")
 		}
 		return a + b, nil
 	}
 
+	// Handle multiplication
 	if strings.Contains(expr, "*") {
 		parts := strings.Split(expr, "*")
 		if len(parts) != 2 {
@@ -233,11 +193,12 @@ func evaluateExpression(expr string) (float64, error) {
 		a, err1 := strconv.ParseFloat(parts[0], 64)
 		b, err2 := strconv.ParseFloat(parts[1], 64)
 		if err1 != nil || err2 != nil {
-			return 0, fmt.Errorf("invalid numbers in expression")
+			return 0, fmt.Errorf("invalid numbers")
 		}
 		return a * b, nil
 	}
 
+	// Handle subtraction
 	if strings.Contains(expr, "-") {
 		parts := strings.Split(expr, "-")
 		if len(parts) != 2 {
@@ -246,11 +207,12 @@ func evaluateExpression(expr string) (float64, error) {
 		a, err1 := strconv.ParseFloat(parts[0], 64)
 		b, err2 := strconv.ParseFloat(parts[1], 64)
 		if err1 != nil || err2 != nil {
-			return 0, fmt.Errorf("invalid numbers in expression")
+			return 0, fmt.Errorf("invalid numbers")
 		}
 		return a - b, nil
 	}
 
+	// Handle division
 	if strings.Contains(expr, "/") {
 		parts := strings.Split(expr, "/")
 		if len(parts) != 2 {
@@ -259,7 +221,7 @@ func evaluateExpression(expr string) (float64, error) {
 		a, err1 := strconv.ParseFloat(parts[0], 64)
 		b, err2 := strconv.ParseFloat(parts[1], 64)
 		if err1 != nil || err2 != nil {
-			return 0, fmt.Errorf("invalid numbers in expression")
+			return 0, fmt.Errorf("invalid numbers")
 		}
 		if b == 0 {
 			return 0, fmt.Errorf("division by zero")
@@ -269,35 +231,4 @@ func evaluateExpression(expr string) (float64, error) {
 
 	// Single number
 	return strconv.ParseFloat(expr, 64)
-}
-
-// createTextProcessorHandler creates a handler for text processing
-func createTextProcessorHandler() core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
-		var text string
-		if err := core.Read(r, &text); err != nil {
-			return err
-		}
-
-		words := strings.Fields(text)
-		chars := len(text)
-		sentences := strings.Count(text, ".") + strings.Count(text, "!") + strings.Count(text, "?")
-		if sentences == 0 {
-			sentences = 1 // At least one sentence if no punctuation
-		}
-
-		avgWordLength := 0.0
-		if len(words) > 0 {
-			totalChars := 0
-			for _, word := range words {
-				totalChars += len(word)
-			}
-			avgWordLength = float64(totalChars) / float64(len(words))
-		}
-
-		analysis := fmt.Sprintf("Text Analysis:\n- Words: %d\n- Characters: %d\n- Sentences: %d\n- Average word length: %.1f\n- Text: %s",
-			len(words), chars, sentences, avgWordLength, text)
-
-		return core.Write(w, analysis)
-	})
 }

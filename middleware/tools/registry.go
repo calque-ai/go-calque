@@ -37,11 +37,11 @@ type registryHandler struct {
 func (rh *registryHandler) ServeFlow(req *core.Request, res *core.Response) error {
 	// Create a context with tools for this handler's execution
 	ctx := context.WithValue(req.Context, toolsContextKey{}, rh.tools)
-	
-	// Update the request context
-	req = req.WithContext(ctx)
-	
-	// Pass input through unchanged 
+
+	// Update the request context directly so downstream handlers can access tools
+	req.Context = ctx
+
+	// Pass input through unchanged
 	_, err := io.Copy(res.Data, req.Data)
 	return err
 }

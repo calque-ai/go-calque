@@ -74,7 +74,7 @@ func TestFlow_Run_NoHandlers(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		input    interface{}
+		input    any
 		expected string
 	}{
 		{
@@ -253,7 +253,7 @@ func TestFlow_Run_ConcurrentHandlerError(t *testing.T) {
 	// Test that when one handler fails, the flow returns an error
 	// Note: Due to concurrent execution, any handler might fail first
 	var executionCount int64
-	
+
 	handler1 := HandlerFunc(func(req *Request, res *Response) error {
 		atomic.AddInt64(&executionCount, 1)
 		time.Sleep(10 * time.Millisecond) // Small delay
@@ -712,9 +712,9 @@ func TestFlow_Run_BinaryData(t *testing.T) {
 func TestFlow_Run_InvalidOutput(t *testing.T) {
 	// Test that flow handles invalid output parameters gracefully
 	flow := New()
-	
+
 	// Test with non-pointer output (should fail)
-	var invalidOutput string  // not a pointer
+	var invalidOutput string // not a pointer
 	err := flow.Run(context.Background(), "test", invalidOutput)
 	if err == nil {
 		t.Error("Expected error with non-pointer output, got nil")

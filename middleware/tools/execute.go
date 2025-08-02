@@ -236,12 +236,24 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 		}
 	}
 
-	// Execute the tool
+	// Execute the tool with panic recovery
 	var result bytes.Buffer
 	args := strings.NewReader(toolCall.Arguments)
 	req := core.NewRequest(ctx, args)
 	res := core.NewResponse(&result)
-	if err := tool.ServeFlow(req, res); err != nil {
+	
+	// Execute tool with panic recovery
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("tool panicked: %v", r)
+			}
+		}()
+		err = tool.ServeFlow(req, res)
+	}()
+	
+	if err != nil {
 		return ToolResult{
 			ToolCall: toolCall,
 			Error:    fmt.Sprintf("Tool execution error: %v", err),

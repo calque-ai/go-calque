@@ -49,10 +49,10 @@ func TestExecute(t *testing.T) {
 		isError  bool
 	}{
 		{
-			name:     "no tool calls - pass through",
-			tools:    []Tool{calc, search},
-			input:    "This is just regular text with no tool calls.",
-			contains: []string{"This is just regular text with no tool calls."},
+			name:    "no tool calls - pass through",
+			tools:   []Tool{calc, search},
+			input:   "This is just regular text with no tool calls.",
+			isError: true, //Should error execute assumes tool calls were detected already.
 		},
 		{
 			name:     "JSON tool call format",
@@ -73,10 +73,10 @@ func TestExecute(t *testing.T) {
 			isError: true, // Should error because PassThroughOnError defaults to false
 		},
 		{
-			name:     "no tools in context",
-			tools:    []Tool{},
-			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
-			contains: []string{`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`}, // Should pass through
+			name:    "no tools in context",
+			tools:   []Tool{},
+			input:   `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+			isError: true, // Should error because if there are no tools available why are we running execute tools?
 		},
 	}
 

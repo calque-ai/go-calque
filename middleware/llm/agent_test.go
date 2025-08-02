@@ -22,6 +22,10 @@ type mockLLMProvider struct {
 }
 
 func (m *mockLLMProvider) Chat(req *core.Request, res *core.Response) error {
+	return m.ChatWithTools(req, res)
+}
+
+func (m *mockLLMProvider) ChatWithTools(req *core.Request, res *core.Response, toolList ...tools.Tool) error {
 	if m.shouldErr {
 		return errors.New("LLM provider error")
 	}
@@ -288,201 +292,6 @@ func TestQuickAgent(t *testing.T) {
 	}
 }
 
-// func TestFormatInputWithTools(t *testing.T) {
-// 	calc := tools.Simple("calculator", "Math Calculator", func(s string) string { return s })
-// 	search := tools.Simple("search", "Search tool", func(s string) string { return s })
-
-// 	ctx := context.WithValue(context.Background(), agentToolsKey{}, []tools.Tool{calc, search})
-
-// 	tests := []struct {
-// 		name     string
-// 		input    string
-// 		contains []string
-// 	}{
-// 		{
-// 			name:  "simple format",
-// 			input: "Test input",
-// 			contains: []string{
-// 				"Test input",
-// 				"Available tools:",
-// 				"1. calculator",
-// 				"2. search",
-// 				"Please use the tools if needed",
-// 			},
-// 		},
-// 		{
-// 			name:  "detailed format",
-// 			input: "Help me",
-// 			contains: []string{
-// 				"Help me",
-// 				"Available tools:",
-// 				"Tool 1: calculator",
-// 				"Description: Tool: calculator",
-// 				"Usage: TOOL:calculator:",
-// 				"Example: TOOL:calculator:sample input",
-// 			},
-// 		},
-// 	}
-
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			result, err := formatInputWithTools(ctx, []byte(tt.input))
-// 			if err != nil {
-// 				t.Errorf("formatInputWithTools() error = %v", err)
-// 				return
-// 			}
-
-// 			for _, expected := range tt.contains {
-// 				if !strings.Contains(string(result), expected) {
-// 					t.Errorf("formatInputWithTools() missing expected string %q", expected)
-// 				}
-// 			}
-// 		})
-// 	}
-// }
-
-// func TestFormatInputWithNoTools(t *testing.T) {
-// 	ctx := context.Background() // No tools in context
-// 	input := "Test input"
-
-// 	result, err := formatInputWithTools(ctx, []byte(input))
-// 	if err != nil {
-// 		t.Errorf("formatInputWithTools() with no tools error = %v", err)
-// 		return
-// 	}
-
-// 	if string(result) != input {
-// 		t.Errorf("formatInputWithTools() with no tools = %q, want %q", result, input)
-// 	}
-// }
-
-// func TestCallLLM(t *testing.T) {
-// 	provider := &mockLLMProvider{
-// 		responses: []string{"Test response"},
-// 	}
-
-// 	result, err := callLLM(context.Background(), provider, "Test input")
-// 	if err != nil {
-// 		t.Errorf("callLLM() error = %v", err)
-// 		return
-// 	}
-
-// 	if result != "Test response" {
-// 		t.Errorf("callLLM() = %q, want %q", result, "Test response")
-// 	}
-// }
-
-// func TestCallLLMWithError(t *testing.T) {
-// 	provider := &mockLLMProvider{
-// 		shouldErr: true,
-// 	}
-
-// 	_, err := callLLM(context.Background(), provider, "Test input")
-// 	if err == nil {
-// 		t.Error("callLLM() with error provider should return error")
-// 	}
-// }
-
-// func TestExecutetoolsToolCallsForAgent(t *testing.T) {
-// 	calc := tools.Simple("calculator", "Math Calculator", func(expr string) string { return "42" })
-// 	errorTool := createErrorTool()
-
-// 	ctx := context.WithValue(context.Background(), agentToolsKey{}, []tools.Tool{calc, errorTool})
-
-// 	tests := []struct {
-// 		name        string
-// 		toolCalls   []tools.ToolCall
-// 		config      tools.ExecuteConfig
-// 		expectError bool
-// 		checkResult func([]tools.ToolResult) bool
-// 	}{
-// 		{
-// 			name: "successful execution",
-// 			toolCalls: []tools.ToolCall{
-// 				{Name: "calculator", Arguments: "2+2"},
-// 			},
-// 			config: tools.ExecuteConfig{PassThroughOnError: false},
-// 			checkResult: func(results []tools.ToolResult) bool {
-// 				return len(results) == 1 && string(results[0].Result) == "42" && results[0].Error == ""
-// 			},
-// 		},
-// 		{
-// 			name: "error with pass through enabled",
-// 			toolCalls: []tools.ToolCall{
-// 				{Name: "error_tool", Arguments: "test"},
-// 			},
-// 			config:      tools.ExecuteConfig{PassThroughOnError: true},
-// 			expectError: false, // Should not error, but result will have error
-// 			checkResult: func(results []tools.ToolResult) bool {
-// 				return len(results) == 1 && results[0].Error != ""
-// 			},
-// 		},
-// 		{
-// 			name: "error with pass through disabled",
-// 			toolCalls: []tools.ToolCall{
-// 				{Name: "error_tool", Arguments: "test"},
-// 			},
-// 			config:      tools.ExecuteConfig{PassThroughOnError: false},
-// 			expectError: true, // Should error immediately
-// 		},
-// 	}
-
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			results, err := executeToolCallsForAgent(ctx, tt.toolCalls, tt.config)
-
-// 			if tt.expectError {
-// 				if err == nil {
-// 					t.Error("Expected error, got nil")
-// 				}
-// 				return
-// 			}
-
-// 			if err != nil {
-// 				t.Errorf("executetools.ToolCallsForAgent() error = %v", err)
-// 				return
-// 			}
-
-// 			if tt.checkResult != nil && !tt.checkResult(results) {
-// 				t.Errorf("executetools.ToolCallsForAgent() results don't match expectations: %+v", results)
-// 			}
-// 		})
-// 	}
-// }
-
-// func TestFormattoolsToolResultsForNextIteration(t *testing.T) {
-// 	results := []tools.ToolResult{
-// 		{
-// 			ToolCall: tools.ToolCall{Name: "calculator", Arguments: "2+2"},
-// 			Result:   []byte("4"),
-// 		},
-// 		{
-// 			ToolCall: tools.ToolCall{Name: "search", Arguments: "golang"},
-// 			Error:    "Search failed",
-// 		},
-// 	}
-
-// 	originalResponse := "I'll help you with that."
-
-// 	formatted := formatToolResultsForNextIteration(results, originalResponse)
-
-// 	expected := []string{
-// 		"Previous response: I'll help you with that.",
-// 		"Tool execution results:",
-// 		"Tool 1 (calculator):",
-// 		"Result: 4",
-// 		"Tool 2 (search):",
-// 		"Error: Search failed",
-// 		"Please continue your response",
-// 	}
-
-// 	for _, exp := range expected {
-// 		if !strings.Contains(formatted, exp) {
-// 			t.Errorf("formattools.ToolResultsForNextIteration() missing expected string %q", exp)
-// 		}
-// 	}
-// }
-
 func TestAgentWithLLMError(t *testing.T) {
 	calc := tools.Simple("calculator", "Math Calculator", func(s string) string { return s })
 
@@ -499,8 +308,8 @@ func TestAgentWithLLMError(t *testing.T) {
 		t.Error("Agent() with LLM error should return error")
 	}
 
-	if !strings.Contains(err.Error(), "LLM call failed") {
-		t.Errorf("Agent() error should mention LLM failure, got: %v", err)
+	if !strings.Contains(err.Error(), "LLM provider error") {
+		t.Errorf("Agent() error should mention LLM provider error, got: %v", err)
 	}
 }
 
