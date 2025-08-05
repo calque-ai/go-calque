@@ -18,15 +18,15 @@ type jsonOutputConverter struct {
 	target any
 }
 
-// Json creates an input converter: converter.Json(data)
+// ToJson creates an input converter: converter.ToJson(data)
 // Handles: map[string]any, []any, json string, json []byte -> JSON bytes
-func Json(data any) *jsonInputConverter {
+func ToJson(data any) *jsonInputConverter {
 	return &jsonInputConverter{data: data}
 }
 
-// JsonOutput creates an output converter: converter.JsonOutput(&target)
+// FromJson creates an output converter: converter.FromJson(&target)
 // Handles: JSON bytes -> target ([]byte, string, or any unmarshallable type)
-func JsonOutput(target any) *jsonOutputConverter {
+func FromJson(target any) *jsonOutputConverter {
 	return &jsonOutputConverter{target: target}
 }
 

@@ -25,27 +25,27 @@ type NestedStruct struct {
 	Count  int                  `json:"count" jsonschema:"minimum=1"`
 }
 
-func TestStructuredJSONSchema(t *testing.T) {
+func TestToJsonSchema(t *testing.T) {
 	data := JSONSchemaTestStruct{Name: "test", Value: 42, Active: true}
-	converter := StructuredJSONSchema(data)
+	converter := ToJsonSchema(data)
 	
 	if converter == nil {
-		t.Fatal("StructuredJSONSchema() returned nil")
+		t.Fatal("ToJsonSchema() returned nil")
 	}
 	if converter.data == nil {
-		t.Error("StructuredJSONSchema() did not set data")
+		t.Error("ToJsonSchema() did not set data")
 	}
 }
 
-func TestStructuredJSONSchemaOutput(t *testing.T) {
+func TestFromJsonSchema(t *testing.T) {
 	var target JSONSchemaTestStruct
-	converter := StructuredJSONSchemaOutput[JSONSchemaTestStruct](&target)
+	converter := FromJsonSchema[JSONSchemaTestStruct](&target)
 	
 	if converter == nil {
-		t.Fatal("StructuredJSONSchemaOutput() returned nil")
+		t.Fatal("FromJsonSchema() returned nil")
 	}
 	if converter.target != &target {
-		t.Error("StructuredJSONSchemaOutput() target not set correctly")
+		t.Error("FromJsonSchema() target not set correctly")
 	}
 }
 
@@ -263,7 +263,7 @@ func TestJSONSchemaOutputConverter_FromReader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			switch target := tt.target.(type) {
 			case *JSONSchemaTestStruct:
-				converter := StructuredJSONSchemaOutput[JSONSchemaTestStruct](target)
+				converter := FromJsonSchema[JSONSchemaTestStruct](target)
 				reader := strings.NewReader(tt.input)
 				err := converter.FromReader(reader)
 				
@@ -284,7 +284,7 @@ func TestJSONSchemaOutputConverter_FromReader(t *testing.T) {
 				}
 				
 			case *SimpleStruct:
-				converter := StructuredJSONSchemaOutput[SimpleStruct](target)
+				converter := FromJsonSchema[SimpleStruct](target)
 				reader := strings.NewReader(tt.input)
 				err := converter.FromReader(reader)
 				
@@ -485,7 +485,7 @@ func TestJSONSchemaConverter_ErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			converter := StructuredJSONSchemaOutput[SimpleStruct](tt.target)
+			converter := FromJsonSchema[SimpleStruct](tt.target)
 			err := converter.FromReader(tt.reader)
 			
 			if err == nil {
@@ -505,7 +505,7 @@ func TestJSONSchemaConverter_Integration(t *testing.T) {
 		}
 		
 		// Convert to reader
-		inputConverter := StructuredJSONSchema(original)
+		inputConverter := ToJsonSchema(original)
 		reader, err := inputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)
@@ -513,7 +513,7 @@ func TestJSONSchemaConverter_Integration(t *testing.T) {
 		
 		// Convert back from reader
 		var result JSONSchemaTestStruct
-		outputConverter := StructuredJSONSchemaOutput[JSONSchemaTestStruct](&result)
+		outputConverter := FromJsonSchema[JSONSchemaTestStruct](&result)
 		err = outputConverter.FromReader(reader)
 		if err != nil {
 			t.Fatalf("FromReader() error = %v", err)
@@ -547,7 +547,7 @@ func TestJSONSchemaConverter_Integration(t *testing.T) {
 		}
 		
 		// Convert to JSON with schema
-		inputConverter := StructuredJSONSchema(original)
+		inputConverter := ToJsonSchema(original)
 		reader, err := inputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)

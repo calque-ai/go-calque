@@ -20,7 +20,7 @@ func TestJson(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			converter := Json(tt.data)
+			converter := ToJson(tt.data)
 			if converter == nil {
 				t.Fatal("Json() returned nil")
 			}
@@ -34,7 +34,7 @@ func TestJson(t *testing.T) {
 
 func TestJsonOutput(t *testing.T) {
 	var target map[string]any
-	converter := JsonOutput(&target)
+	converter := FromJson(&target)
 
 	if converter == nil {
 		t.Fatal("JsonOutput() returned nil")
@@ -343,7 +343,7 @@ func TestJsonIntegration(t *testing.T) {
 		}
 
 		// Convert to reader
-		inputConverter := Json(original)
+		inputConverter := ToJson(original)
 		reader, err := inputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)
@@ -351,7 +351,7 @@ func TestJsonIntegration(t *testing.T) {
 
 		// Convert back from reader
 		var result map[string]any
-		outputConverter := JsonOutput(&result)
+		outputConverter := FromJson(&result)
 		err = outputConverter.FromReader(reader)
 		if err != nil {
 			t.Fatalf("FromReader() error = %v", err)

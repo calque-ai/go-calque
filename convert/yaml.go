@@ -19,15 +19,15 @@ type yamlOutputConverter struct {
 	target any
 }
 
-// Yaml creates an input converter: converter.Yaml(data)
+// ToYaml creates an input converter: converter.ToYaml(data)
 // Handles: map[string]any, map[any]any, []any, yaml string, yaml []byte, structs -> YAML bytes
-func Yaml(data any) *yamlInputConverter {
+func ToYaml(data any) *yamlInputConverter {
 	return &yamlInputConverter{data: data}
 }
 
-// YamlOutput creates an output converter: converter.YamlOutput(&target)
+// FromYaml creates an output converter: converter.FromYaml(&target)
 // Handles: YAML bytes -> target ([]byte, string, or any unmarshallable type)
-func YamlOutput(target any) *yamlOutputConverter {
+func FromYaml(target any) *yamlOutputConverter {
 	return &yamlOutputConverter{target: target}
 }
 

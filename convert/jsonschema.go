@@ -21,17 +21,17 @@ type jsonSchemaOutputConverter[T any] struct {
 	target any
 }
 
-// StructuredJSONSchema creates an input converter: StructuredJSONSchema(data)
+// ToJsonSchema creates an input converter: ToJsonSchema(data)
 // Handles structs with json and jsonschema tags -> JSON with embedded schema
-func StructuredJSONSchema(data any) *jsonSchemaInputConverter {
+func ToJsonSchema(data any) *jsonSchemaInputConverter {
 	return &jsonSchemaInputConverter{
 		data: data,
 	}
 }
 
-// StructuredJSONSchemaOutput creates an output converter: StructuredJSONSchemaOutput[T](&target)
+// FromJsonSchema creates an output converter: FromJsonSchema[T](&target)
 // Handles JSON with schema -> target struct with validation
-func StructuredJSONSchemaOutput[T any](target any) *jsonSchemaOutputConverter[T] {
+func FromJsonSchema[T any](target any) *jsonSchemaOutputConverter[T] {
 	return &jsonSchemaOutputConverter[T]{
 		target: target,
 	}

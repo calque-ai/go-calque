@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"text/template"
 
 	"github.com/calque-ai/calque-pipe/core"
@@ -142,9 +143,7 @@ func FromTemplate(tmpl *template.Template, data ...map[string]any) core.Handler 
 
 		// Merge additional data if provided
 		if len(data) > 0 {
-			for key, value := range data[0] {
-				templateData[key] = value
-			}
+			maps.Copy(templateData, data[0])
 		}
 
 		// Execute template

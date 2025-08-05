@@ -33,12 +33,11 @@ type PersonXML struct {
 	Name  string `xml:"name" desc:"The person's full name"`
 	Age   int    `xml:"age" desc:"The person's age in years"`
 	City  string `xml:"city" desc:"The city where the person lives"`
-	Email string `xml:"email_address"` // Auto-generated: "The person's email address"
+	Email string `xml:"email_address"` // No desc
 }
 
 func main() {
 	fmt.Println("Structured Converter Example")
-	fmt.Println("================================")
 
 	// Example 1: Basic YAML Conversion
 	fmt.Println("\nExample 1: YAML Struct to String")
@@ -69,9 +68,9 @@ func yamlInputExample() {
 	pipe := core.New()
 	pipe.Use(flow.Logger("INPUT", 500))
 
-	// Run the pipe with a Structured YAML converter and Person schema
+	// Run the pipe with a Descriptive YAML converter and Person schema
 	var result Person
-	err := pipe.Run(context.Background(), convert.StructuredYAML(originalPerson), convert.StructuredYAMLOutput[Person](&result))
+	err := pipe.Run(context.Background(), convert.ToDescYaml(originalPerson), convert.FromDescYaml[Person](&result))
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return
@@ -93,9 +92,9 @@ func xmlInputExample() {
 	pipe := core.New()
 	pipe.Use(flow.Logger("INPUT", 500)) // Use 500 byte peek
 
-	// Run the pipe with a Structured XML converter and PersonXML schema
+	// Run the pipe with a Descriptive XML converter and PersonXML schema
 	var result PersonXML
-	err := pipe.Run(context.Background(), convert.StructuredXML(person), convert.StructuredXMLOutput[PersonXML](&result))
+	err := pipe.Run(context.Background(), convert.ToDescXml(person), convert.FromDescXml[PersonXML](&result))
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return
@@ -122,7 +121,7 @@ func llmPipelineExample() {
 
 	// Run with structured input, but parse result as JobAnalysis
 	var output JobAnalysis
-	err := pipeline.Run(context.Background(), convert.StructuredYAML(person), convert.StructuredYAMLOutput[JobAnalysis](&output))
+	err := pipeline.Run(context.Background(), convert.ToDescYaml(person), convert.FromDescYaml[JobAnalysis](&output))
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return
@@ -152,7 +151,7 @@ func outputParsingExample() {
 		Use(flow.Logger("OUTPUT", 500))
 
 	var output JobAnalysis
-	err := pipeline.Run(context.Background(), "", convert.StructuredYAMLOutput[JobAnalysis](&output))
+	err := pipeline.Run(context.Background(), "", convert.FromDescYaml[JobAnalysis](&output))
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return

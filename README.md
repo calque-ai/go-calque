@@ -138,7 +138,7 @@ Input → Handler1 → Handler2 → Handler3 → Output
 **Priority: HIGH** - Essential for AI agents - **COMPLETED**
 
 - ✅ `tools.Registry()` - Register available functions
-- ✅ `tools.Execute()` - Parse LLM tool calls and execute functions  
+- ✅ `tools.Execute()` - Parse LLM tool calls and execute functions
 - ✅ `tools.Format()` - Format tool results back to LLM
 - ✅ `tools.Agent()` - Complete tool-enabled agent
 - ✅ Multiple tool constructors: `Quick()`, `New()`, `HandlerFunc()`
@@ -232,9 +232,11 @@ Use(flow.Batch(handler, 2, 1*time.Second)) // Auto-infer T from handler
 
 #### Core Framework Examples (3)
 
-1. ✅ **basic** - Basic pipeline with string middleware
-2. ✅ **structured-converter** - JSON/YAML processing
-3. 🔲 **streaming-chat** - Real-time LLM streaming with memory
+1. ✅ **basics** - Basic pipeline with string middleware
+2. ✅ **converters** - JSON/YAML processing
+3. ✅ **descriptive-converters** - descriptive JSON/YAML processing
+4. 🔲 **schema-converters** - JSON schema processing
+5. 🔲 **streaming-chats** - Real-time LLM streaming with memory
 
 #### Data Processing Patterns (3)
 

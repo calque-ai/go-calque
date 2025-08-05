@@ -95,7 +95,7 @@ func main() {
 		fmt.Printf("Processing resume %d/%d: %s\n", i+1, len(resumes), resume.Filename)
 
 		var evaluation Evaluation
-		err := evaluationPipeline.Run(context.Background(), resume.Content, convert.JsonOutput(&evaluation))
+		err := evaluationPipeline.Run(context.Background(), resume.Content, convert.FromJson(&evaluation))
 		if err != nil {
 			log.Printf("Failed to evaluate %s: %v", resume.Filename, err)
 			continue

@@ -11,54 +11,54 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Input converter for structured data -> formatted bytes with descriptions
-type structuredInputConverter struct {
+// Input converter for descriptive data -> formatted bytes with descriptions
+type descriptiveInputConverter struct {
 	data    any
 	format  string // "yaml" or "xml"
 	tagName string // "yaml" or "xml"
 }
 
-// Output converter for formatted bytes -> structured data
-type structuredOutputConverter[T any] struct {
+// Output converter for formatted bytes -> descriptive data
+type descriptiveOutputConverter[T any] struct {
 	target  any
 	format  string // "yaml" or "xml"
 	tagName string // "yaml" or "xml"
 }
 
-// StructuredYAML creates an input converter: StructuredYAML(data)
+// ToDescYaml creates an input converter: ToDescYaml(data)
 // Handles structs with yaml tags and desc tags -> YAML bytes with comments
-func StructuredYAML(data any) *structuredInputConverter {
-	return &structuredInputConverter{
+func ToDescYaml(data any) *descriptiveInputConverter {
+	return &descriptiveInputConverter{
 		data:    data,
 		format:  "yaml",
 		tagName: "yaml",
 	}
 }
 
-// StructuredXML creates an input converter: StructuredXML(data)
+// ToDescXml creates an input converter: ToDescXml(data)
 // Handles structs with xml tags and desc tags -> XML bytes with comments
-func StructuredXML(data any) *structuredInputConverter {
-	return &structuredInputConverter{
+func ToDescXml(data any) *descriptiveInputConverter {
+	return &descriptiveInputConverter{
 		data:    data,
 		format:  "xml",
 		tagName: "xml",
 	}
 }
 
-// StructuredYAMLOutput creates an output converter: StructuredYAMLOutput[T](&target)
+// FromDescYaml creates an output converter: FromDescYaml[T](&target)
 // Handles YAML bytes -> target struct
-func StructuredYAMLOutput[T any](target any) *structuredOutputConverter[T] {
-	return &structuredOutputConverter[T]{
+func FromDescYaml[T any](target any) *descriptiveOutputConverter[T] {
+	return &descriptiveOutputConverter[T]{
 		target:  target,
 		format:  "yaml",
 		tagName: "yaml",
 	}
 }
 
-// StructuredXMLOutput creates an output converter: StructuredXMLOutput[T](&target)
+// FromDescXml creates an output converter: FromDescXml[T](&target)
 // Handles XML bytes -> target struct
-func StructuredXMLOutput[T any](target any) *structuredOutputConverter[T] {
-	return &structuredOutputConverter[T]{
+func FromDescXml[T any](target any) *descriptiveOutputConverter[T] {
+	return &descriptiveOutputConverter[T]{
 		target:  target,
 		format:  "xml",
 		tagName: "xml",
@@ -66,7 +66,7 @@ func StructuredXMLOutput[T any](target any) *structuredOutputConverter[T] {
 }
 
 // InputConverter interface
-func (s *structuredInputConverter) ToReader() (io.Reader, error) {
+func (s *descriptiveInputConverter) ToReader() (io.Reader, error) {
 	// Get the struct type and value
 	val := reflect.ValueOf(s.data)
 	typ := val.Type()
@@ -111,10 +111,10 @@ func (s *structuredInputConverter) ToReader() (io.Reader, error) {
 	return bytes.NewReader(output), nil
 }
 
-func (s *structuredOutputConverter[T]) FromReader(reader io.Reader) error {
+func (s *descriptiveOutputConverter[T]) FromReader(reader io.Reader) error {
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return fmt.Errorf("failed to read structured data: %w", err)
+		return fmt.Errorf("failed to read descriptive data: %w", err)
 	}
 
 	// comments are ignored by parsers
@@ -142,7 +142,7 @@ type structInfo struct {
 }
 
 // handleSliceInput processes slice types using description-aware generation
-func (s *structuredInputConverter) handleSliceInput(typ reflect.Type) (io.Reader, error) {
+func (s *descriptiveInputConverter) handleSliceInput(typ reflect.Type) (io.Reader, error) {
 	if typ.Kind() != reflect.Slice {
 		return nil, fmt.Errorf("invalid input: expected slice, got %s", typ.Kind())
 	}
@@ -175,7 +175,7 @@ func (s *structuredInputConverter) handleSliceInput(typ reflect.Type) (io.Reader
 }
 
 // generateFormattedOutput generates formatted output with descriptions
-func (s *structuredInputConverter) generateFormattedOutput(structInfo *structInfo, typ reflect.Type) ([]byte, error) {
+func (s *descriptiveInputConverter) generateFormattedOutput(structInfo *structInfo, typ reflect.Type) ([]byte, error) {
 	switch s.format {
 	case "yaml":
 		return s.generateYAMLWithDesc(structInfo, typ)
@@ -187,7 +187,7 @@ func (s *structuredInputConverter) generateFormattedOutput(structInfo *structInf
 }
 
 // extractStructInfo uses reflection to extract struct field information
-func (s *structuredInputConverter) extractStructInfo(typ reflect.Type, val reflect.Value) (*structInfo, error) {
+func (s *descriptiveInputConverter) extractStructInfo(typ reflect.Type, val reflect.Value) (*structInfo, error) {
 	// Validate input types
 	if typ.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("invalid input: expected struct, got %s", typ.Kind())
@@ -226,7 +226,7 @@ func (s *structuredInputConverter) extractStructInfo(typ reflect.Type, val refle
 }
 
 // processStructField processes a single struct field and returns field info and whether to include it
-func (s *structuredInputConverter) processStructField(field reflect.StructField, fieldVal reflect.Value) (structFieldInfo, bool) {
+func (s *descriptiveInputConverter) processStructField(field reflect.StructField, fieldVal reflect.Value) (structFieldInfo, bool) {
 	// Skip unexported fields
 	if !field.IsExported() {
 		return structFieldInfo{}, false
@@ -260,7 +260,7 @@ func (s *structuredInputConverter) processStructField(field reflect.StructField,
 }
 
 // parseFieldNameFromTag extracts field name from tag value (handles "name,omitempty" format)
-func (s *structuredInputConverter) parseFieldNameFromTag(tagValue, defaultName string) string {
+func (s *descriptiveInputConverter) parseFieldNameFromTag(tagValue, defaultName string) string {
 	if tagValue == "" {
 		return strings.ToLower(defaultName)
 	}
@@ -279,7 +279,7 @@ func (s *structuredInputConverter) parseFieldNameFromTag(tagValue, defaultName s
 }
 
 // generateYAMLWithDesc creates YAML with description comments
-func (s *structuredInputConverter) generateYAMLWithDesc(info *structInfo, originalType reflect.Type) ([]byte, error) {
+func (s *descriptiveInputConverter) generateYAMLWithDesc(info *structInfo, originalType reflect.Type) ([]byte, error) {
 	if info == nil {
 		return nil, fmt.Errorf("invalid input: structInfo is nil")
 	}
@@ -309,7 +309,7 @@ func (s *structuredInputConverter) generateYAMLWithDesc(info *structInfo, origin
 }
 
 // generateYAMLComments generates YAML comments
-func (s *structuredInputConverter) generateYAMLComments(builder *strings.Builder, info *structInfo, originalType reflect.Type) {
+func (s *descriptiveInputConverter) generateYAMLComments(builder *strings.Builder, info *structInfo, originalType reflect.Type) {
 	// Add type metadata as comments
 	builder.WriteString("# Type: ")
 	builder.WriteString(info.Name)
@@ -338,7 +338,7 @@ func (s *structuredInputConverter) generateYAMLComments(builder *strings.Builder
 }
 
 // prepareDataForMarshaling prepares data for YAML/XML marshaling
-func (s *structuredInputConverter) prepareDataForMarshaling(info *structInfo, originalType reflect.Type) (any, error) {
+func (s *descriptiveInputConverter) prepareDataForMarshaling(info *structInfo, originalType reflect.Type) (any, error) {
 	if originalType.Kind() == reflect.Slice {
 		// For slices, use data directly
 		return s.data, nil
@@ -353,7 +353,7 @@ func (s *structuredInputConverter) prepareDataForMarshaling(info *structInfo, or
 }
 
 // generateXMLWithDesc creates XML with description comments
-func (s *structuredInputConverter) generateXMLWithDesc(info *structInfo, originalType reflect.Type) ([]byte, error) {
+func (s *descriptiveInputConverter) generateXMLWithDesc(info *structInfo, originalType reflect.Type) ([]byte, error) {
 	if info == nil {
 		return nil, fmt.Errorf("invalid input: structInfo is nil")
 	}
@@ -393,7 +393,7 @@ func (s *structuredInputConverter) generateXMLWithDesc(info *structInfo, origina
 }
 
 // generateXMLComments generates XML comments
-func (s *structuredInputConverter) generateXMLComments(builder *strings.Builder, info *structInfo, originalType reflect.Type) {
+func (s *descriptiveInputConverter) generateXMLComments(builder *strings.Builder, info *structInfo, originalType reflect.Type) {
 	// Write type metadata as comments
 	builder.WriteString("<!-- Type: ")
 	builder.WriteString(info.Name)
@@ -420,7 +420,7 @@ func (s *structuredInputConverter) generateXMLComments(builder *strings.Builder,
 	}
 }
 
-func (s *structuredOutputConverter[T]) unmarshal(data []byte, target any) error {
+func (s *descriptiveOutputConverter[T]) unmarshal(data []byte, target any) error {
 	switch s.format {
 	case "yaml":
 		return yaml.Unmarshal(data, target)
