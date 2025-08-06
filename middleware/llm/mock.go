@@ -8,16 +8,20 @@ import (
 
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/middleware/tools"
+	"github.com/invopop/jsonschema"
 )
 
 // MockProvider implements the LLMProvider interface for testing
 type MockProvider struct {
-	response      string
-	streamDelay   time.Duration
-	shouldError   bool
-	errorMessage  string
-	simulateTools bool // Whether to simulate tool calls
-	toolCalls     []MockToolCall
+	response         string
+	responses        []string // Multiple responses for sequential calls
+	callCount        int      // Track which response to return
+	streamDelay      time.Duration
+	shouldError      bool
+	errorMessage     string
+	simulateTools    bool // Whether to simulate tool calls
+	toolCalls        []MockToolCall
+	simulateJSONMode bool // Whether to simulate structured JSON output
 }
 
 // MockToolCall represents a simulated tool call for testing
@@ -30,6 +34,14 @@ type MockToolCall struct {
 func NewMockProvider(response string) *MockProvider {
 	return &MockProvider{
 		response:    response,
+		streamDelay: 50 * time.Millisecond, // Default delay between words
+	}
+}
+
+// NewMockProviderWithResponses creates a mock provider with multiple responses
+func NewMockProviderWithResponses(responses []string) *MockProvider {
+	return &MockProvider{
+		responses:   responses,
 		streamDelay: 50 * time.Millisecond, // Default delay between words
 	}
 }
@@ -55,6 +67,12 @@ func (m *MockProvider) WithToolCalls(toolCalls ...MockToolCall) *MockProvider {
 	return m
 }
 
+// WithJSONMode configures the mock to simulate structured JSON output
+func (m *MockProvider) WithJSONMode(enabled bool) *MockProvider {
+	m.simulateJSONMode = enabled
+	return m
+}
+
 // Chat implements the LLMProvider interface with simulated streaming
 func (m *MockProvider) Chat(req *core.Request, res *core.Response) error {
 	return m.ChatWithTools(req, res)
@@ -62,6 +80,11 @@ func (m *MockProvider) Chat(req *core.Request, res *core.Response) error {
 
 // ChatWithTools implements tool calling for testing
 func (m *MockProvider) ChatWithTools(req *core.Request, res *core.Response, toolList ...tools.Tool) error {
+	return m.ChatWithSchema(req, res, nil, toolList...)
+}
+
+// ChatWithSchema implements structured output and tool calling for testing
+func (m *MockProvider) ChatWithSchema(req *core.Request, res *core.Response, schema *ResponseFormat, toolList ...tools.Tool) error {
 	// Check if we should return an error (for testing error handling)
 	if m.shouldError {
 		return fmt.Errorf("mock error: %s", m.errorMessage)
@@ -80,12 +103,13 @@ func (m *MockProvider) ChatWithTools(req *core.Request, res *core.Response, tool
 		return m.simulateToolCalls(res)
 	}
 
-	// Regular text response
-	response := m.response
-	if response == "" {
-		// Default response that echoes the input
-		response = fmt.Sprintf("Mock response to: %s", inputStr)
+	// If structured output is requested
+	if schema != nil && m.simulateJSONMode {
+		return m.simulateStructuredOutput(schema, inputStr, res)
 	}
+
+	// Regular text response
+	response := m.getNextResponse(inputStr)
 
 	// Stream the response word by word to simulate real LLM behavior
 	return m.streamResponse(response, req, res)
@@ -151,4 +175,108 @@ func (m *MockProvider) streamResponse(response string, req *core.Request, res *c
 	}
 
 	return nil
+}
+
+// simulateStructuredOutput generates mock structured JSON output
+func (m *MockProvider) simulateStructuredOutput(schema *ResponseFormat, input string, res *core.Response) error {
+	var mockJSON map[string]interface{}
+
+	// Generate a simple mock JSON response based on the schema type
+	switch schema.Type {
+	case "json_object":
+		// Simple JSON object
+		mockJSON = map[string]interface{}{
+			"message": fmt.Sprintf("Mock JSON response to: %s", input),
+			"type":    "mock_response",
+			"input":   input,
+		}
+	case "json_schema":
+		// Try to generate a response that matches the schema structure
+		if schema.Schema != nil {
+			mockJSON = m.generateMockFromSchema(schema.Schema, input)
+		} else {
+			// Fallback to simple JSON
+			mockJSON = map[string]interface{}{
+				"message": fmt.Sprintf("Mock schema response to: %s", input),
+				"schema":  true,
+			}
+		}
+	default:
+		// Default JSON response
+		mockJSON = map[string]interface{}{
+			"response": fmt.Sprintf("Mock response to: %s", input),
+		}
+	}
+
+	// Marshal and write the JSON response
+	jsonBytes, err := json.Marshal(mockJSON)
+	if err != nil {
+		return fmt.Errorf("failed to marshal mock JSON: %w", err)
+	}
+
+	_, err = res.Data.Write(jsonBytes)
+	return err
+}
+
+// generateMockFromSchema generates mock data based on JSON schema (simplified)
+func (m *MockProvider) generateMockFromSchema(schema *jsonschema.Schema, input string) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// Very basic schema interpretation for testing
+	if schema.Properties != nil {
+		for pair := schema.Properties.Oldest(); pair != nil; pair = pair.Next() {
+			key := pair.Key
+			propSchema := pair.Value
+
+			switch propSchema.Type {
+			case "string":
+				result[key] = fmt.Sprintf("mock_%s_for_%s", key, input)
+			case "integer", "number":
+				result[key] = 42
+			case "boolean":
+				result[key] = true
+			case "array":
+				result[key] = []interface{}{"mock_item_1", "mock_item_2"}
+			case "object":
+				result[key] = map[string]interface{}{"nested": "mock_value"}
+			default:
+				result[key] = fmt.Sprintf("mock_%s", key)
+			}
+		}
+	}
+
+	// If no properties defined, return a simple mock
+	if len(result) == 0 {
+		result["message"] = fmt.Sprintf("Mock response to: %s", input)
+		result["schema_type"] = schema.Type
+	}
+
+	return result
+}
+
+// getNextResponse returns the next response in sequence or generates a default
+func (m *MockProvider) getNextResponse(input string) string {
+	// If we have multiple responses, use sequential calling
+	if len(m.responses) > 0 {
+		if m.callCount >= len(m.responses) {
+			// Out of responses, return an error message or last response
+			return fmt.Sprintf("Mock error: no more responses available (called %d times)", m.callCount)
+		}
+		response := m.responses[m.callCount]
+		m.callCount++
+		return response
+	}
+
+	// Single response mode
+	if m.response != "" {
+		return m.response
+	}
+
+	// Default response that echoes the input
+	return fmt.Sprintf("Mock response to: %s", input)
+}
+
+// Reset resets the call count (useful for testing)
+func (m *MockProvider) Reset() {
+	m.callCount = 0
 }

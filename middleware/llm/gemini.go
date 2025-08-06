@@ -16,8 +16,8 @@ import (
 
 // GeminiProvider implements the LLMProvider interface for Google Gemini
 type GeminiProvider struct {
-	client       *genai.Client
-	model        string
+	client        *genai.Client
+	model         string
 	defaultConfig *Config
 }
 
@@ -72,46 +72,8 @@ func (g *GeminiProvider) ChatWithSchema(r *core.Request, w *core.Response, schem
 		return fmt.Errorf("failed to read input: %w", err)
 	}
 
-	// Use provider's default config
-	finalConfig := g.defaultConfig
-	
-	// Override response format if provided
-	if schema != nil {
-		finalConfig = g.mergeConfigs(&Config{ResponseFormat: schema}, g.defaultConfig)
-	}
-
 	// Create chat configuration
-	genaiConfig := &genai.GenerateContentConfig{}
-	
-	// Apply configuration
-	if finalConfig.Temperature != nil {
-		genaiConfig.Temperature = genai.Ptr(*finalConfig.Temperature)
-	}
-	if finalConfig.MaxTokens != nil {
-		genaiConfig.MaxOutputTokens = int32(*finalConfig.MaxTokens)
-	}
-	if finalConfig.TopP != nil {
-		genaiConfig.TopP = genai.Ptr(*finalConfig.TopP)
-	}
-	if finalConfig.Stop != nil && len(finalConfig.Stop) > 0 {
-		genaiConfig.StopSequences = finalConfig.Stop
-	}
-
-	// Apply structured output format
-	if finalConfig.ResponseFormat != nil {
-		switch finalConfig.ResponseFormat.Type {
-		case "json_object":
-			// Request JSON format without schema
-			genaiConfig.ResponseMIMEType = "application/json"
-		case "json_schema":
-			// Request JSON format with schema (Gemini 1.5 Pro supports this)
-			genaiConfig.ResponseMIMEType = "application/json"
-			if finalConfig.ResponseFormat.Schema != nil {
-				// Convert JSON schema to Gemini schema format
-				genaiConfig.ResponseSchema = convertJSONSchemaToGemini(finalConfig.ResponseFormat.Schema)
-			}
-		}
-	}
+	genaiConfig := g.buildGenerateConfig(schema)
 
 	// Convert your tools to Gemini format
 	if len(tools) > 0 {
@@ -161,6 +123,86 @@ func (g *GeminiProvider) ChatWithSchema(r *core.Request, w *core.Response, schem
 
 }
 
+// writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
+func (g *GeminiProvider) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *core.Response) error {
+	// Convert to OpenAI format
+	var toolCalls []map[string]interface{}
+
+	for _, call := range functionCalls {
+		// Convert Gemini args to JSON string
+		var argsJSON string
+		if call.Args != nil && call.Args["input"] != nil {
+			argsJSON = fmt.Sprintf(`{"input": "%v"}`, call.Args["input"])
+		} else {
+			argsJSON = `{"input": ""}`
+		}
+
+		// OpenAI format with type and function fields
+		toolCall := map[string]interface{}{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":      call.Name,
+				"arguments": argsJSON,
+			},
+		}
+		toolCalls = append(toolCalls, toolCall)
+	}
+
+	// Use json.Marshal for proper JSON formatting
+	result := map[string]interface{}{
+		"tool_calls": toolCalls,
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Data.Write(jsonBytes)
+	return err
+}
+
+// buildGenerateConfig creates a Gemini GenerateContentConfig from provider config and optional schema override
+func (g *GeminiProvider) buildGenerateConfig(schemaOverride *ResponseFormat) *genai.GenerateContentConfig {
+	config := &genai.GenerateContentConfig{}
+
+	// Apply provider configuration
+	if g.defaultConfig.Temperature != nil {
+		config.Temperature = genai.Ptr(*g.defaultConfig.Temperature)
+	}
+	if g.defaultConfig.MaxTokens != nil {
+		config.MaxOutputTokens = int32(*g.defaultConfig.MaxTokens)
+	}
+	if g.defaultConfig.TopP != nil {
+		config.TopP = genai.Ptr(*g.defaultConfig.TopP)
+	}
+	if len(g.defaultConfig.Stop) > 0 {
+		config.StopSequences = g.defaultConfig.Stop
+	}
+
+	// Apply response format - request override takes priority
+	var responseFormat *ResponseFormat
+	if schemaOverride != nil {
+		responseFormat = schemaOverride
+	} else {
+		responseFormat = g.defaultConfig.ResponseFormat
+	}
+
+	if responseFormat != nil {
+		switch responseFormat.Type {
+		case "json_object":
+			config.ResponseMIMEType = "application/json"
+		case "json_schema":
+			config.ResponseMIMEType = "application/json"
+			if responseFormat.Schema != nil {
+				config.ResponseSchema = convertSchemaToGemini(responseFormat.Schema)
+			}
+		}
+	}
+
+	return config
+}
+
 // Convert your OpenAI JSON schema tools to Gemini format
 func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclaration {
 	var functions []*genai.FunctionDeclaration
@@ -169,14 +211,19 @@ func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclarat
 		functions = append(functions, &genai.FunctionDeclaration{
 			Name:        tool.Name(),
 			Description: tool.Description(),
-			Parameters:  convertSchemaToGeminiSchema(tool.ParametersSchema()),
+			Parameters:  convertSchemaToGemini(tool.ParametersSchema()),
 		})
 	}
 
 	return functions
 }
 
-func convertSchemaToGeminiSchema(schema *jsonschema.Schema) *genai.Schema {
+// convertSchemaToGemini converts a JSON schema to Gemini's schema format
+func convertSchemaToGemini(schema *jsonschema.Schema) *genai.Schema {
+	if schema == nil {
+		return nil
+	}
+
 	return &genai.Schema{
 		Type:       genai.Type(schema.Type),
 		Properties: convertProperties(schema.Properties),
@@ -188,117 +235,11 @@ func convertProperties(properties *orderedmap.OrderedMap[string, *jsonschema.Sch
 	if properties == nil {
 		return nil
 	}
-	
+
 	result := make(map[string]*genai.Schema)
 	for pair := properties.Oldest(); pair != nil; pair = pair.Next() {
-		result[pair.Key] = convertSchemaToGeminiSchema(pair.Value)
+		result[pair.Key] = convertSchemaToGemini(pair.Value)
 	}
-	
+
 	return result
-}
-
-// writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
-func (g *GeminiProvider) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *core.Response) error {
-	// Convert to OpenAI format
-	var toolCalls []map[string]interface{}
-	
-	for _, call := range functionCalls {
-		// Convert Gemini args to JSON string
-		var argsJSON string
-		if call.Args != nil && call.Args["input"] != nil {
-			argsJSON = fmt.Sprintf(`{"input": "%v"}`, call.Args["input"])
-		} else {
-			argsJSON = `{"input": ""}`
-		}
-		
-		// OpenAI format with type and function fields
-		toolCall := map[string]interface{}{
-			"type": "function",
-			"function": map[string]interface{}{
-				"name":      call.Name,
-				"arguments": argsJSON,
-			},
-		}
-		toolCalls = append(toolCalls, toolCall)
-	}
-	
-	// Use json.Marshal for proper JSON formatting
-	result := map[string]interface{}{
-		"tool_calls": toolCalls,
-	}
-	
-	jsonBytes, err := json.Marshal(result)
-	if err != nil {
-		return err
-	}
-	
-	_, err = w.Data.Write(jsonBytes)
-	return err
-}
-
-// Name returns the provider name
-func (g *GeminiProvider) Name() string {
-	return "gemini"
-}
-
-// SupportedFeatures returns the features supported by Gemini
-func (g *GeminiProvider) SupportedFeatures() ProviderFeatures {
-	return ProviderFeatures{
-		Streaming:        true,
-		FunctionCalling:  true,
-		StructuredOutput: true, // Gemini supports JSON mode
-		Vision:           true,
-		SystemPrompts:    true,
-	}
-}
-
-// mergeConfigs merges multiple configs with priority order
-func (g *GeminiProvider) mergeConfigs(configs ...*Config) *Config {
-	result := &Config{}
-	
-	for _, config := range configs {
-		if config == nil {
-			continue
-		}
-		
-		if config.Temperature != nil {
-			result.Temperature = config.Temperature
-		}
-		if config.TopP != nil {
-			result.TopP = config.TopP
-		}
-		if config.MaxTokens != nil {
-			result.MaxTokens = config.MaxTokens
-		}
-		if config.Stop != nil {
-			result.Stop = config.Stop
-		}
-		if config.PresencePenalty != nil {
-			result.PresencePenalty = config.PresencePenalty
-		}
-		if config.FrequencyPenalty != nil {
-			result.FrequencyPenalty = config.FrequencyPenalty
-		}
-		if config.ResponseFormat != nil {
-			result.ResponseFormat = config.ResponseFormat
-		}
-		if config.Streaming != nil {
-			result.Streaming = config.Streaming
-		}
-	}
-	
-	return result
-}
-
-// convertJSONSchemaToGemini converts a JSON schema to Gemini's schema format
-func convertJSONSchemaToGemini(schema *jsonschema.Schema) *genai.Schema {
-	if schema == nil {
-		return nil
-	}
-	
-	return &genai.Schema{
-		Type:       genai.Type(schema.Type),
-		Properties: convertProperties(schema.Properties),
-		Required:   schema.Required,
-	}
 }

@@ -27,29 +27,16 @@ type ResponseFormat struct {
 	Schema *jsonschema.Schema `json:"schema,omitempty"` // JSON schema for validation
 }
 
-// ProviderFeatures describes what features a provider supports
-type ProviderFeatures struct {
-	Streaming        bool `json:"streaming"`
-	FunctionCalling  bool `json:"function_calling"`
-	StructuredOutput bool `json:"structured_output"`
-	Vision           bool `json:"vision"`
-	SystemPrompts    bool `json:"system_prompts"`
-}
-
 // LLMProvider interface - simplified with configuration at provider level
 type LLMProvider interface {
 	// Core interface - configuration handled at provider creation
 	Chat(r *core.Request, w *core.Response) error
+
 	ChatWithTools(r *core.Request, w *core.Response, tools ...tools.Tool) error
-	
+
 	// Enhanced interface for request-specific overrides (output schema, etc.)
 	ChatWithSchema(r *core.Request, w *core.Response, schema *ResponseFormat, tools ...tools.Tool) error
-	
-	// Provider information
-	Name() string
-	SupportedFeatures() ProviderFeatures
 }
-
 
 // Chat middleware - works with any llm provider
 func Chat(provider LLMProvider) core.Handler {

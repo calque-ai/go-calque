@@ -10,6 +10,7 @@ import (
 
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/middleware/tools"
+	"github.com/invopop/jsonschema"
 	"github.com/ollama/ollama/api"
 )
 
@@ -75,48 +76,8 @@ func (o *OllamaProvider) ChatWithSchema(r *core.Request, w *core.Response, schem
 		return fmt.Errorf("failed to read input: %w", err)
 	}
 
-	// Use provider's default config
-	finalConfig := o.defaultConfig
-	
-	// Override response format if provided
-	if schema != nil {
-		finalConfig = o.mergeConfigs(&Config{ResponseFormat: schema}, o.defaultConfig)
-	}
-
-	// Create chat request
-	req := &api.ChatRequest{
-		Model: o.model,
-		Messages: []api.Message{
-			{
-				Role:    "user",
-				Content: string(inputBytes),
-			},
-		},
-	}
-
-	// Apply configuration
-	if finalConfig.Temperature != nil {
-		req.Options = make(map[string]interface{})
-		req.Options["temperature"] = *finalConfig.Temperature
-	}
-	if finalConfig.TopP != nil {
-		if req.Options == nil {
-			req.Options = make(map[string]interface{})
-		}
-		req.Options["top_p"] = *finalConfig.TopP
-	}
-	if finalConfig.MaxTokens != nil {
-		if req.Options == nil {
-			req.Options = make(map[string]interface{})
-		}
-		req.Options["num_predict"] = *finalConfig.MaxTokens
-	}
-	if finalConfig.Stop != nil && len(finalConfig.Stop) > 0 {
-		if req.Options == nil {
-			req.Options = make(map[string]interface{})
-		}
-		req.Options["stop"] = finalConfig.Stop
-	}
+	// Create chat request with configuration
+	req := o.buildChatRequest(string(inputBytes), schema)
 
 	// Add tools to request if provided
 	if len(toolList) > 0 {
@@ -273,56 +234,67 @@ func (o *OllamaProvider) convertTextToToolCalls(responseText string, w *core.Res
 	return err
 }
 
-// Name returns the provider name
-func (o *OllamaProvider) Name() string {
-	return "ollama"
+// buildChatRequest creates an Ollama ChatRequest from provider config and optional schema override
+func (o *OllamaProvider) buildChatRequest(input string, schemaOverride *ResponseFormat) *api.ChatRequest {
+	req := &api.ChatRequest{
+		Model: o.model,
+		Messages: []api.Message{
+			{
+				Role:    "user",
+				Content: input,
+			},
+		},
+		Options: make(map[string]interface{}),
+	}
+
+	// Apply provider configuration
+	if o.defaultConfig.Temperature != nil {
+		req.Options["temperature"] = *o.defaultConfig.Temperature
+	}
+	if o.defaultConfig.TopP != nil {
+		req.Options["top_p"] = *o.defaultConfig.TopP
+	}
+	if o.defaultConfig.MaxTokens != nil {
+		req.Options["num_predict"] = *o.defaultConfig.MaxTokens
+	}
+	if len(o.defaultConfig.Stop) > 0 {
+		req.Options["stop"] = o.defaultConfig.Stop
+	}
+
+	// Apply response format - request override takes priority
+	var responseFormat *ResponseFormat
+	if schemaOverride != nil {
+		responseFormat = schemaOverride
+	} else {
+		responseFormat = o.defaultConfig.ResponseFormat
+	}
+
+	if responseFormat != nil {
+		switch responseFormat.Type {
+		case "json_object":
+			// Ollama supports JSON format via format parameter
+			req.Options["format"] = "json"
+		case "json_schema":
+			// For JSON schema, we set format to "json" and add schema info
+			req.Options["format"] = "json"
+			if responseFormat.Schema != nil {
+				// Store schema as string
+				req.Options["json_schema"] = convertJSONSchemaToString(responseFormat.Schema)
+			}
+		}
+	}
+
+	return req
 }
 
-// SupportedFeatures returns the features supported by Ollama
-func (o *OllamaProvider) SupportedFeatures() ProviderFeatures {
-	return ProviderFeatures{
-		Streaming:        true,
-		FunctionCalling:  true, // Ollama supports function calling
-		StructuredOutput: false, // Ollama doesn't support structured JSON output natively
-		Vision:           true,  // Some Ollama models support vision
-		SystemPrompts:    true,
+// convertJSONSchemaToString converts a JSON schema to a string for Ollama
+func convertJSONSchemaToString(schema *jsonschema.Schema) string {
+	if schema == nil {
+		return ""
 	}
-}
 
-// mergeConfigs merges multiple configs with priority order
-func (o *OllamaProvider) mergeConfigs(configs ...*Config) *Config {
-	result := &Config{}
-	
-	for _, config := range configs {
-		if config == nil {
-			continue
-		}
-		
-		if config.Temperature != nil {
-			result.Temperature = config.Temperature
-		}
-		if config.TopP != nil {
-			result.TopP = config.TopP
-		}
-		if config.MaxTokens != nil {
-			result.MaxTokens = config.MaxTokens
-		}
-		if config.Stop != nil {
-			result.Stop = config.Stop
-		}
-		if config.PresencePenalty != nil {
-			result.PresencePenalty = config.PresencePenalty
-		}
-		if config.FrequencyPenalty != nil {
-			result.FrequencyPenalty = config.FrequencyPenalty
-		}
-		if config.ResponseFormat != nil {
-			result.ResponseFormat = config.ResponseFormat
-		}
-		if config.Streaming != nil {
-			result.Streaming = config.Streaming
-		}
-	}
-	
-	return result
+	// For now, return a simple JSON representation
+	// In practice, you might want to format this as instructions for the model
+	schemaBytes, _ := json.Marshal(schema)
+	return string(schemaBytes)
 }
