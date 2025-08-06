@@ -77,7 +77,7 @@ func runSimpleAgent() {
 	})
 
 	// Create Gemini example provider (reads GOOGLE_API_KEY from env)
-	provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash")
+	provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash", llm.DefaultConfig())
 	if err != nil {
 		log.Fatal("Failed to create Gemini provider:", err)
 	}
@@ -143,7 +143,7 @@ func runConfiguredAgent() {
 	// if err != nil {
 	// 	log.Fatal("Failed to create Gemini provider:", err)
 	// }
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
+	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}

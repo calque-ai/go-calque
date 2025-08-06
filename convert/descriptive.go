@@ -13,9 +13,10 @@ import (
 
 // Input converter for descriptive data -> formatted bytes with descriptions
 type descriptiveInputConverter struct {
-	data    any
-	format  string // "yaml" or "xml"
-	tagName string // "yaml" or "xml"
+	data         any
+	outputSchema any
+	format       string // "yaml" or "xml"
+	tagName      string // "yaml" or "xml"
 }
 
 // Output converter for formatted bytes -> descriptive data
@@ -27,6 +28,7 @@ type descriptiveOutputConverter[T any] struct {
 
 // ToDescYaml creates an input converter: ToDescYaml(data)
 // Handles structs with yaml tags and desc tags -> YAML bytes with comments
+// Output schema is automatically discovered from pipeline output converter
 func ToDescYaml(data any) *descriptiveInputConverter {
 	return &descriptiveInputConverter{
 		data:    data,
@@ -37,6 +39,7 @@ func ToDescYaml(data any) *descriptiveInputConverter {
 
 // ToDescXml creates an input converter: ToDescXml(data)
 // Handles structs with xml tags and desc tags -> XML bytes with comments
+// Output schema is automatically discovered from pipeline output converter
 func ToDescXml(data any) *descriptiveInputConverter {
 	return &descriptiveInputConverter{
 		data:    data,
@@ -63,6 +66,12 @@ func FromDescXml[T any](target any) *descriptiveOutputConverter[T] {
 		format:  "xml",
 		tagName: "xml",
 	}
+}
+
+// SchemaProvider interface - provides schema instance
+func (s *descriptiveOutputConverter[T]) GetSchema() any {
+	var zero T
+	return zero // Return zero value directly, no reflection needed
 }
 
 // InputConverter interface
@@ -109,6 +118,12 @@ func (s *descriptiveInputConverter) ToReader() (io.Reader, error) {
 	}
 
 	return bytes.NewReader(output), nil
+}
+
+// SchemaConsumer interface - accepts schema instance
+func (s *descriptiveInputConverter) SetOutputSchema(schema any) {
+	// Direct assignment of zero value instance
+	s.outputSchema = schema
 }
 
 func (s *descriptiveOutputConverter[T]) FromReader(reader io.Reader) error {
@@ -311,7 +326,7 @@ func (s *descriptiveInputConverter) generateYAMLWithDesc(info *structInfo, origi
 // generateYAMLComments generates YAML comments
 func (s *descriptiveInputConverter) generateYAMLComments(builder *strings.Builder, info *structInfo, originalType reflect.Type) {
 	// Add type metadata as comments
-	builder.WriteString("# Type: ")
+	builder.WriteString("# Input Type: ")
 	builder.WriteString(info.Name)
 	builder.WriteByte('\n')
 
@@ -323,7 +338,7 @@ func (s *descriptiveInputConverter) generateYAMLComments(builder *strings.Builde
 
 	// Add field descriptions as comments
 	if len(info.Fields) > 0 {
-		builder.WriteString("# Field descriptions:\n")
+		builder.WriteString("# Input Field descriptions:\n")
 		for _, field := range info.Fields {
 			builder.WriteString("# ")
 			builder.WriteString(field.FieldName)
@@ -334,6 +349,123 @@ func (s *descriptiveInputConverter) generateYAMLComments(builder *strings.Builde
 			builder.WriteByte('\n')
 		}
 		builder.WriteByte('\n')
+	}
+
+	// Add output schema information if provided
+	if s.outputSchema != nil {
+		s.generateOutputSchemaComments(builder)
+	}
+}
+
+// generateOutputSchemaComments generates comments for the expected output schema
+func (s *descriptiveInputConverter) generateOutputSchemaComments(builder *strings.Builder) {
+	val := reflect.ValueOf(s.outputSchema)
+	typ := val.Type()
+
+	// Handle pointers
+	if typ.Kind() == reflect.Ptr {
+		if !val.IsNil() {
+			val = val.Elem()
+		} else {
+			val = reflect.New(typ.Elem()).Elem()
+		}
+		typ = typ.Elem()
+	}
+
+	// Handle non-struct types
+	if typ.Kind() != reflect.Struct {
+		builder.WriteString("# Expected Output Type: ")
+		builder.WriteString(typ.String())
+		builder.WriteString("\n\n")
+		return
+	}
+
+	// Extract output schema info
+	outputInfo, err := s.extractStructInfo(typ, val)
+	if err != nil {
+		builder.WriteString("# Expected Output: (unable to parse schema)\n\n")
+		return
+	}
+
+	builder.WriteString("# REQUIRED OUTPUT FORMAT: YAML\n")
+	builder.WriteString("# IMPORTANT: Do NOT wrap your response in ```yaml or ``` code blocks\n")
+	builder.WriteString("# IMPORTANT: Return raw YAML only, no markdown formatting\n")
+	builder.WriteString("# IMPORTANT: Arrays must use YAML list format with dashes (-), NOT comma-separated strings\n")
+	builder.WriteString("# Expected Output Type: ")
+	builder.WriteString(outputInfo.Name)
+	builder.WriteByte('\n')
+	builder.WriteString("# \n")
+	builder.WriteString("# Please respond with YAML in exactly this structure:\n")
+
+	if len(outputInfo.Fields) > 0 {
+		// Generate example YAML structure
+		builder.WriteString("# \n")
+		for _, field := range outputInfo.Fields {
+			builder.WriteString("# ")
+			builder.WriteString(field.FieldName)
+			builder.WriteString(": ")
+
+			// Add type-specific example based on field type
+			exampleValue := s.getExampleValue(field.Type)
+			builder.WriteString(exampleValue)
+
+			if field.Description != "" {
+				builder.WriteString("  # ")
+				builder.WriteString(field.Description)
+			}
+			builder.WriteByte('\n')
+		}
+		builder.WriteString("# \n")
+		builder.WriteString("# For array fields, use this exact format:\n")
+		builder.WriteString("# field_name:\n")
+		builder.WriteString("#   - \"first item\"\n")
+		builder.WriteString("#   - \"second item\"\n")
+		builder.WriteString("# \n")
+		builder.WriteString("# Field descriptions:\n")
+		for _, field := range outputInfo.Fields {
+			builder.WriteString("# - ")
+			builder.WriteString(field.FieldName)
+			builder.WriteString(": ")
+			if field.Description != "" {
+				builder.WriteString(field.Description)
+			}
+			builder.WriteByte('\n')
+		}
+		builder.WriteByte('\n')
+	}
+}
+
+// getExampleValue returns a type-appropriate example value for YAML structure demonstration
+func (s *descriptiveInputConverter) getExampleValue(fieldType string) string {
+	switch {
+	case strings.Contains(fieldType, "string"):
+		return "\"example_value\""
+	case strings.Contains(fieldType, "int") || strings.Contains(fieldType, "float"):
+		return "123"
+	case strings.Contains(fieldType, "bool"):
+		return "true"
+	case strings.Contains(fieldType, "[]string"):
+		return "\n#   - \"item1\"\n#   - \"item2\"  # MUST be array format, not comma-separated string"
+	case strings.Contains(fieldType, "[]"):
+		return "\n#   - item1\n#   - item2  # MUST be array format, not comma-separated string"
+	default:
+		return "\"value\""
+	}
+}
+
+// getExampleValueXML returns a type-appropriate example value for XML structure demonstration
+func (s *descriptiveInputConverter) getExampleValueXML(fieldType string) string {
+	switch {
+	case strings.Contains(fieldType, "string"):
+		return "example_value"
+	case strings.Contains(fieldType, "int") || strings.Contains(fieldType, "float"):
+		return "123"
+	case strings.Contains(fieldType, "bool"):
+		return "true"
+	case strings.Contains(fieldType, "[]"):
+		return "item1, item2" // XML arrays are typically represented differently
+	default:
+		return "value"
 	}
 }
 
@@ -395,7 +527,7 @@ func (s *descriptiveInputConverter) generateXMLWithDesc(info *structInfo, origin
 // generateXMLComments generates XML comments
 func (s *descriptiveInputConverter) generateXMLComments(builder *strings.Builder, info *structInfo, originalType reflect.Type) {
 	// Write type metadata as comments
-	builder.WriteString("<!-- Type: ")
+	builder.WriteString("<!-- Input Type: ")
 	builder.WriteString(info.Name)
 	builder.WriteString(" -->\n")
 
@@ -407,7 +539,7 @@ func (s *descriptiveInputConverter) generateXMLComments(builder *strings.Builder
 
 	// Write field descriptions as comments
 	if len(info.Fields) > 0 {
-		builder.WriteString("<!-- Field descriptions: -->\n")
+		builder.WriteString("<!-- Input Field descriptions: -->\n")
 		for _, field := range info.Fields {
 			builder.WriteString("<!-- ")
 			builder.WriteString(field.FieldName)
@@ -417,6 +549,96 @@ func (s *descriptiveInputConverter) generateXMLComments(builder *strings.Builder
 			}
 			builder.WriteString(" -->\n")
 		}
+	}
+
+	// Add output schema information if provided
+	if s.outputSchema != nil {
+		s.generateOutputSchemaXMLComments(builder)
+	}
+}
+
+// generateOutputSchemaXMLComments generates XML comments for the expected output schema
+func (s *descriptiveInputConverter) generateOutputSchemaXMLComments(builder *strings.Builder) {
+	val := reflect.ValueOf(s.outputSchema)
+	typ := val.Type()
+
+	// Handle pointers
+	if typ.Kind() == reflect.Ptr {
+		if !val.IsNil() {
+			val = val.Elem()
+		} else {
+			val = reflect.New(typ.Elem()).Elem()
+		}
+		typ = typ.Elem()
+	}
+
+	// Handle non-struct types
+	if typ.Kind() != reflect.Struct {
+		builder.WriteString("<!-- Expected Output Type: ")
+		builder.WriteString(typ.String())
+		builder.WriteString(" -->\n")
+		return
+	}
+
+	// Extract output schema info
+	outputInfo, err := s.extractStructInfo(typ, val)
+	if err != nil {
+		builder.WriteString("<!-- Expected Output: (unable to parse schema) -->\n")
+		return
+	}
+
+	builder.WriteString("<!-- REQUIRED OUTPUT FORMAT: XML (not JSON) -->\n")
+	builder.WriteString("<!-- IMPORTANT: Do NOT wrap your response in ```xml or ``` code blocks -->\n")
+	builder.WriteString("<!-- IMPORTANT: Return raw XML only, no markdown formatting -->\n")
+	builder.WriteString("<!-- Expected Output Type: ")
+	builder.WriteString(outputInfo.Name)
+	builder.WriteString(" -->\n")
+	builder.WriteString("<!-- \n")
+	builder.WriteString("Please respond with XML in exactly this structure:\n")
+
+	if len(outputInfo.Fields) > 0 {
+		// Generate example XML structure
+		builder.WriteString("\n<")
+		builder.WriteString(outputInfo.Name)
+		builder.WriteString(">\n")
+
+		for _, field := range outputInfo.Fields {
+			builder.WriteString("  <")
+			builder.WriteString(field.FieldName)
+			builder.WriteString(">")
+
+			// Add type-specific example based on field type
+			exampleValue := s.getExampleValueXML(field.Type)
+			builder.WriteString(exampleValue)
+
+			builder.WriteString("</")
+			builder.WriteString(field.FieldName)
+			builder.WriteString(">")
+
+			if field.Description != "" {
+				builder.WriteString("  <!-- ")
+				builder.WriteString(field.Description)
+				builder.WriteString(" -->")
+			}
+			builder.WriteString("\n")
+		}
+
+		builder.WriteString("</")
+		builder.WriteString(outputInfo.Name)
+		builder.WriteString(">\n")
+		builder.WriteString("\n")
+		builder.WriteString("Field descriptions:\n")
+
+		for _, field := range outputInfo.Fields {
+			builder.WriteString("- ")
+			builder.WriteString(field.FieldName)
+			builder.WriteString(": ")
+			if field.Description != "" {
+				builder.WriteString(field.Description)
+			}
+			builder.WriteString("\n")
+		}
+		builder.WriteString(" -->\n")
 	}
 }
 

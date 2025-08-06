@@ -5,27 +5,6 @@ import (
 	"time"
 )
 
-// CacheStore interface for cache backends with TTL support
-type CacheStore interface {
-	// Get retrieves data for a key, returns nil if not found or expired
-	Get(key string) ([]byte, error)
-
-	// Set stores data for a key with TTL
-	Set(key string, value []byte, ttl time.Duration) error
-
-	// Delete removes data for a key
-	Delete(key string) error
-
-	// Clear removes all cached data
-	Clear() error
-
-	// Exists checks if a key exists and hasn't expired
-	Exists(key string) bool
-
-	// List returns all non-expired keys
-	List() []string
-}
-
 // InMemoryCacheStore provides a simple in-memory cache implementation with TTL
 type InMemoryCacheStore struct {
 	data map[string]*cacheEntry

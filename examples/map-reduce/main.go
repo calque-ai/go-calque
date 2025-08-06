@@ -66,7 +66,7 @@ func main() {
 	fmt.Println("Map-Reduce Resume Processing Example")
 
 	// Create Ollama provider (connects to localhost:11434 by default)
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
+	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
 	if err != nil {
 		log.Fatal("Failed to create provider:", err)
 	}

@@ -1,196 +1,150 @@
+// Package main demonstrates descriptive converter functionality in the Calque-Pipe AI Agent Framework.
+// Descriptive converters enhance structured data with field descriptions for LLM understanding.
+// They generate format-specific output with embedded comments explaining each field's purpose.
+//
+// When to use descriptive converters:
+// - Providing structured data to LLMs that need field context
+// - Creating self-documenting API inputs/outputs
+// - Building prompts that require data schema information
+// - Processing complex structured data where field meaning matters
 package main
 
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
+	"strings"
 
 	"github.com/calque-ai/calque-pipe/convert"
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
+	"github.com/calque-ai/calque-pipe/middleware/llm"
+	"github.com/calque-ai/calque-pipe/middleware/str"
+	"github.com/joho/godotenv"
 )
 
-// Person represents a person with basic information
-type Person struct {
-	Name  string `yaml:"name" desc:"The person's full name"`
-	Age   int    `yaml:"age" desc:"The person's age in years"`
-	City  string `yaml:"city" desc:"The city where the person lives"`
-	Email string `yaml:"email_address"` // No desc
+// ProductInfo represents structured product data with descriptions for LLM understanding
+type ProductInfo struct {
+	Name        string   `yaml:"name" desc:"The product's commercial name"`
+	Category    string   `yaml:"category" desc:"Product classification category"`
+	Price       float64  `yaml:"price" desc:"Current market price in USD"`
+	Features    []string `yaml:"features" desc:"List of key product features"`
+	Description string   `yaml:"description" desc:"Detailed product description"`
 }
 
-// JobAnalysis represents an analysis of someone's career
-type JobAnalysis struct {
-	SuitableRoles   []string `yaml:"suitable_roles" desc:"List of job roles that would suit this person"`
-	SkillGaps       []string `yaml:"skill_gaps" desc:"Areas where the person might need improvement"`
-	CareerAdvice    string   `yaml:"career_advice" desc:"Personalized career advice"`
-	SalaryEstimate  int      `yaml:"salary_estimate" desc:"Estimated salary range (in thousands)"`
-	RecommendedCity string   `yaml:"recommended_city" desc:"Best city for their career goals"`
-}
-
-// PersonXML uses XML tags instead
-type PersonXML struct {
-	Name  string `xml:"name" desc:"The person's full name"`
-	Age   int    `xml:"age" desc:"The person's age in years"`
-	City  string `xml:"city" desc:"The city where the person lives"`
-	Email string `xml:"email_address"` // No desc
+// ProductAnalysis represents an LLM's analysis of a product with descriptive fields
+type ProductAnalysis struct {
+	MarketPosition  string   `yaml:"market_position" desc:"Where this product fits in the market"`
+	TargetAudience  []string `yaml:"target_audience" desc:"Who should buy this product"`
+	Strengths       []string `yaml:"strengths" desc:"Key advantages of this product"`
+	Recommendations string   `yaml:"recommendations" desc:"Suggested improvements or marketing strategies"`
+	CompetitorPrice float64  `yaml:"competitor_price" desc:"Estimated competitor pricing"`
 }
 
 func main() {
-	fmt.Println("Structured Converter Example")
+	fmt.Println("Calque-Pipe Descriptive Converter Examples")
 
-	// Example 1: Basic YAML Conversion
-	fmt.Println("\nExample 1: YAML Struct to String")
-	yamlInputExample()
-
-	// Example 2: XML Conversion
-	fmt.Println("\nExample 2: XML Struct to String")
-	xmlInputExample()
-
-	// Example 3: Full Pipeline with LLM Simulation
-	fmt.Println("\nExample 3: Complete LLM Pipeline")
-	llmPipelineExample()
-
-	// Example 4: Output Parsing
-	fmt.Println("\nExample 4: Parse LLM Response")
-	outputParsingExample()
+	runDescriptiveBasics()     // Basic descriptive converter demo
+	runLLMIntegrationExample() // LLM + descriptive converter demo
 }
 
-// yamlInputExample demonstrates struct to YAML conversion with descriptions and round-trip parsing
-func yamlInputExample() {
-	originalPerson := Person{
-		Name:  "Alice Johnson",
-		Age:   28,
-		City:  "Austin",
-		Email: "alice@example.com",
+// runDescriptiveBasics demonstrates descriptive converter concepts: adding field descriptions to structured output.
+// Shows how descriptive converters generate comments that help LLMs understand field meanings.
+func runDescriptiveBasics() {
+	fmt.Println("\nRunning basic descriptive converter pipeline...")
+	// Example: struct -> descriptive YAML with comments
+
+	product := ProductInfo{
+		Name:        "Smart Widget",
+		Category:    "Electronics",
+		Price:       99.99,
+		Features:    []string{"WiFi", "Bluetooth", "Voice Control"},
+		Description: "A widget that calques ideas from competing products.",
 	}
 
 	pipe := core.New()
-	pipe.Use(flow.Logger("INPUT", 500))
+	pipe.
+		Use(flow.Logger("STRUCT_INPUT", 600)).                                   // Log struct input
+		Use(str.Transform(func(s string) string { return strings.ToUpper(s) })). // Transform to uppercase
+		Use(flow.Logger("DESCRIPTIVE_YAML", 600))                                // Log descriptive YAML output
 
-	// Run the pipe with a Descriptive YAML converter and Person schema
-	var result Person
-	err := pipe.Run(context.Background(), convert.ToDescYaml(originalPerson), convert.FromDescYaml[Person](&result))
+	var result string
+	err := pipe.Run(context.Background(), convert.ToDescYaml(product), &result)
 	if err != nil {
-		log.Printf("Error: %v", err)
+		log.Printf("Descriptive conversion error: %v", err)
 		return
 	}
 
-	fmt.Printf("Parsed back to struct: %+v\n", result)
-	fmt.Printf("Round-trip successful: %t\n", originalPerson == result)
-
+	fmt.Printf("Generated descriptive YAML:\n%s\n", result)
 }
 
-func xmlInputExample() {
-	person := PersonXML{
-		Name:  "Bob Smith",
-		Age:   35,
-		City:  "Seattle",
-		Email: "bob@tech.com",
+// runLLMIntegrationExample shows round-trip descriptive converter usage with structured output parsing.
+// Demonstrates ToDescYaml for input and FromDescYaml for parsing LLM's structured response.
+func runLLMIntegrationExample() {
+	fmt.Println("\nRunning LLM integration with structured output parsing...")
+
+	product := ProductInfo{
+		Name:        "Neural Interface",
+		Category:    "AI Hardware",
+		Price:       2499.99,
+		Features:    []string{"Brain-Computer Interface", "AI Processing", "Neural Mapping"},
+		Description: "This device calques neural patterns and transforms them into digital commands.",
 	}
 
+	// Load environment variables from .env file
+	// Make sure to have GOOGLE_API_KEY set in your .env file
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	// // Create Gemini example provider (reads GOOGLE_API_KEY from env)
+	// provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash")
+	// if err != nil {
+	// 	log.Fatal("Failed to create Gemini provider:", err)
+	// }
+
+	// Create Ollama provider (connects to localhost:11434 by default)
+	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
+	if err != nil {
+		log.Fatal("Failed to create Ollama provider:", err)
+	}
+
+	// Pipeline: struct -> descriptive YAML -> mock LLM -> parse structured response
 	pipe := core.New()
-	pipe.Use(flow.Logger("INPUT", 500)) // Use 500 byte peek
+	pipe.
+		Use(flow.Logger("DESCRIPTIVE_INPUT", 600)). // Log descriptive YAML input
+		Use(llm.Chat(provider)).                    // use Gemini LLM that returns structured YAML
+		Use(flow.Logger("STRUCTURED_OUTPUT", 400))  // Log structured YAML response
 
-	// Run the pipe with a Descriptive XML converter and PersonXML schema
-	var result PersonXML
-	err := pipe.Run(context.Background(), convert.ToDescXml(person), convert.FromDescXml[PersonXML](&result))
+	var analysis ProductAnalysis
+	err = pipe.Run(context.Background(), convert.ToDescYaml(product), convert.FromDescYaml[ProductAnalysis](&analysis))
 	if err != nil {
-		log.Printf("Error: %v", err)
+		log.Printf("LLM integration error: %v", err)
 		return
 	}
 
-	// This should show the parsed struct, not the JSON string
-	fmt.Printf("Parsed back to struct: %+v\n", result)
-	fmt.Printf("Round-trip successful: %t\n", person == result)
-
+	fmt.Printf("Parsed structured analysis:\n")
+	fmt.Printf("  Market Position: %s\n", analysis.MarketPosition)
+	fmt.Printf("  Target Audience: %v\n", analysis.TargetAudience)
+	fmt.Printf("  Strengths: %v\n", analysis.Strengths)
+	fmt.Printf("  Recommendations: %s\n", analysis.Recommendations)
+	fmt.Printf("  Competitor Price: $%.2f\n", analysis.CompetitorPrice)
 }
 
-func llmPipelineExample() {
-	person := Person{
-		Name:  "Carol Davis",
-		Age:   42,
-		City:  "Denver",
-		Email: "carol@startup.com",
-	}
-
-	// Create pipeline: Struct → YAML → Mock LLM → Parse Result
-	pipeline := core.New().
-		Use(mockCareerAnalysisLLM()). // Mock LLM processing
-		Use(flow.Logger("OUTPUT", 500))
-
-	// Run with structured input, but parse result as JobAnalysis
-	var output JobAnalysis
-	err := pipeline.Run(context.Background(), convert.ToDescYaml(person), convert.FromDescYaml[JobAnalysis](&output))
-	if err != nil {
-		log.Printf("Error: %v", err)
-		return
-	}
-
-	fmt.Printf("LLM processed the structured input and returned:\n")
-	fmt.Printf("  Suitable Roles: %v\n", output.SuitableRoles)
-	fmt.Printf("  Skill Gaps: %v\n", output.SkillGaps)
-	fmt.Printf("  Career Advice: %s\n", output.CareerAdvice)
-	fmt.Printf("  Salary Estimate: $%dk\n", output.SalaryEstimate)
-	fmt.Printf("  Recommended City: %s\n", output.RecommendedCity)
-
-}
-
-func outputParsingExample() {
-	// Mock LLM response in YAML format
-	mockLLMResponse := `
-  suitable_roles: ["Senior Engineer", "Tech Lead", "Engineering Manager"]
-  skill_gaps: ["Leadership", "System Design"]
-  career_advice: "Focus on developing leadership and system design skills for senior roles"
-  salary_estimate: 150
-  recommended_city: "San Francisco"`
-
-	// Demonstrate direct parsing with converter
-	pipeline := core.New().
-		Use(mockResponseHandler(mockLLMResponse)).
-		Use(flow.Logger("OUTPUT", 500))
-
-	var output JobAnalysis
-	err := pipeline.Run(context.Background(), "", convert.FromDescYaml[JobAnalysis](&output))
-	if err != nil {
-		log.Printf("Error: %v", err)
-		return
-	}
-
-	fmt.Printf("Parsed Job Analysis:\n")
-	fmt.Printf("  Suitable Roles: %v\n", output.SuitableRoles)
-	fmt.Printf("  Skill Gaps: %v\n", output.SkillGaps)
-	fmt.Printf("  Career Advice: %s\n", output.CareerAdvice)
-	fmt.Printf("  Salary Estimate: $%dk\n", output.SalaryEstimate)
-	fmt.Printf("  Recommended City: %s\n", output.RecommendedCity)
-
-}
-
-// Mock handlers for demonstration
-func mockCareerAnalysisLLM() core.Handler {
+// mockLLMAnalyzer simulates an LLM that returns structured YAML output
+func mockLLMAnalyzer() core.Handler {
 	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
-		// Read the structured input (we'll ignore it for this demo)
-		input, _ := io.ReadAll(r.Data)
+		var input []byte
+		_ = core.Read(r, &input) //Read the input even if we are not using it in this case
 
-		// Log what we received
-		fmt.Printf("LLM received structured input:\n%s\n", string(input))
+		// Simulate LLM generating structured YAML response based on descriptive input
+		structuredResponse := `market_position: "Premium AI hardware for enterprise applications"
+target_audience: ["AI Researchers", "Tech Companies", "Medical Institutions"]
+strengths: ["Cutting-edge technology", "Neural processing capabilities", "Enterprise-grade hardware"]
+recommendations: "Partner with research institutions and focus on B2B sales channels"
+competitor_price: 2199.99`
 
-		// Mock LLM response
-		response := `
-  suitable_roles: ["Senior Software Engineer", "Tech Lead", "Product Manager"]
-  skill_gaps: ["Leadership", "Product Strategy"]
-  career_advice: "Consider developing leadership skills and understanding product strategy"
-  salary_estimate: 120
-  recommended_city: "Austin"`
-
-		_, err := w.Data.Write([]byte(response))
-		return err
-	})
-}
-
-func mockResponseHandler(response string) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
-		_, err := w.Data.Write([]byte(response))
-		return err
+		return core.Write(w, structuredResponse)
 	})
 }

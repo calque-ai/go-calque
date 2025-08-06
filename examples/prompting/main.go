@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// Create provider for all examples
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
+	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}

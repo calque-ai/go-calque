@@ -15,15 +15,21 @@ import (
 
 // OllamaProvider implements the LLMProvider interface for Ollama
 type OllamaProvider struct {
-	client *api.Client
-	model  string
+	client        *api.Client
+	model         string
+	defaultConfig *Config
 }
 
-// NewOllamaProvider creates a new Ollama provider
+// NewOllamaProvider creates a new Ollama provider with configuration
 // If host is empty, it uses ClientFromEnvironment() which defaults to localhost:11434
-func NewOllamaProvider(host, model string) (*OllamaProvider, error) {
+// If config is nil, uses DefaultConfig()
+func NewOllamaProvider(host, model string, config *Config) (*OllamaProvider, error) {
 	if model == "" {
 		model = "llama3.2" // Default model
+	}
+
+	if config == nil {
+		config = DefaultConfig()
 	}
 
 	var client *api.Client
@@ -46,8 +52,9 @@ func NewOllamaProvider(host, model string) (*OllamaProvider, error) {
 	}
 
 	return &OllamaProvider{
-		client: client,
-		model:  model,
+		client:        client,
+		model:         model,
+		defaultConfig: config,
 	}, nil
 }
 
@@ -58,10 +65,22 @@ func (o *OllamaProvider) Chat(r *core.Request, w *core.Response) error {
 
 // ChatWithTools implements native Ollama function calling
 func (o *OllamaProvider) ChatWithTools(r *core.Request, w *core.Response, toolList ...tools.Tool) error {
+	return o.ChatWithSchema(r, w, nil, toolList...)
+}
+
+func (o *OllamaProvider) ChatWithSchema(r *core.Request, w *core.Response, schema *ResponseFormat, toolList ...tools.Tool) error {
 	// Read input
 	inputBytes, err := io.ReadAll(r.Data)
 	if err != nil {
 		return fmt.Errorf("failed to read input: %w", err)
+	}
+
+	// Use provider's default config
+	finalConfig := o.defaultConfig
+	
+	// Override response format if provided
+	if schema != nil {
+		finalConfig = o.mergeConfigs(&Config{ResponseFormat: schema}, o.defaultConfig)
 	}
 
 	// Create chat request
@@ -73,6 +92,30 @@ func (o *OllamaProvider) ChatWithTools(r *core.Request, w *core.Response, toolLi
 				Content: string(inputBytes),
 			},
 		},
+	}
+
+	// Apply configuration
+	if finalConfig.Temperature != nil {
+		req.Options = make(map[string]interface{})
+		req.Options["temperature"] = *finalConfig.Temperature
+	}
+	if finalConfig.TopP != nil {
+		if req.Options == nil {
+			req.Options = make(map[string]interface{})
+		}
+		req.Options["top_p"] = *finalConfig.TopP
+	}
+	if finalConfig.MaxTokens != nil {
+		if req.Options == nil {
+			req.Options = make(map[string]interface{})
+		}
+		req.Options["num_predict"] = *finalConfig.MaxTokens
+	}
+	if finalConfig.Stop != nil && len(finalConfig.Stop) > 0 {
+		if req.Options == nil {
+			req.Options = make(map[string]interface{})
+		}
+		req.Options["stop"] = finalConfig.Stop
 	}
 
 	// Add tools to request if provided
@@ -228,4 +271,58 @@ func (o *OllamaProvider) convertTextToToolCalls(responseText string, w *core.Res
 	// For now, just write the text response - this needs more sophisticated parsing
 	_, err := w.Data.Write([]byte(responseText))
 	return err
+}
+
+// Name returns the provider name
+func (o *OllamaProvider) Name() string {
+	return "ollama"
+}
+
+// SupportedFeatures returns the features supported by Ollama
+func (o *OllamaProvider) SupportedFeatures() ProviderFeatures {
+	return ProviderFeatures{
+		Streaming:        true,
+		FunctionCalling:  true, // Ollama supports function calling
+		StructuredOutput: false, // Ollama doesn't support structured JSON output natively
+		Vision:           true,  // Some Ollama models support vision
+		SystemPrompts:    true,
+	}
+}
+
+// mergeConfigs merges multiple configs with priority order
+func (o *OllamaProvider) mergeConfigs(configs ...*Config) *Config {
+	result := &Config{}
+	
+	for _, config := range configs {
+		if config == nil {
+			continue
+		}
+		
+		if config.Temperature != nil {
+			result.Temperature = config.Temperature
+		}
+		if config.TopP != nil {
+			result.TopP = config.TopP
+		}
+		if config.MaxTokens != nil {
+			result.MaxTokens = config.MaxTokens
+		}
+		if config.Stop != nil {
+			result.Stop = config.Stop
+		}
+		if config.PresencePenalty != nil {
+			result.PresencePenalty = config.PresencePenalty
+		}
+		if config.FrequencyPenalty != nil {
+			result.FrequencyPenalty = config.FrequencyPenalty
+		}
+		if config.ResponseFormat != nil {
+			result.ResponseFormat = config.ResponseFormat
+		}
+		if config.Streaming != nil {
+			result.Streaming = config.Streaming
+		}
+	}
+	
+	return result
 }

@@ -16,13 +16,15 @@ import (
 
 // GeminiProvider implements the LLMProvider interface for Google Gemini
 type GeminiProvider struct {
-	client *genai.Client
-	model  string
+	client       *genai.Client
+	model        string
+	defaultConfig *Config
 }
 
-// NewGeminiProvider creates a new Gemini provider
+// NewGeminiProvider creates a new Gemini provider with configuration
 // If apiKey is empty, it will try to read from GOOGLE_API_KEY environment variable
-func NewGeminiProvider(apiKey, model string) (*GeminiProvider, error) {
+// If config is nil, uses DefaultConfig()
+func NewGeminiProvider(apiKey, model string, config *Config) (*GeminiProvider, error) {
 	if apiKey == "" {
 		apiKey = os.Getenv("GOOGLE_API_KEY")
 	}
@@ -33,19 +35,24 @@ func NewGeminiProvider(apiKey, model string) (*GeminiProvider, error) {
 		model = "gemini-1.5-flash" // Default to free tier model
 	}
 
+	if config == nil {
+		config = DefaultConfig()
+	}
+
 	// Configure the GenAI client
-	config := &genai.ClientConfig{
+	clientConfig := &genai.ClientConfig{
 		APIKey: apiKey,
 	}
 
-	client, err := genai.NewClient(context.Background(), config)
+	client, err := genai.NewClient(context.Background(), clientConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create genai client: %w", err)
 	}
 
 	return &GeminiProvider{
-		client: client,
-		model:  model,
+		client:        client,
+		model:         model,
+		defaultConfig: config,
 	}, nil
 }
 
@@ -55,26 +62,65 @@ func (g *GeminiProvider) Chat(r *core.Request, w *core.Response) error {
 }
 
 func (g *GeminiProvider) ChatWithTools(r *core.Request, w *core.Response, tools ...tools.Tool) error {
+	return g.ChatWithSchema(r, w, nil, tools...)
+}
 
+func (g *GeminiProvider) ChatWithSchema(r *core.Request, w *core.Response, schema *ResponseFormat, tools ...tools.Tool) error {
 	// Read input
 	inputBytes, err := io.ReadAll(r.Data)
 	if err != nil {
 		return fmt.Errorf("failed to read input: %w", err)
 	}
 
+	// Use provider's default config
+	finalConfig := g.defaultConfig
+	
+	// Override response format if provided
+	if schema != nil {
+		finalConfig = g.mergeConfigs(&Config{ResponseFormat: schema}, g.defaultConfig)
+	}
+
 	// Create chat configuration
-	config := &genai.GenerateContentConfig{
-		Temperature: genai.Ptr[float32](0.7),
+	genaiConfig := &genai.GenerateContentConfig{}
+	
+	// Apply configuration
+	if finalConfig.Temperature != nil {
+		genaiConfig.Temperature = genai.Ptr(*finalConfig.Temperature)
+	}
+	if finalConfig.MaxTokens != nil {
+		genaiConfig.MaxOutputTokens = int32(*finalConfig.MaxTokens)
+	}
+	if finalConfig.TopP != nil {
+		genaiConfig.TopP = genai.Ptr(*finalConfig.TopP)
+	}
+	if finalConfig.Stop != nil && len(finalConfig.Stop) > 0 {
+		genaiConfig.StopSequences = finalConfig.Stop
+	}
+
+	// Apply structured output format
+	if finalConfig.ResponseFormat != nil {
+		switch finalConfig.ResponseFormat.Type {
+		case "json_object":
+			// Request JSON format without schema
+			genaiConfig.ResponseMIMEType = "application/json"
+		case "json_schema":
+			// Request JSON format with schema (Gemini 1.5 Pro supports this)
+			genaiConfig.ResponseMIMEType = "application/json"
+			if finalConfig.ResponseFormat.Schema != nil {
+				// Convert JSON schema to Gemini schema format
+				genaiConfig.ResponseSchema = convertJSONSchemaToGemini(finalConfig.ResponseFormat.Schema)
+			}
+		}
 	}
 
 	// Convert your tools to Gemini format
 	if len(tools) > 0 {
 		geminiFunctions := convertToolsToGeminiFunctions(tools)
-		config.Tools = []*genai.Tool{{FunctionDeclarations: geminiFunctions}}
+		genaiConfig.Tools = []*genai.Tool{{FunctionDeclarations: geminiFunctions}}
 	}
 
 	// Create a new chat
-	chat, err := g.client.Chats.Create(r.Context, g.model, config, nil)
+	chat, err := g.client.Chats.Create(r.Context, g.model, genaiConfig, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create chat: %w", err)
 	}
@@ -188,4 +234,71 @@ func (g *GeminiProvider) writeFunctionCalls(functionCalls []*genai.FunctionCall,
 	
 	_, err = w.Data.Write(jsonBytes)
 	return err
+}
+
+// Name returns the provider name
+func (g *GeminiProvider) Name() string {
+	return "gemini"
+}
+
+// SupportedFeatures returns the features supported by Gemini
+func (g *GeminiProvider) SupportedFeatures() ProviderFeatures {
+	return ProviderFeatures{
+		Streaming:        true,
+		FunctionCalling:  true,
+		StructuredOutput: true, // Gemini supports JSON mode
+		Vision:           true,
+		SystemPrompts:    true,
+	}
+}
+
+// mergeConfigs merges multiple configs with priority order
+func (g *GeminiProvider) mergeConfigs(configs ...*Config) *Config {
+	result := &Config{}
+	
+	for _, config := range configs {
+		if config == nil {
+			continue
+		}
+		
+		if config.Temperature != nil {
+			result.Temperature = config.Temperature
+		}
+		if config.TopP != nil {
+			result.TopP = config.TopP
+		}
+		if config.MaxTokens != nil {
+			result.MaxTokens = config.MaxTokens
+		}
+		if config.Stop != nil {
+			result.Stop = config.Stop
+		}
+		if config.PresencePenalty != nil {
+			result.PresencePenalty = config.PresencePenalty
+		}
+		if config.FrequencyPenalty != nil {
+			result.FrequencyPenalty = config.FrequencyPenalty
+		}
+		if config.ResponseFormat != nil {
+			result.ResponseFormat = config.ResponseFormat
+		}
+		if config.Streaming != nil {
+			result.Streaming = config.Streaming
+		}
+	}
+	
+	return result
+}
+
+// convertJSONSchemaToGemini converts a JSON schema to Gemini's schema format
+func convertJSONSchemaToGemini(schema *jsonschema.Schema) *genai.Schema {
+	if schema == nil {
+		return nil
+	}
+	
+	return &genai.Schema{
+		Type:       genai.Type(schema.Type),
+		Properties: convertProperties(schema.Properties),
+		Required:   schema.Required,
+	}
 }

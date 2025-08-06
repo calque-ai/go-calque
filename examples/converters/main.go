@@ -21,7 +21,7 @@ import (
 	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/prompt"
-	str "github.com/calque-ai/calque-pipe/middleware/strings"
+	"github.com/calque-ai/calque-pipe/middleware/str"
 )
 
 // ProductInfo represents structured product data
@@ -39,7 +39,7 @@ func main() {
 	runConverterBasics() // Basic converter demo
 
 	// Initialize AI provider for advanced example
-	provider, err := llm.NewOllamaProvider("http://localhost:11434", "llama3.2:1b")
+	provider, err := llm.NewOllamaProvider("http://localhost:11434", "llama3.2:1b", llm.DefaultConfig())
 	if err != nil {
 		log.Printf("Warning: Could not connect to Ollama: %v", err)
 		log.Println("To use AI features, install Ollama and run: ollama pull llama3.2:1b")

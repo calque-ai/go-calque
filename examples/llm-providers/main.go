@@ -10,7 +10,7 @@ import (
 	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/prompt"
-	str "github.com/calque-ai/calque-pipe/middleware/strings"
+	"github.com/calque-ai/calque-pipe/middleware/str"
 	"github.com/joho/godotenv"
 )
 
@@ -23,7 +23,7 @@ func main() {
 func ollamaExample() {
 
 	// Create Ollama provider (connects to localhost:11434 by default)
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
+	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}
@@ -61,7 +61,7 @@ func geminiExample() {
 	}
 
 	// Create Gemini example provider (reads GOOGLE_API_KEY from env)
-	provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash")
+	provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash", llm.DefaultConfig())
 	if err != nil {
 		log.Fatal("Failed to create Gemini provider:", err)
 	}

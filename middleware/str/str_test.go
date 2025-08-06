@@ -1,4 +1,4 @@
-package strings
+package str
 
 import (
 	"bytes"
@@ -67,19 +67,19 @@ func TestTransform(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Transform(tt.fn)
-			
+
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
-			
+
 			req := core.NewRequest(context.Background(), reader)
 			res := core.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Transform() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if got := buf.String(); got != tt.expected {
 				t.Errorf("Transform() = %q, want %q", got, tt.expected)
 			}
@@ -92,11 +92,11 @@ func TestBranch(t *testing.T) {
 	mockIfHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return core.Write(res, "if-handler")
 	})
-	
+
 	mockElseHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return core.Write(res, "else-handler")
 	})
-	
+
 	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return errors.New("handler error")
 	})
@@ -169,19 +169,19 @@ func TestBranch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Branch(tt.condition, tt.ifHandler, tt.elseHandler)
-			
+
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
-			
+
 			req := core.NewRequest(context.Background(), reader)
 			res := core.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Branch() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if got := buf.String(); got != tt.expected {
 				t.Errorf("Branch() = %q, want %q", got, tt.expected)
 			}
@@ -199,7 +199,7 @@ func TestFilter(t *testing.T) {
 		}
 		return core.Write(res, "processed: "+input)
 	})
-	
+
 	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		return errors.New("processing error")
 	})
@@ -265,19 +265,19 @@ func TestFilter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Filter(tt.condition, tt.handler)
-			
+
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
-			
+
 			req := core.NewRequest(context.Background(), reader)
 			res := core.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Filter() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if got := buf.String(); got != tt.expected {
 				t.Errorf("Filter() = %q, want %q", got, tt.expected)
 			}
@@ -294,39 +294,39 @@ func TestLineProcessor(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:  "single line uppercase",
-			input: "hello world",
-			fn:    strings.ToUpper,
+			name:     "single line uppercase",
+			input:    "hello world",
+			fn:       strings.ToUpper,
 			expected: "HELLO WORLD\n",
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
-			name:  "multiple lines uppercase",
-			input: "line one\nline two\nline three",
-			fn:    strings.ToUpper,
+			name:     "multiple lines uppercase",
+			input:    "line one\nline two\nline three",
+			fn:       strings.ToUpper,
 			expected: "LINE ONE\nLINE TWO\nLINE THREE\n",
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
-			name:  "empty input",
-			input: "",
-			fn:    strings.ToUpper,
+			name:     "empty input",
+			input:    "",
+			fn:       strings.ToUpper,
 			expected: "",
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
-			name:  "single empty line",
-			input: "\n",
-			fn:    strings.ToUpper,
+			name:     "single empty line",
+			input:    "\n",
+			fn:       strings.ToUpper,
 			expected: "\n",
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
-			name:  "mixed empty and non-empty lines",
-			input: "first\n\nthird\n\nfifth",
-			fn:    strings.ToUpper,
+			name:     "mixed empty and non-empty lines",
+			input:    "first\n\nthird\n\nfifth",
+			fn:       strings.ToUpper,
 			expected: "FIRST\n\nTHIRD\n\nFIFTH\n",
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
 			name:  "add line numbers",
@@ -335,7 +335,7 @@ func TestLineProcessor(t *testing.T) {
 				return fmt.Sprintf("-> %s", line)
 			},
 			expected: "-> alpha\n-> beta\n-> gamma\n",
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
 			name:  "prefix each line",
@@ -344,7 +344,7 @@ func TestLineProcessor(t *testing.T) {
 				return "prefix: " + line
 			},
 			expected: "prefix: one\nprefix: two\nprefix: three\n",
-			wantErr: false,
+			wantErr:  false,
 		},
 		{
 			name:  "trim and uppercase",
@@ -353,26 +353,26 @@ func TestLineProcessor(t *testing.T) {
 				return strings.ToUpper(strings.TrimSpace(line))
 			},
 			expected: "SPACED\nTABBED\nMIXED\n",
-			wantErr: false,
+			wantErr:  false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := LineProcessor(tt.fn)
-			
+
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
-			
+
 			req := core.NewRequest(context.Background(), reader)
 			res := core.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("LineProcessor() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if got := buf.String(); got != tt.expected {
 				t.Errorf("LineProcessor() = %q, want %q", got, tt.expected)
 			}

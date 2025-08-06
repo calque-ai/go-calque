@@ -1,9 +1,12 @@
 package convert
 
 import (
+	"context"
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/calque-ai/calque-pipe/core"
 )
 
 // Test structs for various scenarios
@@ -105,8 +108,8 @@ func TestDescriptiveInputConverter_ToReader_YAML(t *testing.T) {
 			name: "struct with yaml tags",
 			data: TestStruct{Name: "test", Value: 42, Description: "desc"},
 			contains: []string{
-				"# Type: teststruct",
-				"# Field descriptions:",
+				"# Input Type: teststruct",
+				"# Input Field descriptions:",
 				"# name: The name field",
 				"# value: The value field",
 				"name: test",
@@ -117,7 +120,7 @@ func TestDescriptiveInputConverter_ToReader_YAML(t *testing.T) {
 			name: "struct pointer with yaml tags",
 			data: &TestStruct{Name: "test", Value: 42},
 			contains: []string{
-				"# Type: teststruct",
+				"# Input Type: teststruct",
 				"name: test",
 				"value: 42",
 			},
@@ -129,7 +132,7 @@ func TestDescriptiveInputConverter_ToReader_YAML(t *testing.T) {
 				{Name: "item2", Value: 2},
 			},
 			contains: []string{
-				"# Type: teststruct",
+				"# Input Type: teststruct",
 				"# Format: slice of teststruct",
 				"- name: item1",
 				"- name: item2",
@@ -206,8 +209,8 @@ func TestDescriptiveInputConverter_ToReader_XML(t *testing.T) {
 			data: TestStruct{Name: "test", Value: 42, Description: "desc"},
 			contains: []string{
 				`<?xml version="1.0" encoding="UTF-8"?>`,
-				"<!-- Type: teststruct -->",
-				"<!-- Field descriptions: -->",
+				"<!-- Input Type: teststruct -->",
+				"<!-- Input Field descriptions: -->",
 				"<!-- name: The name field -->",
 				"<name>test</name>",
 				"<value>42</value>",
@@ -218,7 +221,7 @@ func TestDescriptiveInputConverter_ToReader_XML(t *testing.T) {
 			data: &TestStruct{Name: "test", Value: 42},
 			contains: []string{
 				`<?xml version="1.0" encoding="UTF-8"?>`,
-				"<!-- Type: teststruct -->",
+				"<!-- Input Type: teststruct -->",
 				"<name>test</name>",
 				"<value>42</value>",
 			},
@@ -465,7 +468,7 @@ func TestDescriptiveConverter_EdgeCases(t *testing.T) {
 		}
 
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "# Type: anonymous") {
+		if !strings.Contains(outputStr, "# Input Type: anonymous") {
 			t.Error("Anonymous struct should be labeled as 'anonymous'")
 		}
 	})
@@ -516,7 +519,7 @@ func TestDescriptiveConverter_EdgeCases(t *testing.T) {
 		}
 
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "# Type: teststruct") {
+		if !strings.Contains(outputStr, "# Input Type: teststruct") {
 			t.Error("Should contain struct type info")
 		}
 		if !strings.Contains(outputStr, "# Format: slice of teststruct") {
@@ -670,5 +673,230 @@ func TestDescriptiveOutputConverter_ReaderError(t *testing.T) {
 	err := converter.FromReader(&failingReader{})
 	if err == nil {
 		t.Error("FromReader() expected error from failing reader, got nil")
+	}
+}
+
+// Additional test structs for schema discovery tests
+type InputStruct struct {
+	ID   int    `yaml:"id" xml:"id" desc:"Unique identifier"`
+	Name string `yaml:"name" xml:"name" desc:"Display name"`
+}
+
+type OutputStruct struct {
+	Result    string `yaml:"result" xml:"result" desc:"Processing result"`
+	Status    string `yaml:"status" xml:"status" desc:"Current status"`
+	Score     int    `yaml:"score" xml:"score" desc:"Quality score"`
+	Timestamp string `yaml:"timestamp" xml:"timestamp" desc:"When processed"`
+}
+
+// Test that auto-schema discovery includes output schema in YAML input
+func TestAutoSchemaDiscovery_YAML(t *testing.T) {
+	input := InputStruct{ID: 123, Name: "test input"}
+	var output OutputStruct
+
+	// Create flow with input and output converters
+	flow := core.New()
+
+	// Use a simple pass-through handler that copies input to output
+	flow.UseFunc(func(r *core.Request, w *core.Response) error {
+		// Just copy the input to output for testing schema discovery
+		_, err := io.Copy(w.Data, r.Data)
+		return err
+	})
+
+	var result string
+	err := flow.Run(context.Background(), ToDescYaml(input), &result)
+	if err != nil {
+		t.Fatalf("Flow.Run() error = %v", err)
+	}
+
+	// Parse the result to check for output schema information
+	if !strings.Contains(result, "# Input Type: inputstruct") {
+		t.Error("Expected input type information in output")
+	}
+	if !strings.Contains(result, "# id: Unique identifier") {
+		t.Error("Expected input field descriptions in output")
+	}
+	if !strings.Contains(result, "# name: Display name") {
+		t.Error("Expected input field descriptions in output")
+	}
+
+	// Now test with full schema discovery using FromDescYaml
+	flow2 := core.New()
+	flow2.UseFunc(func(r *core.Request, w *core.Response) error {
+		// Return mock YAML data that matches OutputStruct
+		mockOutput := `result: "success"
+status: "completed"
+score: 95
+timestamp: "2025-01-01T00:00:00Z"`
+		_, err := w.Data.Write([]byte(mockOutput))
+		return err
+	})
+
+	err = flow2.Run(context.Background(), ToDescYaml(input), FromDescYaml[OutputStruct](&output))
+	if err != nil {
+		t.Fatalf("Flow.Run() with schema discovery error = %v", err)
+	}
+
+	// Verify the output was parsed correctly
+	if output.Result != "success" {
+		t.Errorf("Output.Result = %s, want success", output.Result)
+	}
+	if output.Status != "completed" {
+		t.Errorf("Output.Status = %s, want completed", output.Status)
+	}
+	if output.Score != 95 {
+		t.Errorf("Output.Score = %d, want 95", output.Score)
+	}
+}
+
+// Test that auto-schema discovery includes output schema in XML input
+func TestAutoSchemaDiscovery_XML(t *testing.T) {
+	input := InputStruct{ID: 456, Name: "xml test"}
+	var output OutputStruct
+
+	// Test with full schema discovery using FromDescXml
+	flow := core.New()
+	flow.UseFunc(func(r *core.Request, w *core.Response) error {
+		// Return mock XML data that matches OutputStruct
+		mockOutput := `<OutputStruct>
+			<result>processed</result>
+			<status>ready</status>
+			<score>88</score>
+			<timestamp>2025-01-01T12:00:00Z</timestamp>
+		</OutputStruct>`
+		_, err := w.Data.Write([]byte(mockOutput))
+		return err
+	})
+
+	err := flow.Run(context.Background(), ToDescXml(input), FromDescXml[OutputStruct](&output))
+	if err != nil {
+		t.Fatalf("Flow.Run() with XML schema discovery error = %v", err)
+	}
+
+	// Verify the output was parsed correctly
+	if output.Result != "processed" {
+		t.Errorf("Output.Result = %s, want processed", output.Result)
+	}
+	if output.Status != "ready" {
+		t.Errorf("Output.Status = %s, want ready", output.Status)
+	}
+	if output.Score != 88 {
+		t.Errorf("Output.Score = %d, want 88", output.Score)
+	}
+}
+
+// Test that output schema is included in input data when using linkSchemas
+func TestSchemaProvider_GetSchema(t *testing.T) {
+	var output OutputStruct
+	outputConverter := FromDescYaml[OutputStruct](&output)
+
+	// Test SchemaProvider interface
+	schema := outputConverter.GetSchema()
+	if schema == nil {
+		t.Fatal("GetSchema() returned nil")
+	}
+
+	// Verify the schema is the zero value of OutputStruct
+	outputSchema, ok := schema.(OutputStruct)
+	if !ok {
+		t.Fatalf("GetSchema() returned %T, want OutputStruct", schema)
+	}
+
+	// Zero value should have empty/zero fields
+	if outputSchema.Result != "" {
+		t.Errorf("Schema.Result = %s, want empty string", outputSchema.Result)
+	}
+	if outputSchema.Score != 0 {
+		t.Errorf("Schema.Score = %d, want 0", outputSchema.Score)
+	}
+}
+
+// Test that input converter accepts schema via SchemaConsumer interface
+func TestSchemaConsumer_SetOutputSchema(t *testing.T) {
+	input := InputStruct{ID: 789, Name: "schema test"}
+	inputConverter := ToDescYaml(input)
+
+	// Test SchemaConsumer interface
+	outputSchema := OutputStruct{
+		Result: "test",
+		Status: "example",
+		Score:  100,
+	}
+
+	inputConverter.SetOutputSchema(outputSchema)
+
+	// Verify schema was set
+	if inputConverter.outputSchema == nil {
+		t.Fatal("SetOutputSchema() did not set outputSchema field")
+	}
+
+	// Generate output and verify it includes schema information
+	reader, err := inputConverter.ToReader()
+	if err != nil {
+		t.Fatalf("ToReader() error = %v", err)
+	}
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("Failed to read data: %v", err)
+	}
+
+	output := string(data)
+
+	// Check for output schema comments
+	if !strings.Contains(output, "# Expected Output Type: outputstruct") {
+		t.Error("Expected output type information missing from input data")
+	}
+	if !strings.Contains(output, "# result: Processing result") {
+		t.Error("Expected output field description missing from input data")
+	}
+	if !strings.Contains(output, "# status: Current status") {
+		t.Error("Expected output field description missing from input data")
+	}
+	if !strings.Contains(output, "# score: Quality score") {
+		t.Error("Expected output field description missing from input data")
+	}
+}
+
+// Test schema discovery with XML format
+func TestSchemaConsumer_SetOutputSchema_XML(t *testing.T) {
+	input := InputStruct{ID: 999, Name: "xml schema test"}
+	inputConverter := ToDescXml(input)
+
+	// Test SchemaConsumer interface with XML
+	outputSchema := OutputStruct{
+		Result: "xml_test",
+		Status: "xml_example",
+		Score:  75,
+	}
+
+	inputConverter.SetOutputSchema(outputSchema)
+
+	// Generate XML output and verify it includes schema information
+	reader, err := inputConverter.ToReader()
+	if err != nil {
+		t.Fatalf("ToReader() error = %v", err)
+	}
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("Failed to read data: %v", err)
+	}
+
+	output := string(data)
+
+	// Check for output schema XML comments
+	if !strings.Contains(output, "<!-- Expected Output Type: outputstruct -->") {
+		t.Error("Expected output type information missing from XML input data")
+	}
+	if !strings.Contains(output, "<!-- result: Processing result -->") {
+		t.Error("Expected output field description missing from XML input data")
+	}
+	if !strings.Contains(output, "<!-- status: Current status -->") {
+		t.Error("Expected output field description missing from XML input data")
+	}
+	if !strings.Contains(output, "<!-- score: Quality score -->") {
+		t.Error("Expected output field description missing from XML input data")
 	}
 }

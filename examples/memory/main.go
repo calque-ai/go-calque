@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/calque-ai/calque-pipe/examples/memory/badger"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/memory"
@@ -16,7 +17,7 @@ func main() {
 	// Create a mock provider for demonstration
 	// provider := mock.NewMockProvider("").WithStreamDelay(100) // Slower for demo
 
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
+	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}
@@ -24,6 +25,7 @@ func main() {
 	fmt.Println("Memory Middleware Examples")
 
 	conversationExample(provider)
+	badgerConversationExample(provider)
 	contextExample(provider)
 	customStoreExample(provider)
 }
@@ -33,7 +35,7 @@ func conversationExample(provider llm.LLMProvider) {
 	fmt.Println("\n=== Conversation Memory Example ===")
 	fmt.Println("Maintains structured chat history with user/assistant roles")
 
-	convMem := memory.NewConversation() // Create conversation memory with default in-memory store
+	convMem := memory.NewConversation() // Create conversation memory with simple in-memory store
 
 	// Create pipe with conversation memory
 	pipe := core.New()
@@ -79,7 +81,61 @@ func conversationExample(provider llm.LLMProvider) {
 	fmt.Println("Conversation cleared")
 }
 
-// Example 2: Custom store (multiple conversation memories with different stores)
+// Example 2: Using a 3rd party (badgerDB) database for storage.
+func badgerConversationExample(provider llm.LLMProvider) {
+	// Create Badger store
+	badgerStore, err := badger.NewBadgerStore("./conversations.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Use with conversation memory
+	convMem := memory.NewConversationWithStore(badgerStore)
+
+	// Use in pipeline
+	pipe := core.New()
+	pipe.
+		Use(convMem.Input("user123")).
+		Use(flow.Logger("WITH_HISTORY", 100)).
+		Use(prompt.System("You are a helpful coding assistant. Keep responses brief.")).
+		Use(llm.Chat(provider)).
+		Use(convMem.Output("user123"))
+
+	// Simulate a conversation
+	inputs := []string{
+		"What is Go?",
+		"How do I handle errors in Go?",
+		"Can you show me an example?",
+	}
+
+	for i, input := range inputs {
+		fmt.Printf("\n--- Message %d ---\n", i+1)
+		var result string
+		err := pipe.Run(context.Background(), input, result)
+		if err != nil {
+			log.Printf("Error: %v", err)
+			continue
+		}
+		fmt.Printf("User: %s\n", input)
+		fmt.Printf("Assistant: %s\n", result)
+	}
+
+	fmt.Println("\n--- Conversation Summary ---")
+	msgCount, exists, err := convMem.Info("user123")
+	if err == nil {
+		fmt.Printf("Total messages: %d, exists: %v\n", msgCount, exists)
+	}
+
+	// List all active conversations
+	keys := convMem.ListKeys()
+	fmt.Printf("Active conversation keys: %v\n", keys)
+
+	// Clean up
+	convMem.Clear("user123")
+	fmt.Println("Conversation cleared")
+}
+
+// Example 3: Custom store (multiple conversation memories with different stores)
 func customStoreExample(provider llm.LLMProvider) {
 	fmt.Println("\n=== Custom Store Example ===")
 
@@ -129,7 +185,7 @@ func customStoreExample(provider llm.LLMProvider) {
 	fmt.Println("Stores are completely isolated!")
 }
 
-// Example 3: Context memory - maintains sliding window of recent content
+// Example 4: Context memory - maintains sliding window of recent content
 func contextExample(provider llm.LLMProvider) {
 	fmt.Println("\n=== Context Memory Example ===")
 	fmt.Println("Maintains sliding window of recent content (token-limited)")

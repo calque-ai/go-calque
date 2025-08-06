@@ -15,6 +15,16 @@ This directory contains introductory examples that demonstrate the core concepts
   - Logging and monitoring
   - Pipeline execution
 
+### Streaming vs Buffered Pipeline (`runStreamingExample`)
+
+- **Streaming Architecture**: Demonstrates the difference between streaming and buffered middleware
+- **Features Covered**:
+  - **Pure Streaming Pipeline**: TeeReader, LineProcessor, Timeout with streaming handlers
+  - **Streaming vs Buffered Comparison**: Side-by-side demonstration using Parallel to split input
+  - Memory-efficient line-by-line processing vs full-input buffering
+  - Multiple destination teeing and timeout protection
+  - Real-time data flow vs sequential batch processing
+
 ### AI-Powered Pipeline (`runAIExample`)
 
 - **LLM Integration**: How to connect AI providers to processing pipelines
@@ -28,7 +38,9 @@ This directory contains introductory examples that demonstrate the core concepts
 ## Key Framework Concepts
 
 - **Middleware Pattern**: Similar to HTTP middleware, each `Use()` call adds a handler to the processing flow
-- **Streaming Architecture**: Data flows through handlers in sequence, enabling real-time processing
+- **Streaming vs Buffered Processing**: 
+  - **Streaming**: Processes data as it flows (LineProcessor, TeeReader, PassThrough) - memory efficient
+  - **Buffered**: Reads entire input before processing (Transform, Chain, Branch) - enables complex analysis
 - **Concurrent Processing**: Handlers start processing as soon as they receive data - they don't wait for the previous handler to complete. This creates a pipeline where multiple handlers can be working simultaneously on different parts of the data stream
 - **Parallel Execution**: The framework processes handlers in parallel by default for optimal performance, maximizing throughput and minimizing latency
 - **Composability**: Build complex AI agents by combining simple, reusable middleware components
@@ -49,11 +61,9 @@ go run main.go
 
 The examples demonstrate how text gets "calqued" (copied and transformed) through the processing pipeline, showing:
 
-- Input logging and preprocessing
-- Conditional routing based on content
-- AI prompt construction and execution
-- Response analysis and post-processing
-- Final result output
+- **Text-Only**: Input logging, preprocessing, conditional routing, and transformations
+- **Streaming**: Real-time line-by-line processing, multi-destination teeing, and streaming vs buffered comparisons
+- **AI-Powered**: Prompt construction, LLM execution, response analysis, and post-processing
 
 ## Next Steps
 

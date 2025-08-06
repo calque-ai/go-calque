@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/calque-ai/calque-pipe/core"
-	stringmw "github.com/calque-ai/calque-pipe/middleware/strings"
+	"github.com/calque-ai/calque-pipe/middleware/str"
 )
 
 // Anagrams represents a map of sorted characters to words that contain them
@@ -117,7 +117,7 @@ func CalquePipe(words []string) map[string]map[string]struct{} {
 
 // filterAndLowercase filters words with more than one character and converts to lowercase
 func filterAndLowercase() core.Handler {
-	return stringmw.LineProcessor(func(line string) string {
+	return str.LineProcessor(func(line string) string {
 		word := strings.TrimSpace(line)
 		if MoreThanOneChar(word) {
 			return strings.ToLower(word)
@@ -128,7 +128,7 @@ func filterAndLowercase() core.Handler {
 
 // mapToAnagramFormat converts each word line to "sortedkey:word" format
 func mapToAnagramFormat() core.Handler {
-	return stringmw.LineProcessor(func(line string) string {
+	return str.LineProcessor(func(line string) string {
 		word := strings.TrimSpace(line)
 		if word == "" {
 			return ""

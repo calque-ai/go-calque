@@ -12,7 +12,7 @@ import (
 
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
-	str "github.com/calque-ai/calque-pipe/middleware/strings"
+	"github.com/calque-ai/calque-pipe/middleware/str"
 )
 
 // Request represents the incoming API request structure
