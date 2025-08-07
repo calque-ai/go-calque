@@ -6,27 +6,27 @@ import (
 	"log"
 
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/calque-ai/calque-pipe/middleware/ai"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
-	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/prompt"
 )
 
 func main() {
-	// Create provider for all examples
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
+	// Create client for all examples
+	client, err := ai.NewOllama("llama3.2:1b")
 	if err != nil {
-		log.Fatal("Failed to create Ollama provider:", err)
+		log.Fatal("Failed to create Ollama client:", err)
 	}
 
 	// Run all examples
-	basicTemplateExample(provider)
-	templateWithDataExample(provider)
-	systemPromptExample(provider)
-	chatPromptExample(provider)
+	basicTemplateExample(client)
+	templateWithDataExample(client)
+	systemPromptExample(client)
+	chatPromptExample(client)
 }
 
 // Example 1: Basic template usage
-func basicTemplateExample(provider llm.LLMProvider) {
+func basicTemplateExample(client ai.Client) {
 	fmt.Println("=== Basic Template Example ===")
 
 	pipe := core.New()
@@ -34,7 +34,7 @@ func basicTemplateExample(provider llm.LLMProvider) {
 		Use(flow.Logger("INPUT", 100)).
 		Use(prompt.Template("You are a helpful assistant. {{.Input}}")).
 		Use(flow.Logger("PROMPT", 100)).
-		Use(llm.Chat(provider))
+		Use(ai.Agent(client))
 
 	var result string
 	err := pipe.Run(context.Background(), "What is Golang?", &result)
@@ -45,7 +45,7 @@ func basicTemplateExample(provider llm.LLMProvider) {
 }
 
 // Example 2: Template with additional data
-func templateWithDataExample(provider llm.LLMProvider) {
+func templateWithDataExample(client ai.Client) {
 	fmt.Println("=== Template with Data Example ===")
 
 	params := map[string]any{
@@ -58,7 +58,7 @@ func templateWithDataExample(provider llm.LLMProvider) {
 		Use(flow.Logger("INPUT", 100)).
 		Use(prompt.Template("You are a {{.Role}} specializing in {{.Language}}. {{.Input}}", params)).
 		Use(flow.Logger("PROMPT", 200)).
-		Use(llm.Chat(provider))
+		Use(ai.Agent(client))
 
 	var result string
 	err := pipe.Run(context.Background(), "How do I handle errors?", &result)
@@ -69,7 +69,7 @@ func templateWithDataExample(provider llm.LLMProvider) {
 }
 
 // Example 3: SystemPrompt convenience function
-func systemPromptExample(provider llm.LLMProvider) {
+func systemPromptExample(client ai.Client) {
 	fmt.Println("=== SystemPrompt Example ===")
 
 	pipe := core.New()
@@ -77,7 +77,7 @@ func systemPromptExample(provider llm.LLMProvider) {
 		Use(flow.Logger("INPUT", 100)).
 		Use(prompt.System("You are a concise coding expert. Always provide practical examples.")).
 		Use(flow.Logger("PROMPT", 100)).
-		Use(llm.Chat(provider))
+		Use(ai.Agent(client))
 
 	var result string
 	err := pipe.Run(context.Background(), "Show me a Go struct example", &result)
@@ -88,7 +88,7 @@ func systemPromptExample(provider llm.LLMProvider) {
 }
 
 // Example 4: ChatPrompt convenience function
-func chatPromptExample(provider llm.LLMProvider) {
+func chatPromptExample(client ai.Client) {
 	fmt.Println("=== ChatPrompt Example ===")
 
 	pipe := core.New()
@@ -96,7 +96,7 @@ func chatPromptExample(provider llm.LLMProvider) {
 		Use(flow.Logger("INPUT", 100)).
 		Use(prompt.Chat("assistant", "I'm an AI assistant specialized in programming.")).
 		Use(flow.Logger("PROMPT", 100)).
-		Use(llm.Chat(provider))
+		Use(ai.Agent(client))
 
 	var result string
 	err := pipe.Run(context.Background(), "Hello!", &result)

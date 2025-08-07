@@ -1,4 +1,4 @@
-package llm
+package ai
 
 import (
 	"bytes"
@@ -7,18 +7,17 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/middleware/tools"
 )
 
-// Helper function to create a mock provider for agent tests
-func createMockProviderForTest(responses []string, shouldErr bool) *MockProvider {
+// Helper function to create a mock client for agent tests
+func createMockClientForTest(responses []string, shouldErr bool) *MockClient {
 	if shouldErr {
-		return NewMockProviderWithError("LLM provider error")
+		return NewMockClientWithError("client error")
 	}
-	mock := NewMockProviderWithResponses(responses)
+	mock := NewMockClientWithResponses(responses)
 	// For tool calling tests, we need to enable tool call simulation
 	if len(responses) > 0 && strings.Contains(responses[0], "tool_calls") {
 		// Parse the first response to create mock tool calls
@@ -101,8 +100,8 @@ func TestAgent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider := createMockProviderForTest(tt.llmResponses, tt.expectError && len(tt.llmResponses) == 0)
-			agent := Agent(provider, tt.tools...)
+			client := createMockClientForTest(tt.llmResponses, tt.expectError && len(tt.llmResponses) == 0)
+			agent := Agent(client, WithTools(tt.tools...))
 
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
@@ -133,13 +132,13 @@ func TestAgent(t *testing.T) {
 	}
 }
 
-func TestAgentWithConfig(t *testing.T) {
+func TestAgentWithToolsConfig(t *testing.T) {
 	calc := tools.Simple("calculator", "Math Calculator", func(expr string) string { return "result" })
 	errorTool := createErrorTool()
 
 	tests := []struct {
 		name         string
-		config       AgentConfig
+		toolsConfig  *tools.Config
 		tools        []tools.Tool
 		input        string
 		llmResponses []string
@@ -148,11 +147,8 @@ func TestAgentWithConfig(t *testing.T) {
 	}{
 		{
 			name: "pass through on error enabled",
-			config: AgentConfig{
-				MaxIterations: 3,
-				ExecuteConfig: tools.ExecuteConfig{
-					PassThroughOnError: true,
-				},
+			toolsConfig: &tools.Config{
+				PassThroughOnError: true,
 			},
 			tools: []tools.Tool{errorTool},
 			input: "Use error tool",
@@ -163,11 +159,8 @@ func TestAgentWithConfig(t *testing.T) {
 		},
 		{
 			name: "pass through on error disabled",
-			config: AgentConfig{
-				MaxIterations: 3,
-				ExecuteConfig: tools.ExecuteConfig{
-					PassThroughOnError: false,
-				},
+			toolsConfig: &tools.Config{
+				PassThroughOnError: false,
 			},
 			tools: []tools.Tool{errorTool},
 			input: "Use error tool",
@@ -177,13 +170,9 @@ func TestAgentWithConfig(t *testing.T) {
 			expectError: true, // Should fail due to tool error
 		},
 		{
-			name: "timeout configuration",
-			config: AgentConfig{
-				MaxIterations: 10,
-				Timeout:       100 * time.Millisecond,
-			},
+			name:         "basic tool execution",
 			tools:        []tools.Tool{calc},
-			input:        "Test timeout",
+			input:        "Test input",
 			llmResponses: []string{"Response"},
 			contains:     []string{"Response"},
 		},
@@ -191,8 +180,13 @@ func TestAgentWithConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider := createMockProviderForTest(tt.llmResponses, tt.expectError && len(tt.llmResponses) == 0)
-			agent := AgentWithConfig(provider, tt.config, tt.tools...)
+			client := createMockClientForTest(tt.llmResponses, tt.expectError && len(tt.llmResponses) == 0)
+
+			opts := []AgentOption{WithTools(tt.tools...)}
+			if tt.toolsConfig != nil {
+				opts = append(opts, WithToolsConfig(*tt.toolsConfig))
+			}
+			agent := Agent(client, opts...)
 
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
@@ -223,29 +217,14 @@ func TestAgentWithConfig(t *testing.T) {
 	}
 }
 
-func TestDefaultAgentConfig(t *testing.T) {
-	config := DefaultAgentConfig()
+func TestDefaultToolsConfig(t *testing.T) {
+	// Test that default tools config is created correctly when none provided
+	calc := tools.Simple("calculator", "Math Calculator", func(expr string) string { return "result" })
+	client := createMockClientForTest([]string{"Response"}, false)
 
-	if config.MaxIterations != 5 {
-		t.Errorf("DefaultAgentConfig().MaxIterations = %d, want 5", config.MaxIterations)
-	}
+	// Agent with tools but no explicit config should use defaults
+	agent := Agent(client, WithTools(calc))
 
-	if config.ExecuteConfig.PassThroughOnError {
-		t.Error("DefaultAgentConfig().tools.ExecuteConfig.PassThroughOnError should be false")
-	}
-
-	if config.Timeout != 0 {
-		t.Errorf("DefaultAgentConfig().Timeout = %v, want 0", config.Timeout)
-	}
-}
-
-func TestQuickAgent(t *testing.T) {
-	calc := tools.Simple("calculator", "Math Calculator", func(expr string) string { return "quick result" })
-
-	// QuickAgent should be more forgiving (PassThroughOnError = true)
-	provider := createMockProviderForTest([]string{"Result without tools"}, false)
-
-	agent := Agent(provider, calc)
 	var buf bytes.Buffer
 	reader := strings.NewReader("Test input")
 
@@ -253,21 +232,67 @@ func TestQuickAgent(t *testing.T) {
 	res := core.NewResponse(&buf)
 	err := agent.ServeFlow(req, res)
 	if err != nil {
-		t.Errorf("QuickAgent() error = %v", err)
+		t.Errorf("Agent with default config error = %v", err)
+	}
+}
+
+func TestAgentSimpleChat(t *testing.T) {
+	// Test agent without any tools (simple chat mode)
+	client := createMockClientForTest([]string{"Hello! How can I help you today?"}, false)
+
+	// Create agent without tools - should use simple chat mode
+	agent := Agent(client)
+	
+	var buf bytes.Buffer
+	reader := strings.NewReader("Hello")
+
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := agent.ServeFlow(req, res)
+	if err != nil {
+		t.Errorf("Simple chat agent error = %v", err)
 		return
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "Result without tools") {
-		t.Errorf("QuickAgent() output = %q", output)
+	if !strings.Contains(output, "Hello! How can I help you today?") {
+		t.Errorf("Simple chat agent output = %q", output)
 	}
 }
 
-func TestAgentWithLLMError(t *testing.T) {
+func TestAgentWithSchema(t *testing.T) {
+	// Test agent with schema (structured output)
+	client := createMockClientForTest([]string{`{"name": "John", "age": 30}`}, false)
+
+	// Create a simple response format
+	schema := &ResponseFormat{
+		Type: "json_object",
+	}
+
+	agent := Agent(client, WithSchema(schema))
+	
+	var buf bytes.Buffer
+	reader := strings.NewReader("Generate a person")
+
+	req := core.NewRequest(context.Background(), reader)
+	res := core.NewResponse(&buf)
+	err := agent.ServeFlow(req, res)
+	if err != nil {
+		t.Errorf("Schema agent error = %v", err)
+		return
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, `"name": "John"`) {
+		t.Errorf("Schema agent output = %q", output)
+	}
+}
+
+func TestAgentWithClientError(t *testing.T) {
 	calc := tools.Simple("calculator", "Math Calculator", func(s string) string { return s })
 
-	provider := createMockProviderForTest([]string{}, true)
-	agent := Agent(provider, calc)
+	client := createMockClientForTest([]string{}, true)
+	agent := Agent(client, WithTools(calc))
 
 	var buf bytes.Buffer
 	reader := strings.NewReader("Test input")
@@ -276,19 +301,19 @@ func TestAgentWithLLMError(t *testing.T) {
 	res := core.NewResponse(&buf)
 	err := agent.ServeFlow(req, res)
 	if err == nil {
-		t.Error("Agent() with LLM error should return error")
+		t.Error("Agent() with client error should return error")
 	}
 
-	if !strings.Contains(err.Error(), "LLM provider error") {
-		t.Errorf("Agent() error should mention LLM provider error, got: %v", err)
+	if !strings.Contains(err.Error(), "client error") {
+		t.Errorf("Agent() error should mention client error, got: %v", err)
 	}
 }
 
 func TestAgentWithIOError(t *testing.T) {
 	calc := tools.Simple("calculator", "Math Calculator", func(s string) string { return s })
-	provider := createMockProviderForTest([]string{"response"}, false)
+	client := createMockClientForTest([]string{"response"}, false)
 
-	agent := Agent(provider, calc)
+	agent := Agent(client, WithTools(calc))
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 

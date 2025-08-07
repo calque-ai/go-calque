@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/calque-ai/calque-pipe/core"
-	"github.com/calque-ai/calque-pipe/middleware/llm"
+	"github.com/calque-ai/calque-pipe/middleware/ai"
 	"github.com/calque-ai/calque-pipe/middleware/tools"
 	"github.com/joho/godotenv"
 )
@@ -76,18 +76,14 @@ func runSimpleAgent() {
 		return time.Now().Format(format)
 	})
 
-	// Create Gemini example provider (reads GOOGLE_API_KEY from env)
-	provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash", llm.DefaultConfig())
+	// Create Gemini example client (reads GOOGLE_API_KEY from env)
+	client, err := ai.NewGemini("gemini-2.0-flash")
 	if err != nil {
-		log.Fatal("Failed to create Gemini provider:", err)
+		log.Fatal("Failed to create Gemini client:", err)
 	}
-	// provider, err := llm.NewOllamaProvider("", "llama3.2:1b")
-	// if err != nil {
-	// 	log.Fatal("Failed to create Ollama provider:", err)
-	// }
 
-	// Create simple agent
-	agent := llm.Agent(provider, calculator, currentTime)
+	// Create simple tool agent
+	agent := ai.Agent(client, ai.WithTools(calculator, currentTime))
 
 	// Test the agent
 	ctx := context.Background()
@@ -128,28 +124,19 @@ func runConfiguredAgent() {
 	})
 
 	// Configure agent with custom settings
-	config := llm.AgentConfig{
-		MaxIterations: 3,                // Allow up to 3 tool-calling iterations
-		Timeout:       30 * time.Second, // 30 second timeout
-		ExecuteConfig: tools.ExecuteConfig{
-			PassThroughOnError:    true, // Continue even if a tool fails
-			MaxConcurrentTools:    2,    // Run up to 2 tools concurrently
-			IncludeOriginalOutput: true, // Include LLM output with tool results
-		},
+	toolConfig := tools.Config{
+		PassThroughOnError:    true, // Continue even if a tool fails
+		MaxConcurrentTools:    2,    // Run up to 2 tools concurrently
+		IncludeOriginalOutput: true, // Include LLM output with tool results
 	}
 
-	// Create Gemini example provider (reads GOOGLE_API_KEY from env)
-	// provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash")
-	// if err != nil {
-	// 	log.Fatal("Failed to create Gemini provider:", err)
-	// }
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
+	client, err := ai.NewOllama("llama3.2:1b")
 	if err != nil {
-		log.Fatal("Failed to create Ollama provider:", err)
+		log.Fatal("Failed to create Ollama client:", err)
 	}
 
 	// Create configured agent
-	agent := llm.AgentWithConfig(provider, config, calculator, textAnalyzer)
+	agent := ai.Agent(client, ai.WithTools(calculator, textAnalyzer), ai.WithToolsConfig(toolConfig))
 
 	// Test the agent
 	ctx := context.Background()

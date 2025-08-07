@@ -7,8 +7,8 @@ import (
 
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/examples/memory/badger"
+	"github.com/calque-ai/calque-pipe/middleware/ai"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
-	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/memory"
 	"github.com/calque-ai/calque-pipe/middleware/prompt"
 )
@@ -17,21 +17,21 @@ func main() {
 	// Create a mock provider for demonstration
 	// provider := mock.NewMockProvider("").WithStreamDelay(100) // Slower for demo
 
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
+	client, err := ai.NewOllama("llama3.2:1b")
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}
 
 	fmt.Println("Memory Middleware Examples")
 
-	conversationExample(provider)
-	badgerConversationExample(provider)
-	contextExample(provider)
-	customStoreExample(provider)
+	conversationExample(client)
+	badgerConversationExample(client)
+	contextExample(client)
+	customStoreExample(client)
 }
 
 // Example 1: Conversation memory - maintains structured chat history
-func conversationExample(provider llm.LLMProvider) {
+func conversationExample(client ai.Client) {
 	fmt.Println("\n=== Conversation Memory Example ===")
 	fmt.Println("Maintains structured chat history with user/assistant roles")
 
@@ -44,7 +44,7 @@ func conversationExample(provider llm.LLMProvider) {
 		Use(convMem.Input("user123")). // Store input with user ID
 		Use(flow.Logger("WITH_HISTORY", 100)).
 		Use(prompt.System("You are a helpful coding assistant. Keep responses brief.")).
-		Use(llm.Chat(provider)).       // Get LLM response
+		Use(ai.Agent(client)).         // Get LLM response
 		Use(convMem.Output("user123")) // Store response with user ID
 
 	// Simulate a conversation
@@ -82,7 +82,7 @@ func conversationExample(provider llm.LLMProvider) {
 }
 
 // Example 2: Using a 3rd party (badgerDB) database for storage.
-func badgerConversationExample(provider llm.LLMProvider) {
+func badgerConversationExample(client ai.Client) {
 	// Create Badger store
 	badgerStore, err := badger.NewBadgerStore("./conversations.db")
 	if err != nil {
@@ -98,7 +98,7 @@ func badgerConversationExample(provider llm.LLMProvider) {
 		Use(convMem.Input("user123")).
 		Use(flow.Logger("WITH_HISTORY", 100)).
 		Use(prompt.System("You are a helpful coding assistant. Keep responses brief.")).
-		Use(llm.Chat(provider)).
+		Use(ai.Agent(client)).
 		Use(convMem.Output("user123"))
 
 	// Simulate a conversation
@@ -136,7 +136,7 @@ func badgerConversationExample(provider llm.LLMProvider) {
 }
 
 // Example 3: Custom store (multiple conversation memories with different stores)
-func customStoreExample(provider llm.LLMProvider) {
+func customStoreExample(client ai.Client) {
 	fmt.Println("\n=== Custom Store Example ===")
 
 	// Create separate stores for different use cases
@@ -152,7 +152,7 @@ func customStoreExample(provider llm.LLMProvider) {
 	userPipe.
 		Use(userConvMem.Input("session1")).
 		Use(prompt.System("You are a helpful user assistant.")).
-		Use(llm.Chat(provider)).
+		Use(ai.Agent(client)).
 		Use(userConvMem.Output("session1"))
 
 	// Admin pipe
@@ -160,7 +160,7 @@ func customStoreExample(provider llm.LLMProvider) {
 	adminPipe.
 		Use(adminConvMem.Input("admin1")).
 		Use(prompt.System("You are a technical admin assistant.")).
-		Use(llm.Chat(provider)).
+		Use(ai.Agent(client)).
 		Use(adminConvMem.Output("admin1"))
 
 	// Test user conversation
@@ -186,7 +186,7 @@ func customStoreExample(provider llm.LLMProvider) {
 }
 
 // Example 4: Context memory - maintains sliding window of recent content
-func contextExample(provider llm.LLMProvider) {
+func contextExample(client ai.Client) {
 	fmt.Println("\n=== Context Memory Example ===")
 	fmt.Println("Maintains sliding window of recent content (token-limited)")
 
@@ -199,7 +199,7 @@ func contextExample(provider llm.LLMProvider) {
 		Use(contextMem.Input("session456", 200)). // Keep last 200 tokens
 		Use(flow.Logger("WITH_CONTEXT", 100)).
 		Use(prompt.System("You are a helpful assistant. Be concise.")).
-		Use(llm.Chat(provider)).                  // Get LLM response
+		Use(ai.Agent(client)).                    // Get LLM response
 		Use(contextMem.Output("session456", 200)) // Store response in context
 
 	// Simulate multiple interactions

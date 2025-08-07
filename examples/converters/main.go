@@ -18,8 +18,8 @@ import (
 
 	"github.com/calque-ai/calque-pipe/convert"
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/calque-ai/calque-pipe/middleware/ai"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
-	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/prompt"
 	"github.com/calque-ai/calque-pipe/middleware/str"
 )
@@ -38,15 +38,15 @@ func main() {
 
 	runConverterBasics() // Basic converter demo
 
-	// Initialize AI provider for advanced example
-	provider, err := llm.NewOllamaProvider("http://localhost:11434", "llama3.2:1b", llm.DefaultConfig())
+	// Initialize AI client
+	client, err := ai.NewOllama("llama3.2:1b")
 	if err != nil {
 		log.Printf("Warning: Could not connect to Ollama: %v", err)
 		log.Println("To use AI features, install Ollama and run: ollama pull llama3.2:1b")
 		return
 	}
 
-	runAIConverterExample(provider) // AI + converter demo
+	runAIConverterExample(client) // AI + converter demo
 }
 
 // runConverterBasics demonstrates basic converter concepts: parsing structured data formats.
@@ -83,7 +83,7 @@ func runConverterBasics() {
 
 // runAIConverterExample shows converter usage with AI integration.
 // Pipeline: YAML struct input -> AI prompt -> result string.
-func runAIConverterExample(provider llm.LLMProvider) {
+func runAIConverterExample(client ai.Client) {
 	fmt.Println("\nRunning AI-powered converter pipeline...")
 
 	// Input product data
@@ -101,7 +101,7 @@ func runAIConverterExample(provider llm.LLMProvider) {
 		Use(flow.Logger("STRUCT_INPUT", 200)).
 		Use(prompt.Template("Analyze this product data and suggest improvements:\n\n{{.Input}}\n\nProvide a brief analysis.")).
 		Use(flow.Logger("AI_PROMPT", 320)).
-		Use(llm.Chat(provider))
+		Use(ai.Agent(client))
 
 	// Execute with struct input, get string result
 	// Run handles input or output of strings, bytes and readers/writers automatically without converters

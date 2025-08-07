@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/calque-ai/calque-pipe/middleware/ai"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
-	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/prompt"
 	"github.com/calque-ai/calque-pipe/middleware/str"
 	"github.com/joho/godotenv"
@@ -22,8 +22,8 @@ func main() {
 
 func ollamaExample() {
 
-	// Create Ollama provider (connects to localhost:11434 by default)
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
+	// Create Ollama client (connects to localhost:11434 by default)
+	client, err := ai.NewOllama("llama3.2:1b")
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}
@@ -36,9 +36,9 @@ func ollamaExample() {
 		Use(str.Transform(func(s string) string { // Add context
 			return "Please provide a concise response to: " + s
 		})).
-		Use(flow.Logger("PROMPT", 100)).                               // Log formatted prompt
-		Use(flow.Timeout[string](llm.Chat(provider), 60*time.Second)). // LLM with timeout (longer for local)
-		Use(flow.Logger("RESPONSE", 100))                              // Log response
+		Use(flow.Logger("PROMPT", 100)).                             // Log formatted prompt
+		Use(flow.Timeout[string](ai.Agent(client), 60*time.Second)). // LLM with timeout (longer for local)
+		Use(flow.Logger("RESPONSE", 100))                            // Log response
 
 	// Run the flow
 	var result string
@@ -60,10 +60,15 @@ func geminiExample() {
 		log.Fatal("Error loading .env file")
 	}
 
-	// Create Gemini example provider (reads GOOGLE_API_KEY from env)
-	provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash", llm.DefaultConfig())
+	// Create a custom configuration
+	config := &ai.GeminiConfig{
+		Temperature: ai.Float32Ptr(1.1),
+	}
+
+	// Create Gemini example client (reads GOOGLE_API_KEY from env)
+	client, err := ai.NewGemini("gemini-2.0-flash", ai.WithGeminiConfig(config))
 	if err != nil {
-		log.Fatal("Failed to create Gemini provider:", err)
+		log.Fatal("Failed to create Gemini client:", err)
 	}
 
 	// Create pipe with LLM integration
@@ -73,7 +78,7 @@ func geminiExample() {
 		Use(flow.Logger("INPUT", 100)).                                                  // Log input
 		Use(prompt.Template("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt
 		Use(flow.Logger("PROMPT", 100)).                                                 // Log formatted prompt
-		Use(flow.Timeout[string](llm.Chat(provider), 30*time.Second)).                   // LLM with timeout
+		Use(flow.Timeout[string](ai.Agent(client), 30*time.Second)).                     // LLM with timeout
 		Use(flow.Logger("RESPONSE", 200))                                                // Log response
 
 	// Run the pipe

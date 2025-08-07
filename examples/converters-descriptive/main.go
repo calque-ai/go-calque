@@ -17,8 +17,8 @@ import (
 
 	"github.com/calque-ai/calque-pipe/convert"
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/calque-ai/calque-pipe/middleware/ai"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
-	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/str"
 	"github.com/joho/godotenv"
 )
@@ -98,14 +98,8 @@ func runLLMIntegrationExample() {
 		log.Fatal("Error loading .env file")
 	}
 
-	// // Create Gemini example provider (reads GOOGLE_API_KEY from env)
-	// provider, err := llm.NewGeminiProvider("", "gemini-2.0-flash")
-	// if err != nil {
-	// 	log.Fatal("Failed to create Gemini provider:", err)
-	// }
-
-	// Create Ollama provider (connects to localhost:11434 by default)
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
+	// Create Ollama client (connects to localhost:11434 by default)
+	client, err := ai.NewOllama("llama3.2:1b")
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}
@@ -114,7 +108,7 @@ func runLLMIntegrationExample() {
 	pipe := core.New()
 	pipe.
 		Use(flow.Logger("DESCRIPTIVE_INPUT", 600)). // Log descriptive YAML input
-		Use(llm.Chat(provider)).                    // use Gemini LLM that returns structured YAML
+		Use(ai.Agent(client)).                      // use Gemini LLM that returns structured YAML
 		Use(flow.Logger("STRUCTURED_OUTPUT", 400))  // Log structured YAML response
 
 	var analysis ProductAnalysis

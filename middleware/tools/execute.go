@@ -35,8 +35,8 @@ type ToolResult struct {
 	Error    string   `json:"error,omitempty"`
 }
 
-// ExecuteConfig allows configuring the Execute middleware behavior
-type ExecuteConfig struct {
+// Config allows configuring the Execute middleware behavior
+type Config struct {
 	// PassThroughOnError - if true, returns original LLM output when tool execution fails
 	PassThroughOnError bool
 	// MaxConcurrentTools - maximum number of tools to execute concurrently (0 = no limit)
@@ -61,7 +61,7 @@ type ExecuteConfig struct {
 //	     Use(llm.Chat(provider)).
 //	     Use(detector)
 func Execute() core.Handler {
-	return ExecuteWithOptions(ExecuteConfig{
+	return ExecuteWithOptions(Config{
 		PassThroughOnError:    false,
 		MaxConcurrentTools:    0, // No limit
 		IncludeOriginalOutput: false,
@@ -70,7 +70,7 @@ func Execute() core.Handler {
 
 // ExecuteWithOptions creates an Execute middleware with custom configuration
 // This assumes tool calls are present in the input and will error if none are found
-func ExecuteWithOptions(config ExecuteConfig) core.Handler {
+func ExecuteWithOptions(config Config) core.Handler {
 	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
 		tools := GetTools(r.Context)
 		if len(tools) == 0 {
@@ -89,7 +89,7 @@ func ExecuteWithOptions(config ExecuteConfig) core.Handler {
 }
 
 // executeFromBytes executes tools directly from input bytes (simplified version for Execute)
-func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools []Tool, config ExecuteConfig) error {
+func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools []Tool, config Config) error {
 	// Parse tool calls from input
 	toolCalls := parseToolCalls(inputBytes)
 
@@ -188,7 +188,7 @@ func parseJSONToolCalls(output []byte) []ToolCall {
 }
 
 // executeToolCallsWithConfig executes multiple tool calls with configuration
-func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []ToolCall, config ExecuteConfig) []ToolResult {
+func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []ToolCall, config Config) []ToolResult {
 	if config.MaxConcurrentTools <= 0 || config.MaxConcurrentTools >= len(toolCalls) {
 		// Execute all concurrently or sequentially if no limit
 		results := make([]ToolResult, len(toolCalls))
@@ -241,7 +241,7 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 	args := strings.NewReader(toolCall.Arguments)
 	req := core.NewRequest(ctx, args)
 	res := core.NewResponse(&result)
-	
+
 	// Execute tool with panic recovery
 	var err error
 	func() {
@@ -252,7 +252,7 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 		}()
 		err = tool.ServeFlow(req, res)
 	}()
-	
+
 	if err != nil {
 		return ToolResult{
 			ToolCall: toolCall,

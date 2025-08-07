@@ -11,8 +11,8 @@ import (
 
 	"github.com/calque-ai/calque-pipe/convert"
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/calque-ai/calque-pipe/middleware/ai"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
-	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/prompt"
 )
 
@@ -65,8 +65,8 @@ Example response:
 func main() {
 	fmt.Println("Map-Reduce Resume Processing Example")
 
-	// Create Ollama provider (connects to localhost:11434 by default)
-	provider, err := llm.NewOllamaProvider("", "llama3.2:1b", llm.DefaultConfig())
+	// Create Ollama client (connects to localhost:11434 by default)
+	client, err := ai.NewOllama("llama3.2:1b")
 	if err != nil {
 		log.Fatal("Failed to create provider:", err)
 	}
@@ -84,7 +84,7 @@ func main() {
 			"System": systemPrompt,
 		})).
 		Use(flow.Logger("prompt with data", 1000)).
-		Use(llm.Chat(provider)).
+		Use(ai.Agent(client)).
 		Use(flow.Logger("llm response", 200))
 
 	// list of evaluation results

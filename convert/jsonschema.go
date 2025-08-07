@@ -87,10 +87,15 @@ func (j *jsonSchemaOutputConverter[T]) FromReader(reader io.Reader) error {
 		return fmt.Errorf("failed to read JSON schema data: %w", err)
 	}
 
-	// First, unmarshal into a map to handle the root wrapper key
+	// First, try to unmarshal directly to the target struct
+	if err := json.Unmarshal(data, j.target); err == nil {
+		return nil
+	}
+
+	// If direct unmarshal fails, try the wrapped format
 	var wrapper map[string]any
 	if err := json.Unmarshal(data, &wrapper); err != nil {
-		return fmt.Errorf("failed to parse JSON wrapper: %w", err)
+		return fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
 	// Get the struct type name to find the correct wrapper key
@@ -100,7 +105,16 @@ func (j *jsonSchemaOutputConverter[T]) FromReader(reader io.Reader) error {
 	// Extract the actual data from under the struct name key
 	actualData, exists := wrapper[structName]
 	if !exists {
-		return fmt.Errorf("expected wrapper key '%s' not found in JSON", structName)
+		// If wrapper key doesn't exist, maybe the JSON is already in the right format
+		// Try to unmarshal the whole wrapper as the target
+		wrapperBytes, err := json.Marshal(wrapper)
+		if err != nil {
+			return fmt.Errorf("failed to re-marshal wrapper data: %w", err)
+		}
+		if err := json.Unmarshal(wrapperBytes, j.target); err != nil {
+			return fmt.Errorf("expected wrapper key '%s' not found and direct unmarshal failed: %w", structName, err)
+		}
+		return nil
 	}
 
 	// Marshal the actual data back to bytes and unmarshal to the target struct

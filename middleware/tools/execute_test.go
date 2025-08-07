@@ -134,7 +134,7 @@ func TestExecuteWithOptions(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		config      ExecuteConfig
+		config      Config
 		tools       []Tool
 		input       string
 		expectError bool
@@ -142,7 +142,7 @@ func TestExecuteWithOptions(t *testing.T) {
 	}{
 		{
 			name: "pass through on error enabled",
-			config: ExecuteConfig{
+			config: Config{
 				PassThroughOnError: true,
 			},
 			tools:       []Tool{errorTool},
@@ -152,7 +152,7 @@ func TestExecuteWithOptions(t *testing.T) {
 		},
 		{
 			name: "pass through on error disabled",
-			config: ExecuteConfig{
+			config: Config{
 				PassThroughOnError: false,
 			},
 			tools:       []Tool{errorTool},
@@ -161,7 +161,7 @@ func TestExecuteWithOptions(t *testing.T) {
 		},
 		{
 			name: "include original output",
-			config: ExecuteConfig{
+			config: Config{
 				IncludeOriginalOutput: true,
 			},
 			tools:    []Tool{calc},
@@ -204,7 +204,7 @@ func TestExecuteWithOptions(t *testing.T) {
 	}
 }
 
-func NewPipelineForTestWithConfig(tools []Tool, config ExecuteConfig) core.Handler {
+func NewPipelineForTestWithConfig(tools []Tool, config Config) core.Handler {
 	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		// Create context with tools (simulating what Registry + Execute should do)
 		ctx := context.WithValue(req.Context, toolsContextKey{}, tools)

@@ -1,10 +1,15 @@
-package llm
+package ai
 
 import (
 	"github.com/calque-ai/calque-pipe/core"
-	"github.com/calque-ai/calque-pipe/middleware/tools"
 	"github.com/invopop/jsonschema"
 )
+
+// Client interface - unified interface for AI providers
+type Client interface {
+	// Single method handles all cases through options
+	Chat(r *core.Request, w *core.Response, opts *AgentOptions) error
+}
 
 // Config holds LLM model configuration parameters
 type Config struct {
@@ -25,37 +30,6 @@ type Config struct {
 type ResponseFormat struct {
 	Type   string             `json:"type"`             // "json_object" or "json_schema"
 	Schema *jsonschema.Schema `json:"schema,omitempty"` // JSON schema for validation
-}
-
-// LLMProvider interface - simplified with configuration at provider level
-type LLMProvider interface {
-	// Core interface - configuration handled at provider creation
-	Chat(r *core.Request, w *core.Response) error
-
-	ChatWithTools(r *core.Request, w *core.Response, tools ...tools.Tool) error
-
-	// Enhanced interface for request-specific overrides (output schema, etc.)
-	ChatWithSchema(r *core.Request, w *core.Response, schema *ResponseFormat, tools ...tools.Tool) error
-}
-
-// Chat middleware - works with any llm provider
-func Chat(provider LLMProvider) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
-		return provider.Chat(r, w)
-	})
-}
-
-func ChatWithTools(provider LLMProvider, tools ...tools.Tool) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
-		return provider.ChatWithTools(r, w, tools...)
-	})
-}
-
-// ChatWithSchema creates a handler that uses a specific response schema
-func ChatWithSchema(provider LLMProvider, schema *ResponseFormat, tools ...tools.Tool) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
-		return provider.ChatWithSchema(r, w, schema, tools...)
-	})
 }
 
 // DefaultConfig returns sensible defaults

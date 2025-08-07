@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/calque-ai/calque-pipe/core"
+	"github.com/calque-ai/calque-pipe/middleware/ai"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
-	"github.com/calque-ai/calque-pipe/middleware/llm"
 	"github.com/calque-ai/calque-pipe/middleware/prompt"
 	"github.com/calque-ai/calque-pipe/middleware/str"
 )
@@ -21,14 +21,14 @@ func main() {
 
 	runStreamingExample() //Streaming capabilities demo
 
-	// Initialize AI provider (using Ollama as a free, local option)
-	provider, err := llm.NewOllamaProvider("http://localhost:11434", "llama3.2:1b", llm.DefaultConfig())
+	// Initialize AI client (using Ollama as a free, local option)
+	client, err := ai.NewOllama("llama3.2:1b")
 	if err != nil {
 		log.Printf("Warning: Could not connect to Ollama: %v", err)
 		return
 	}
 
-	runAIExample(provider) //Basic AI demo
+	runAIExample(client) //Basic AI demo
 
 }
 
@@ -66,9 +66,9 @@ func runTextOnlyExample() {
 	fmt.Println(result)
 }
 
-// runAIExample shows how to integrate LLM providers into processing pipelines.
+// runAIExample shows how to integrate ai clients into processing pipelines.
 // Demonstrates prompt templates, AI chat requests, timeouts, and response handling.
-func runAIExample(provider llm.LLMProvider) {
+func runAIExample(client ai.Client) {
 	fmt.Println("\nRunning AI-powered pipeline...")
 
 	pipe := core.New()
@@ -79,7 +79,7 @@ func runAIExample(provider llm.LLMProvider) {
 		Use(flow.Logger("PREPROCESSED", 80)).                                              // Log cleaned text
 		Use(prompt.Template("Analyze this text and provide a brief summary: {{.Input}}")). // Build AI prompt
 		Use(flow.Logger("PROMPT", 200)).                                                   // Log prompt
-		Use(flow.Timeout[string](llm.Chat(provider), 30*time.Second)).                     // Send to AI with timeout
+		Use(flow.Timeout[string](ai.Agent(client), 30*time.Second)).                       // Send to AI with timeout
 		Use(flow.Logger("AI_RESPONSE", 300)).                                              // Log AI response
 		Use(str.Branch(                                                                    // Branch on response type
 			func(response string) bool {

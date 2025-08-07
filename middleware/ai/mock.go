@@ -1,4 +1,4 @@
-package llm
+package ai
 
 import (
 	"encoding/json"
@@ -11,8 +11,8 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
-// MockProvider implements the LLMProvider interface for testing
-type MockProvider struct {
+// MockClient implements the Client interface for testing
+type MockClient struct {
 	response         string
 	responses        []string // Multiple responses for sequential calls
 	callCount        int      // Track which response to return
@@ -30,61 +30,59 @@ type MockToolCall struct {
 	Arguments string
 }
 
-// NewMockProvider creates a new mock provider
-func NewMockProvider(response string) *MockProvider {
-	return &MockProvider{
+// NewMockClient creates a new mock client
+func NewMockClient(response string) *MockClient {
+	return &MockClient{
 		response:    response,
 		streamDelay: 50 * time.Millisecond, // Default delay between words
 	}
 }
 
-// NewMockProviderWithResponses creates a mock provider with multiple responses
-func NewMockProviderWithResponses(responses []string) *MockProvider {
-	return &MockProvider{
+// NewMockClientWithResponses creates a mock client with multiple responses
+func NewMockClientWithResponses(responses []string) *MockClient {
+	return &MockClient{
 		responses:   responses,
 		streamDelay: 50 * time.Millisecond, // Default delay between words
 	}
 }
 
-// NewMockProviderWithError creates a mock provider that returns an error
-func NewMockProviderWithError(errorMessage string) *MockProvider {
-	return &MockProvider{
+// NewMockClientWithError creates a mock client that returns an error
+func NewMockClientWithError(errorMessage string) *MockClient {
+	return &MockClient{
 		shouldError:  true,
 		errorMessage: errorMessage,
 	}
 }
 
 // WithStreamDelay sets the delay between streamed words (for testing)
-func (m *MockProvider) WithStreamDelay(delay time.Duration) *MockProvider {
+func (m *MockClient) WithStreamDelay(delay time.Duration) *MockClient {
 	m.streamDelay = delay
 	return m
 }
 
 // WithToolCalls configures the mock to simulate tool calls
-func (m *MockProvider) WithToolCalls(toolCalls ...MockToolCall) *MockProvider {
+func (m *MockClient) WithToolCalls(toolCalls ...MockToolCall) *MockClient {
 	m.simulateTools = true
 	m.toolCalls = toolCalls
 	return m
 }
 
 // WithJSONMode configures the mock to simulate structured JSON output
-func (m *MockProvider) WithJSONMode(enabled bool) *MockProvider {
+func (m *MockClient) WithJSONMode(enabled bool) *MockClient {
 	m.simulateJSONMode = enabled
 	return m
 }
 
-// Chat implements the LLMProvider interface with simulated streaming
-func (m *MockProvider) Chat(req *core.Request, res *core.Response) error {
-	return m.ChatWithTools(req, res)
-}
-
-// ChatWithTools implements tool calling for testing
-func (m *MockProvider) ChatWithTools(req *core.Request, res *core.Response, toolList ...tools.Tool) error {
-	return m.ChatWithSchema(req, res, nil, toolList...)
-}
-
-// ChatWithSchema implements structured output and tool calling for testing
-func (m *MockProvider) ChatWithSchema(req *core.Request, res *core.Response, schema *ResponseFormat, toolList ...tools.Tool) error {
+// Chat implements the Client interface with simulated streaming
+func (m *MockClient) Chat(req *core.Request, res *core.Response, opts *AgentOptions) error {
+	// Extract options
+	var toolList []tools.Tool
+	var schema *ResponseFormat
+	
+	if opts != nil {
+		toolList = opts.Tools
+		schema = opts.Schema
+	}
 	// Check if we should return an error (for testing error handling)
 	if m.shouldError {
 		return fmt.Errorf("mock error: %s", m.errorMessage)
@@ -116,7 +114,7 @@ func (m *MockProvider) ChatWithSchema(req *core.Request, res *core.Response, sch
 }
 
 // simulateToolCalls generates mock tool calls in OpenAI format
-func (m *MockProvider) simulateToolCalls(res *core.Response) error {
+func (m *MockClient) simulateToolCalls(res *core.Response) error {
 	// Convert mock tool calls to OpenAI format
 	var toolCalls []map[string]interface{}
 
@@ -146,7 +144,7 @@ func (m *MockProvider) simulateToolCalls(res *core.Response) error {
 }
 
 // streamResponse handles streaming text responses
-func (m *MockProvider) streamResponse(response string, req *core.Request, res *core.Response) error {
+func (m *MockClient) streamResponse(response string, req *core.Request, res *core.Response) error {
 	words := strings.Fields(response)
 	for i, word := range words {
 		// Check if context is cancelled
@@ -178,7 +176,7 @@ func (m *MockProvider) streamResponse(response string, req *core.Request, res *c
 }
 
 // simulateStructuredOutput generates mock structured JSON output
-func (m *MockProvider) simulateStructuredOutput(schema *ResponseFormat, input string, res *core.Response) error {
+func (m *MockClient) simulateStructuredOutput(schema *ResponseFormat, input string, res *core.Response) error {
 	var mockJSON map[string]interface{}
 
 	// Generate a simple mock JSON response based on the schema type
@@ -219,7 +217,7 @@ func (m *MockProvider) simulateStructuredOutput(schema *ResponseFormat, input st
 }
 
 // generateMockFromSchema generates mock data based on JSON schema (simplified)
-func (m *MockProvider) generateMockFromSchema(schema *jsonschema.Schema, input string) map[string]interface{} {
+func (m *MockClient) generateMockFromSchema(schema *jsonschema.Schema, input string) map[string]interface{} {
 	result := make(map[string]interface{})
 
 	// Very basic schema interpretation for testing
@@ -255,7 +253,7 @@ func (m *MockProvider) generateMockFromSchema(schema *jsonschema.Schema, input s
 }
 
 // getNextResponse returns the next response in sequence or generates a default
-func (m *MockProvider) getNextResponse(input string) string {
+func (m *MockClient) getNextResponse(input string) string {
 	// If we have multiple responses, use sequential calling
 	if len(m.responses) > 0 {
 		if m.callCount >= len(m.responses) {
@@ -277,6 +275,6 @@ func (m *MockProvider) getNextResponse(input string) string {
 }
 
 // Reset resets the call count (useful for testing)
-func (m *MockProvider) Reset() {
+func (m *MockClient) Reset() {
 	m.callCount = 0
 }
