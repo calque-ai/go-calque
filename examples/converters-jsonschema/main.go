@@ -269,7 +269,7 @@ const promptTemplateEx3 = `Enhance this profile with career insights:
 
 {{.Input}}
 
-The input includes the basic profile with embedded schema. Analyze experience level, identify strengths, and suggest next career role. Return JSON only.`
+The input includes the basic profile with embedded schema. Analyze experience level, identify strengths, and suggest next career role. Return valid JSON only.`
 
 func runExample3AdvancedCombined(client ai.Client) {
 	fmt.Println("=== Example 3: Multi-Stage Pipeline with Context Passing ===")
@@ -288,8 +288,10 @@ func runExample3AdvancedCombined(client ai.Client) {
 
 	stage1Pipe := core.New()
 	stage1Pipe.
-		Use(prompt.Template("Extract user profile from: {{.Input}}\nReturn JSON only.")).
-		Use(ai.Agent(client, ai.WithSchema(profileFormat)))
+		Use(prompt.Template("Extract user profile from: {{.Input}}\nReturn valid JSON only.")).
+		Use(flow.Logger("Prompt", 500)).
+		Use(ai.Agent(client, ai.WithSchema(profileFormat))).
+		Use(flow.Logger("Output", 500))
 
 	var profile UserProfile
 	err := stage1Pipe.Run(context.Background(), inputText, convert.FromJson(&profile))

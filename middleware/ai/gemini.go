@@ -9,8 +9,6 @@ import (
 
 	"github.com/calque-ai/calque-pipe/core"
 	"github.com/calque-ai/calque-pipe/middleware/tools"
-	"github.com/invopop/jsonschema"
-	orderedmap "github.com/wk8/go-ordered-map/v2"
 	"google.golang.org/genai"
 )
 
@@ -25,46 +23,46 @@ type GeminiClient struct {
 type GeminiConfig struct {
 	// Required. API key for Google AI/Vertex AI authentication
 	APIKey string
-	
+
 	// Optional. Controls randomness in token selection (0.0-2.0)
 	// Lower values = more deterministic, higher values = more creative
 	Temperature *float32
-	
+
 	// Optional. Nucleus sampling parameter (0.0-1.0)
 	// Tokens are selected until their probabilities sum to this value
 	TopP *float32
-	
+
 	// Optional. Top-k sampling - select from k highest probability tokens
 	// Lower values = less random, higher values = more random
 	TopK *float32
-	
+
 	// Optional. Maximum number of tokens in the response
 	MaxTokens *int
-	
+
 	// Optional. Strings that stop text generation when encountered
 	Stop []string
-	
+
 	// Optional. System instructions to steer model behavior
 	// Example: "Answer as concisely as possible" or "Don't use technical terms"
 	SystemInstruction string
-	
+
 	// Optional. Penalize tokens that already appear in generated text (-2.0 to 2.0)
 	// Positive values increase content diversity
 	PresencePenalty *float32
-	
-	// Optional. Penalize frequently repeated tokens (-2.0 to 2.0)  
+
+	// Optional. Penalize frequently repeated tokens (-2.0 to 2.0)
 	// Positive values reduce repetition
 	FrequencyPenalty *float32
-	
+
 	// Optional. Fixed seed for reproducible responses
 	Seed *int32
-	
+
 	// Optional. Number of response variations to generate
 	CandidateCount *int32
-	
+
 	// Optional. Response format configuration (JSON schema, etc.)
 	ResponseFormat *ResponseFormat
-	
+
 	// Optional. Safety settings to block unsafe content
 	SafetySettings []*genai.SafetySetting
 }
@@ -289,7 +287,7 @@ func (g *GeminiClient) buildGenerateConfig(schemaOverride *ResponseFormat) *gena
 		case "json_schema":
 			config.ResponseMIMEType = "application/json"
 			if responseFormat.Schema != nil {
-				config.ResponseSchema = convertSchemaToGemini(responseFormat.Schema)
+				config.ResponseJsonSchema = responseFormat.Schema
 			}
 		}
 	}
@@ -303,72 +301,14 @@ func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclarat
 
 	for _, tool := range tools {
 		functions = append(functions, &genai.FunctionDeclaration{
-			Name:        tool.Name(),
-			Description: tool.Description(),
-			Parameters:  convertSchemaToGemini(tool.ParametersSchema()),
+			Name:                 tool.Name(),
+			Description:          tool.Description(),
+			ParametersJsonSchema: tool.ParametersSchema(), // Use raw JSON schema like response format
 		})
 	}
 
 	return functions
 }
 
-// convertSchemaToGemini converts a JSON schema to Gemini's schema format
-func convertSchemaToGemini(schema *jsonschema.Schema) *genai.Schema {
-	if schema == nil {
-		return nil
-	}
-
-	// Convert JSON Schema type to Gemini Type
-	var geminiType genai.Type
-	switch schema.Type {
-	case "string":
-		geminiType = "STRING"
-	case "integer":
-		geminiType = "INTEGER"
-	case "number":
-		geminiType = "NUMBER"
-	case "boolean":
-		geminiType = "BOOLEAN"
-	case "array":
-		geminiType = "ARRAY"
-	case "object":
-		geminiType = "OBJECT"
-	default:
-		geminiType = "STRING" // fallback
-	}
-
-	geminiSchema := &genai.Schema{
-		Type:       geminiType,
-		Properties: convertProperties(schema.Properties),
-		Required:   schema.Required,
-	}
-
-	// Add description if present
-	if schema.Description != "" {
-		geminiSchema.Description = schema.Description
-	}
-
-	// Add enum values if present (convert []any to []string)
-	if len(schema.Enum) > 0 {
-		enumStrings := make([]string, len(schema.Enum))
-		for i, v := range schema.Enum {
-			enumStrings[i] = fmt.Sprintf("%v", v)
-		}
-		geminiSchema.Enum = enumStrings
-	}
-
-	return geminiSchema
-}
-
-func convertProperties(properties *orderedmap.OrderedMap[string, *jsonschema.Schema]) map[string]*genai.Schema {
-	if properties == nil {
-		return nil
-	}
-
-	result := make(map[string]*genai.Schema)
-	for pair := properties.Oldest(); pair != nil; pair = pair.Next() {
-		result[pair.Key] = convertSchemaToGemini(pair.Value)
-	}
-
-	return result
-}
+// Note: Schema conversion functions removed since we now use raw JSON schemas
+// directly with ResponseJsonSchema and ParametersJsonSchema fields
