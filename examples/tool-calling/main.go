@@ -11,6 +11,8 @@ import (
 
 	"github.com/calque-ai/calque-pipe/pkg/core"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/gemini"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
 	"github.com/joho/godotenv"
 )
@@ -78,7 +80,7 @@ func runSimpleAgent() {
 	})
 
 	// Create Gemini example client (reads GOOGLE_API_KEY from env)
-	client, err := ai.NewGemini("gemini-2.0-flash")
+	client, err := gemini.New("gemini-2.0-flash")
 	if err != nil {
 		log.Fatal("Failed to create Gemini client:", err)
 	}
@@ -131,7 +133,7 @@ func runConfiguredAgent() {
 		IncludeOriginalOutput: true, // Include LLM output with tool results
 	}
 
-	client, err := ai.NewOllama("llama3.2:1b")
+	client, err := ollama.New("llama3.2:1b")
 	if err != nil {
 		log.Fatal("Failed to create Ollama client:", err)
 	}

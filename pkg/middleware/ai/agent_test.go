@@ -17,17 +17,17 @@ func createMockClientForTest(responses []string, shouldErr bool) *MockClient {
 	if shouldErr {
 		return NewMockClientWithError("client error")
 	}
-	mock := NewMockClientWithResponses(responses)
+	mockClient := NewMockClientWithResponses(responses)
 	// For tool calling tests, we need to enable tool call simulation
 	if len(responses) > 0 && strings.Contains(responses[0], "tool_calls") {
 		// Parse the first response to create mock tool calls
 		if strings.Contains(responses[0], "error_tool") {
-			mock.WithToolCalls(MockToolCall{Name: "error_tool", Arguments: "test"})
+			mockClient.WithToolCalls(MockToolCall{Name: "error_tool", Arguments: "test"})
 		} else if strings.Contains(responses[0], "calculator") {
-			mock.WithToolCalls(MockToolCall{Name: "calculator", Arguments: "2+2"})
+			mockClient.WithToolCalls(MockToolCall{Name: "calculator", Arguments: "2+2"})
 		}
 	}
-	return mock
+	return mockClient
 }
 
 // createErrorTool creates a tool that always returns an error for testing

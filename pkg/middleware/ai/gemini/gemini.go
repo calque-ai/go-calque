@@ -1,4 +1,4 @@
-package ai
+package gemini
 
 import (
 	"context"
@@ -8,19 +8,20 @@ import (
 	"os"
 
 	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
 	"google.golang.org/genai"
 )
 
-// GeminiClient implements the Client interface for Google Gemini
-type GeminiClient struct {
+// Client implements the Client interface for Google Gemini
+type Client struct {
 	client *genai.Client
 	model  string
-	config *GeminiConfig
+	config *Config
 }
 
 // GeminiConfig holds Gemini-specific configuration
-type GeminiConfig struct {
+type Config struct {
 	// Required. API key for Google AI/Vertex AI authentication
 	APIKey string
 
@@ -61,43 +62,43 @@ type GeminiConfig struct {
 	CandidateCount *int32
 
 	// Optional. Response format configuration (JSON schema, etc.)
-	ResponseFormat *ResponseFormat
+	ResponseFormat *ai.ResponseFormat
 
 	// Optional. Safety settings to block unsafe content
 	SafetySettings []*genai.SafetySetting
 }
 
-// GeminiOption interface for functional options pattern
-type GeminiOption interface {
-	Apply(*GeminiConfig)
+// Option interface for functional options pattern
+type Option interface {
+	Apply(*Config)
 }
 
-// configOption implements GeminiOption
-type geminiConfigOption struct{ config *GeminiConfig }
+// configOption implements Option
+type configOption struct{ config *Config }
 
-func (o geminiConfigOption) Apply(opts *GeminiConfig) { *opts = *o.config }
+func (o configOption) Apply(opts *Config) { *opts = *o.config }
 
-// WithGeminiConfig sets custom Gemini configuration
-func WithGeminiConfig(config *GeminiConfig) GeminiOption {
-	return geminiConfigOption{config: config}
+// WithConfig sets custom Gemini configuration
+func WithConfig(config *Config) Option {
+	return configOption{config: config}
 }
 
-// DefaultGeminiConfig returns sensible defaults for Gemini
-func DefaultGeminiConfig() *GeminiConfig {
-	return &GeminiConfig{
+// DefaultConfig returns sensible defaults for Gemini
+func DefaultConfig() *Config {
+	return &Config{
 		APIKey:      os.Getenv("GOOGLE_API_KEY"),
-		Temperature: Float32Ptr(0.7),
+		Temperature: ai.Float32Ptr(0.7),
 	}
 }
 
-// NewGemini creates a new Gemini client with optional configuration
-func NewGemini(model string, opts ...GeminiOption) (*GeminiClient, error) {
+// New creates a new Gemini client with optional configuration
+func New(model string, opts ...Option) (*Client, error) {
 	if model == "" {
 		return nil, fmt.Errorf("model name is required")
 	}
 
 	// Build config from options
-	config := DefaultGeminiConfig()
+	config := DefaultConfig()
 	for _, opt := range opts {
 		opt.Apply(config)
 	}
@@ -117,7 +118,7 @@ func NewGemini(model string, opts ...GeminiOption) (*GeminiClient, error) {
 		return nil, fmt.Errorf("failed to create genai client: %w", err)
 	}
 
-	return &GeminiClient{
+	return &Client{
 		client: client,
 		model:  model,
 		config: config,
@@ -125,10 +126,10 @@ func NewGemini(model string, opts ...GeminiOption) (*GeminiClient, error) {
 }
 
 // Chat implements the Client interface with streaming support
-func (g *GeminiClient) Chat(r *core.Request, w *core.Response, opts *AgentOptions) error {
+func (g *Client) Chat(r *core.Request, w *core.Response, opts *ai.AgentOptions) error {
 	// Extract options
 	var tools []tools.Tool
-	var schema *ResponseFormat
+	var schema *ai.ResponseFormat
 
 	if opts != nil {
 		tools = opts.Tools
@@ -192,7 +193,7 @@ func (g *GeminiClient) Chat(r *core.Request, w *core.Response, opts *AgentOption
 }
 
 // writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
-func (g *GeminiClient) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *core.Response) error {
+func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *core.Response) error {
 	// Convert to OpenAI format
 	var toolCalls []map[string]any
 
@@ -231,7 +232,7 @@ func (g *GeminiClient) writeFunctionCalls(functionCalls []*genai.FunctionCall, w
 }
 
 // buildGenerateConfig creates a Gemini GenerateContentConfig from provider config and optional schema override
-func (g *GeminiClient) buildGenerateConfig(schemaOverride *ResponseFormat) *genai.GenerateContentConfig {
+func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.GenerateContentConfig {
 	config := &genai.GenerateContentConfig{}
 
 	// Apply client configuration
@@ -273,7 +274,7 @@ func (g *GeminiClient) buildGenerateConfig(schemaOverride *ResponseFormat) *gena
 	}
 
 	// Apply response format - request override takes priority
-	var responseFormat *ResponseFormat
+	var responseFormat *ai.ResponseFormat
 	if schemaOverride != nil {
 		responseFormat = schemaOverride
 	} else {

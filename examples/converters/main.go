@@ -19,6 +19,7 @@ import (
 	"github.com/calque-ai/calque-pipe/pkg/convert"
 	"github.com/calque-ai/calque-pipe/pkg/core"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/str"
@@ -39,7 +40,7 @@ func main() {
 	runConverterBasics() // Basic converter demo
 
 	// Initialize AI client
-	client, err := ai.NewOllama("llama3.2:1b")
+	client, err := ollama.New("llama3.2:1b")
 	if err != nil {
 		log.Printf("Warning: Could not connect to Ollama: %v", err)
 		log.Println("To use AI features, install Ollama and run: ollama pull llama3.2:1b")

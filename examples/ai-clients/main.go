@@ -8,6 +8,8 @@ import (
 
 	"github.com/calque-ai/calque-pipe/pkg/core"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/gemini"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/str"
@@ -23,7 +25,7 @@ func main() {
 func ollamaExample() {
 
 	// Create Ollama client (connects to localhost:11434 by default)
-	client, err := ai.NewOllama("llama3.2:1b")
+	client, err := ollama.New("llama3.2:1b")
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}
@@ -61,12 +63,12 @@ func geminiExample() {
 	}
 
 	// Create an optional custom gemini configuration
-	config := &ai.GeminiConfig{
+	config := &gemini.Config{
 		Temperature: ai.Float32Ptr(1.1),
 	}
 
 	// Create Gemini example client (reads GOOGLE_API_KEY from env unless set in the config)
-	client, err := ai.NewGemini("gemini-2.0-flash", ai.WithGeminiConfig(config))
+	client, err := gemini.New("gemini-2.0-flash", gemini.WithConfig(config))
 	if err != nil {
 		log.Fatal("Failed to create Gemini client:", err)
 	}

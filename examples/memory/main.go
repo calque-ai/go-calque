@@ -8,6 +8,7 @@ import (
 	"github.com/calque-ai/calque-pipe/examples/memory/badger"
 	"github.com/calque-ai/calque-pipe/pkg/core"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/memory"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
@@ -17,7 +18,7 @@ func main() {
 	// Create a mock provider for demonstration
 	// provider := mock.NewMockProvider("").WithStreamDelay(100) // Slower for demo
 
-	client, err := ai.NewOllama("llama3.2:1b")
+	client, err := ollama.New("llama3.2:1b")
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}

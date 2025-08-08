@@ -1,4 +1,4 @@
-package ai
+package ollama
 
 import (
 	"context"
@@ -10,20 +10,21 @@ import (
 	"strings"
 
 	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
 	"github.com/invopop/jsonschema"
 	"github.com/ollama/ollama/api"
 )
 
-// OllamaClient implements the Client interface for Ollama
-type OllamaClient struct {
+// Client implements the Client interface for Ollama
+type Client struct {
 	client *api.Client
 	model  string
-	config *OllamaConfig
+	config *Config
 }
 
-// OllamaConfig holds Ollama-specific configuration
-type OllamaConfig struct {
+// Config holds Ollama-specific configuration
+type Config struct {
 	// Optional. Ollama server host (defaults to localhost:11434 or OLLAMA_HOST env)
 	Host string
 
@@ -49,7 +50,7 @@ type OllamaConfig struct {
 	Stream *bool
 
 	// Optional. Response format configuration (JSON schema, etc.)
-	ResponseFormat *ResponseFormat
+	ResponseFormat *ai.ResponseFormat
 
 	// Optional. Controls whether thinking/reasoning models will think before responding
 	Think *bool
@@ -59,39 +60,39 @@ type OllamaConfig struct {
 	Options map[string]any
 }
 
-// OllamaOption interface for functional options pattern
-type OllamaOption interface {
-	Apply(*OllamaConfig)
+// Option interface for functional options pattern
+type Option interface {
+	Apply(*Config)
 }
 
-// configOption implements OllamaOption
-type ollamaConfigOption struct{ config *OllamaConfig }
+// configOption implements Option
+type configOption struct{ config *Config }
 
-func (o ollamaConfigOption) Apply(opts *OllamaConfig) { *opts = *o.config }
+func (o configOption) Apply(opts *Config) { *opts = *o.config }
 
-// WithOllamaConfig sets custom Ollama configuration
-func WithOllamaConfig(config *OllamaConfig) OllamaOption {
-	return ollamaConfigOption{config: config}
+// WithConfig sets custom Ollama configuration
+func WithConfig(config *Config) Option {
+	return configOption{config: config}
 }
 
-// DefaultOllamaConfig returns sensible defaults for Ollama
-func DefaultOllamaConfig() *OllamaConfig {
-	return &OllamaConfig{
+// DefaultConfig returns sensible defaults for Ollama
+func DefaultConfig() *Config {
+	return &Config{
 		Host:        "", // Will use ClientFromEnvironment() default
-		Temperature: Float32Ptr(0.7),
+		Temperature: ai.Float32Ptr(0.7),
 		KeepAlive:   "5m",
-		Stream:      BoolPtr(true), // Ollama streams by default
+		Stream:      ai.BoolPtr(true), // Ollama streams by default
 	}
 }
 
-// NewOllama creates a new Ollama client with optional configuration
-func NewOllama(model string, opts ...OllamaOption) (*OllamaClient, error) {
+// New creates a new Ollama client with optional configuration
+func New(model string, opts ...Option) (*Client, error) {
 	if model == "" {
 		model = "llama3.2" // Default model
 	}
 
 	// Build config from options
-	config := DefaultOllamaConfig()
+	config := DefaultConfig()
 	for _, opt := range opts {
 		opt.Apply(config)
 	}
@@ -116,7 +117,7 @@ func NewOllama(model string, opts ...OllamaOption) (*OllamaClient, error) {
 		client = api.NewClient(u, http.DefaultClient)
 	}
 
-	return &OllamaClient{
+	return &Client{
 		client: client,
 		model:  model,
 		config: config,
@@ -124,10 +125,10 @@ func NewOllama(model string, opts ...OllamaOption) (*OllamaClient, error) {
 }
 
 // Chat implements the Client interface
-func (o *OllamaClient) Chat(r *core.Request, w *core.Response, opts *AgentOptions) error {
+func (o *Client) Chat(r *core.Request, w *core.Response, opts *ai.AgentOptions) error {
 	// Extract options
 	var toolList []tools.Tool
-	var schema *ResponseFormat
+	var schema *ai.ResponseFormat
 
 	if opts != nil {
 		toolList = opts.Tools
@@ -152,7 +153,7 @@ func (o *OllamaClient) Chat(r *core.Request, w *core.Response, opts *AgentOption
 }
 
 // handleChatResponse manages the streaming response and post-processing
-func (o *OllamaClient) handleChatResponse(ctx context.Context, req *api.ChatRequest, w *core.Response, toolList []tools.Tool, schema *ResponseFormat) error {
+func (o *Client) handleChatResponse(ctx context.Context, req *api.ChatRequest, w *core.Response, toolList []tools.Tool, schema *ai.ResponseFormat) error {
 	var fullResponse strings.Builder
 	var toolCalls []api.ToolCall
 
@@ -209,7 +210,7 @@ func (o *OllamaClient) handleChatResponse(ctx context.Context, req *api.ChatRequ
 }
 
 // convertToOllamaTools converts our tool interface to Ollama's tool format
-func (o *OllamaClient) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
+func (o *Client) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
 	var ollamaTools []api.Tool
 
 	for _, tool := range toolList {
@@ -256,7 +257,7 @@ func (o *OllamaClient) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
 }
 
 // writeOllamaToolCalls converts Ollama tool calls to OpenAI format for the agent
-func (o *OllamaClient) writeOllamaToolCalls(toolCalls []api.ToolCall, w *core.Response) error {
+func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *core.Response) error {
 	// Convert to OpenAI format
 	var openAIToolCalls []map[string]any
 
@@ -300,7 +301,7 @@ func (o *OllamaClient) writeOllamaToolCalls(toolCalls []api.ToolCall, w *core.Re
 }
 
 // convertTextToToolCalls attempts to parse tool calls from text response
-func (o *OllamaClient) convertTextToToolCalls(responseText string, w *core.Response) error {
+func (o *Client) convertTextToToolCalls(responseText string, w *core.Response) error {
 	// This is a fallback for when Ollama returns tool calls as text instead of structured data
 	// For now, just write the text response - this needs more sophisticated parsing
 	_, err := w.Data.Write([]byte(responseText))
@@ -308,7 +309,7 @@ func (o *OllamaClient) convertTextToToolCalls(responseText string, w *core.Respo
 }
 
 // buildChatRequest creates an Ollama ChatRequest from provider config and optional schema override
-func (o *OllamaClient) buildChatRequest(input string, schemaOverride *ResponseFormat) *api.ChatRequest {
+func (o *Client) buildChatRequest(input string, schemaOverride *ai.ResponseFormat) *api.ChatRequest {
 	req := &api.ChatRequest{
 		Model: o.model,
 		Messages: []api.Message{
@@ -351,7 +352,7 @@ func (o *OllamaClient) buildChatRequest(input string, schemaOverride *ResponseFo
 	}
 
 	// Apply response format - request override takes priority
-	var responseFormat *ResponseFormat
+	var responseFormat *ai.ResponseFormat
 	if schemaOverride != nil {
 		responseFormat = schemaOverride
 	} else {
@@ -399,7 +400,7 @@ func convertJSONSchemaToOllamaFormat(schema *jsonschema.Schema) (json.RawMessage
 }
 
 // cleanFullJSONResponse removes Ollama JSON formatting artifacts from complete buffered response
-func (o *OllamaClient) cleanFullJSONResponse(content string) string {
+func (o *Client) cleanFullJSONResponse(content string) string {
 	// Trim whitespace
 	content = strings.TrimSpace(content)
 
