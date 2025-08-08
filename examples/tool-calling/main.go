@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/core"
-	"github.com/calque-ai/calque-pipe/middleware/ai"
-	"github.com/calque-ai/calque-pipe/middleware/tools"
+	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
 	"github.com/joho/godotenv"
 )
 

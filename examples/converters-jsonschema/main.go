@@ -31,11 +31,11 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/calque-ai/calque-pipe/convert"
-	"github.com/calque-ai/calque-pipe/core"
-	"github.com/calque-ai/calque-pipe/middleware/ai"
-	"github.com/calque-ai/calque-pipe/middleware/flow"
-	"github.com/calque-ai/calque-pipe/middleware/prompt"
+	"github.com/calque-ai/calque-pipe/pkg/convert"
+	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
 	"github.com/joho/godotenv"
 )
 

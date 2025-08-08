@@ -1,7 +1,7 @@
 package badger
 
 import (
-	"github.com/calque-ai/calque-pipe/middleware/memory"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/memory"
 	"github.com/dgraph-io/badger/v4"
 )
 
