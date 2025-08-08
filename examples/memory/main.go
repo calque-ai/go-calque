@@ -6,10 +6,10 @@ import (
 	"log"
 
 	"github.com/calque-ai/calque-pipe/examples/memory/badger"
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/memory"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
 )
@@ -39,11 +39,11 @@ func conversationExample(client ai.Client) {
 	convMem := memory.NewConversation() // Create conversation memory with simple in-memory store
 
 	// Create pipe with conversation memory
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.
-		Use(flow.Logger("INPUT", 100)).
+		Use(ctrl.Logger("INPUT", 100)).
 		Use(convMem.Input("user123")). // Store input with user ID
-		Use(flow.Logger("WITH_HISTORY", 100)).
+		Use(ctrl.Logger("WITH_HISTORY", 100)).
 		Use(prompt.System("You are a helpful coding assistant. Keep responses brief.")).
 		Use(ai.Agent(client)).         // Get LLM response
 		Use(convMem.Output("user123")) // Store response with user ID
@@ -95,10 +95,10 @@ func badgerConversationExample(client ai.Client) {
 	convMem := memory.NewConversationWithStore(badgerStore)
 
 	// Use in pipeline
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.
 		Use(convMem.Input("user123")).
-		Use(flow.Logger("WITH_HISTORY", 100)).
+		Use(ctrl.Logger("WITH_HISTORY", 100)).
 		Use(prompt.System("You are a helpful coding assistant. Keep responses brief.")).
 		Use(ai.Agent(client)).
 		Use(convMem.Output("user123"))
@@ -150,7 +150,7 @@ func customStoreExample(client ai.Client) {
 	adminConvMem := memory.NewConversationWithStore(adminStore)
 
 	// User pipe
-	userPipe := core.New()
+	userPipe := calque.Flow()
 	userPipe.
 		Use(userConvMem.Input("session1")).
 		Use(prompt.System("You are a helpful user assistant.")).
@@ -158,7 +158,7 @@ func customStoreExample(client ai.Client) {
 		Use(userConvMem.Output("session1"))
 
 	// Admin pipe
-	adminPipe := core.New()
+	adminPipe := calque.Flow()
 	adminPipe.
 		Use(adminConvMem.Input("admin1")).
 		Use(prompt.System("You are a technical admin assistant.")).
@@ -195,11 +195,11 @@ func contextExample(client ai.Client) {
 	contextMem := memory.NewContext() // Create context memory with default in-memory store
 
 	// Create pipe with context memory (small limit for demo)
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.
-		Use(flow.Logger("INPUT", 100)).
+		Use(ctrl.Logger("INPUT", 100)).
 		Use(contextMem.Input("session456", 200)). // Keep last 200 tokens
-		Use(flow.Logger("WITH_CONTEXT", 100)).
+		Use(ctrl.Logger("WITH_CONTEXT", 100)).
 		Use(prompt.System("You are a helpful assistant. Be concise.")).
 		Use(ai.Agent(client)).                    // Get agent response
 		Use(contextMem.Output("session456", 200)) // Store response in context

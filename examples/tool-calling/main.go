@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
@@ -93,7 +93,7 @@ func runSimpleAgent() {
 	input := "What is 15 * 8? Also, what time is it right now?"
 
 	var result string
-	err = core.New().Use(agent).Run(ctx, input, &result)
+	err = calque.Flow().Use(agent).Run(ctx, input, &result)
 	if err != nil {
 		log.Printf("Agent error: %v", err)
 		return
@@ -146,7 +146,7 @@ func runConfiguredAgent() {
 	input := "Please calculate 25 + 17, and analyze this text: 'Hello world! This is a test.'"
 
 	var result string
-	err = core.New().Use(agent).Run(ctx, input, &result)
+	err = calque.Flow().Use(agent).Run(ctx, input, &result)
 	if err != nil {
 		log.Printf("Configured agent error: %v", err)
 		return

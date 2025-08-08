@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
 )
 
@@ -106,8 +106,8 @@ func TestAgent(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := agent.ServeFlow(req, res)
 
 			if tt.expectError {
@@ -191,8 +191,8 @@ func TestAgentWithToolsConfig(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := agent.ServeFlow(req, res)
 
 			if tt.expectError {
@@ -228,8 +228,8 @@ func TestDefaultToolsConfig(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("Test input")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := agent.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Agent with default config error = %v", err)
@@ -246,8 +246,8 @@ func TestAgentSimpleChat(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("Hello")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := agent.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Simple chat agent error = %v", err)
@@ -274,8 +274,8 @@ func TestAgentWithSchema(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("Generate a person")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := agent.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Schema agent error = %v", err)
@@ -297,8 +297,8 @@ func TestAgentWithClientError(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("Test input")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := agent.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Agent() with client error should return error")
@@ -317,8 +317,8 @@ func TestAgentWithIOError(t *testing.T) {
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
-	req := core.NewRequest(context.Background(), errorReader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), errorReader)
+	res := calque.NewResponse(&buf)
 	err := agent.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Agent() with IO error = %v, want %v", err, io.ErrUnexpectedEOF)

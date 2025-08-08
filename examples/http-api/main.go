@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/str"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
 )
 
 // Request represents the incoming API request structure
@@ -44,19 +44,19 @@ func main() {
 }
 
 // createAgentPipeline builds the processing pipeline that will handle requests
-func createAgentPipeline() *core.Flow {
-	pipe := core.New()
+func createAgentPipeline() *calque.Pipeline {
+	pipe := calque.Flow()
 	pipe.
-		Use(flow.Logger("HTTP_REQUEST", 200)).                                   // Log incoming request
-		Use(str.Transform(func(s string) string { return strings.ToUpper(s) })). // Transform message to uppercase
-		Use(str.Transform(func(s string) string { return "Processed: " + s })).  // Add prefix
-		Use(flow.Logger("PROCESSED_MESSAGE", 200))                               // Log processed result
+		Use(ctrl.Logger("HTTP_REQUEST", 200)).                                    // Log incoming request
+		Use(text.Transform(func(s string) string { return strings.ToUpper(s) })). // Transform message to uppercase
+		Use(text.Transform(func(s string) string { return "Processed: " + s })).  // Add prefix
+		Use(ctrl.Logger("PROCESSED_MESSAGE", 200))                                // Log processed result
 
 	return pipe
 }
 
 // handleAgent creates an HTTP handler that uses the Calque-Pipe pipeline
-func handleAgent(pipeline *core.Flow) http.HandlerFunc {
+func handleAgent(pipeline *calque.Pipeline) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Set response headers
 		w.Header().Set("Content-Type", "application/json")

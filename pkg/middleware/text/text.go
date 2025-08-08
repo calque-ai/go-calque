@@ -1,4 +1,4 @@
-package str
+package text
 
 import (
 	"bufio"
@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // Transform applies a function to transform the entire input content.
@@ -29,8 +29,8 @@ import (
 //	  }
 //	  return string(runes)
 //	})
-func Transform(fn func(string) string) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func Transform(fn func(string) string) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
@@ -59,10 +59,10 @@ func Transform(fn func(string) string) core.Handler {
 //	  jsonHandler,
 //	  textHandler,
 //	)
-func Branch(condition func(string) bool, ifHandler core.Handler, elseHandler core.Handler) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func Branch(condition func(string) bool, ifHandler calque.Handler, elseHandler calque.Handler) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
@@ -93,10 +93,10 @@ func Branch(condition func(string) bool, ifHandler core.Handler, elseHandler cor
 //	  jsonProcessor,
 //	)
 //	// Only valid JSON gets processed, everything else passes through
-func Filter(condition func(string) bool, handler core.Handler) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func Filter(condition func(string) bool, handler calque.Handler) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
@@ -107,7 +107,7 @@ func Filter(condition func(string) bool, handler core.Handler) core.Handler {
 		}
 
 		// Pass through unchanged
-		err = core.Write(res, input)
+		err = calque.Write(res, input)
 		return err
 	})
 }
@@ -130,8 +130,8 @@ func Filter(condition func(string) bool, handler core.Handler) core.Handler {
 //	csvProcessor := strings.LineProcessor(func(line string) string {
 //	  return strings.ToUpper(line) // Convert CSV to uppercase
 //	})
-func LineProcessor(fn func(string) string) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func LineProcessor(fn func(string) string) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		scanner := bufio.NewScanner(req.Data)
 
 		for scanner.Scan() {

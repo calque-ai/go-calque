@@ -1,4 +1,4 @@
-package flow
+package ctrl
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 const (
@@ -37,10 +37,10 @@ type circuitBreaker struct {
 //
 // Example:
 //
-//	fallback := flow.Fallback(primaryLLM, fallbackLLM, localLLM)
-func Fallback(handlers ...core.Handler) core.Handler {
+//	fallback := ctrl.Fallback(primaryLLM, fallbackLLM, localLLM)
+func Fallback(handlers ...calque.Handler) calque.Handler {
 	if len(handlers) == 0 {
-		return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 			return fmt.Errorf("no handlers provided to fallback")
 		})
 	}
@@ -53,7 +53,7 @@ func Fallback(handlers ...core.Handler) core.Handler {
 		}
 	}
 
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
@@ -66,8 +66,8 @@ func Fallback(handlers ...core.Handler) core.Handler {
 			}
 
 			var output bytes.Buffer
-			handlerReq := core.NewRequest(req.Context, bytes.NewReader(input))
-			handlerRes := core.NewResponse(&output)
+			handlerReq := calque.NewRequest(req.Context, bytes.NewReader(input))
+			handlerRes := calque.NewResponse(&output)
 			err := handler.ServeFlow(handlerReq, handlerRes)
 
 			if err == nil {

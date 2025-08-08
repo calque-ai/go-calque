@@ -5,14 +5,14 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
 )
 
 // Agent creates an AI agent handler with optional configuration
-func Agent(client Client, opts ...AgentOption) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+func Agent(client Client, opts ...AgentOption) calque.Handler {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		// Build options
 		agentOpts := &AgentOptions{}
 		for _, opt := range opts {
@@ -31,7 +31,7 @@ func Agent(client Client, opts ...AgentOption) core.Handler {
 }
 
 // runToolCallingAgent implements the full agent loop with tools
-func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *core.Request, w *core.Response) error {
+func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Request, w *calque.Response) error {
 	// Use default tools config if none provided
 	if agentOpts.ToolsConfig == nil {
 		defaultConfig := tools.Config{
@@ -47,27 +47,27 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *core.Request
 		return err
 	}
 
-	pipe := core.New()
+	flow := calque.Flow()
 
 	// Chain: Registry → AddToolInfo → LLM → Detect → [Execute + Synthesize] OR PassThrough
-	pipe.Use(flow.Chain(
+	flow.Use(ctrl.Chain(
 		tools.Registry(agentOpts.Tools...),   // Register tools in context
 		addToolInformation(),                 // Add tool schema using tools from context
 		clientChatHandler(client, agentOpts), // Direct LLM call
 		tools.Detect(
 			// If tools detected → Execute tools, then synthesize final answer
-			flow.Chain(
+			ctrl.Chain(
 				tools.ExecuteWithOptions(*agentOpts.ToolsConfig), // Execute tools
 				synthesizeFinalAnswer(client, input),             // Second LLM call with original input + results
 			),
 			// No tools detected → just pass through the LLM response
-			flow.PassThrough(),
+			ctrl.PassThrough(),
 		),
 	))
 
-	// Execute the pipeline
+	// Execute the flow
 	var output []byte
-	if err := pipe.Run(r.Context, input, &output); err != nil {
+	if err := flow.Run(r.Context, input, &output); err != nil {
 		return fmt.Errorf("agent failed: %w", err)
 	}
 
@@ -77,15 +77,15 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *core.Request
 }
 
 // clientChatHandler creates a handler that calls client.Chat directly
-func clientChatHandler(client Client, agentOpts *AgentOptions) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+func clientChatHandler(client Client, agentOpts *AgentOptions) calque.Handler {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		return client.Chat(r, w, agentOpts)
 	})
 }
 
 // addToolInformation adds tool schema to the input (replaces formatInputWithTools)
-func addToolInformation() core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+func addToolInformation() calque.Handler {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		// Read input
 		input, err := io.ReadAll(r.Data)
 		if err != nil {
@@ -113,8 +113,8 @@ func addToolInformation() core.Handler {
 
 // synthesizeFinalAnswer creates a handler that makes a second LLM call to synthesize a final answer
 // from the original question and tool execution results
-func synthesizeFinalAnswer(client Client, originalInput []byte) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+func synthesizeFinalAnswer(client Client, originalInput []byte) calque.Handler {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		toolResults, err := io.ReadAll(r.Data)
 		if err != nil {
 			return err
@@ -130,7 +130,7 @@ Please provide a complete answer to the original question using the tool results
 			string(originalInput), string(toolResults))
 
 		// Make LLM call without tools for synthesis
-		req := core.NewRequest(r.Context, strings.NewReader(synthesisPrompt))
+		req := calque.NewRequest(r.Context, strings.NewReader(synthesisPrompt))
 		return client.Chat(req, w, &AgentOptions{})
 	})
 }

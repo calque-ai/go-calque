@@ -1,4 +1,4 @@
-package flow
+package ctrl
 
 import (
 	"bytes"
@@ -7,11 +7,11 @@ import (
 	"io"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 type requestBatcher struct {
-	handler  core.Handler
+	handler  calque.Handler
 	maxSize  int
 	maxWait  time.Duration
 	requests chan *batchRequest
@@ -40,8 +40,8 @@ type batchResponse struct {
 //
 // Example:
 //
-//	batch := flow.Batch(handler, 10, 5*time.Second) // 10 items or 5s
-func Batch(handler core.Handler, maxSize int, maxWait time.Duration) core.Handler {
+//	batch := ctrl.Batch(handler, 10, 5*time.Second) // 10 items or 5s
+func Batch(handler calque.Handler, maxSize int, maxWait time.Duration) calque.Handler {
 	batcher := &requestBatcher{
 		handler:  handler,
 		maxSize:  maxSize,
@@ -51,7 +51,7 @@ func Batch(handler core.Handler, maxSize int, maxWait time.Duration) core.Handle
 
 	go batcher.processBatches()
 
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
@@ -136,8 +136,8 @@ func (rb *requestBatcher) processBatch(batch []*batchRequest) {
 	// Process the combined batch
 	var output bytes.Buffer
 	ctx := batch[0].ctx // Use context from first request
-	req := core.NewRequest(ctx, &combinedInput)
-	res := core.NewResponse(&output)
+	req := calque.NewRequest(ctx, &combinedInput)
+	res := calque.NewResponse(&output)
 	err := rb.handler.ServeFlow(req, res)
 
 	if err != nil {

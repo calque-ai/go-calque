@@ -16,13 +16,13 @@ import (
 	"log"
 	"strings"
 
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/convert"
-	"github.com/calque-ai/calque-pipe/pkg/core"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/str"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
 )
 
 // ProductInfo represents structured product data
@@ -65,11 +65,11 @@ func runConverterBasics() {
 	}`
 
 	// Pipeline: Json String -> Json -> Uppercase -> Struct
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.
-		Use(flow.Logger("JSON_INPUT", 300)).                                     // Log original JSON
-		Use(str.Transform(func(s string) string { return strings.ToUpper(s) })). // Convert to uppercase for processing
-		Use(flow.Logger("UPPERCASE_JSON", 300))                                  // Log transformed JSON
+		Use(ctrl.Logger("JSON_INPUT", 300)).                                      // Log original JSON
+		Use(text.Transform(func(s string) string { return strings.ToUpper(s) })). // Convert to uppercase for processing
+		Use(ctrl.Logger("UPPERCASE_JSON", 300))                                   // Log transformed JSON
 
 	// Execute with json string input
 	// convert.ToJson parses the string to make sure its valid json
@@ -100,11 +100,11 @@ func runAIConverterExample(client ai.Client) {
 	}
 
 	// Pipeline: struct -> YAML -> AI analysis -> result string
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.
-		Use(flow.Logger("STRUCT_INPUT", 200)).
+		Use(ctrl.Logger("STRUCT_INPUT", 200)).
 		Use(prompt.Template("Analyze this product data and suggest improvements:\n\n{{.Input}}\n\nProvide a brief analysis.")).
-		Use(flow.Logger("AI_PROMPT", 320)).
+		Use(ctrl.Logger("AI_PROMPT", 320)).
 		Use(ai.Agent(client))
 
 	// Execute with struct input, get string result

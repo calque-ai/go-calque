@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // CacheStore interface for cache backends with TTL support
@@ -64,8 +64,8 @@ func NewCacheWithStore(store CacheStore) *CacheMemory {
 //
 //	cacheM := cache.NewCache()
 //	flow.Use(cacheM.Cache(llmHandler, 1*time.Hour)) // Cache for 1 hour
-func (cm *CacheMemory) Cache(handler core.Handler, ttl time.Duration) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+func (cm *CacheMemory) Cache(handler calque.Handler, ttl time.Duration) calque.Handler {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		input, err := io.ReadAll(r.Data)
 		if err != nil {
 			return err
@@ -81,8 +81,8 @@ func (cm *CacheMemory) Cache(handler core.Handler, ttl time.Duration) core.Handl
 
 		// Cache miss - execute handler
 		var output bytes.Buffer
-		handlerReq := core.NewRequest(r.Context, bytes.NewReader(input))
-		handlerRes := core.NewResponse(&output)
+		handlerReq := calque.NewRequest(r.Context, bytes.NewReader(input))
+		handlerRes := calque.NewResponse(&output)
 		if err := handler.ServeFlow(handlerReq, handlerRes); err != nil {
 			return err
 		}

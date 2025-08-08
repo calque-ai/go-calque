@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/convert"
-	"github.com/calque-ai/calque-pipe/pkg/core"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
 )
 
@@ -79,14 +79,14 @@ func main() {
 	}
 
 	// Create AI evaluation pipeline
-	evaluationPipeline := core.New().
-		Use(flow.Logger("resume evaluation", 200)).
+	evaluationPipeline := calque.Flow().
+		Use(ctrl.Logger("resume evaluation", 200)).
 		Use(prompt.Template("System: {{.System}}\n\nResume data to evaluate: {{.Input}}", map[string]any{
 			"System": systemPrompt,
 		})).
-		Use(flow.Logger("prompt with data", 1000)).
+		Use(ctrl.Logger("prompt with data", 1000)).
 		Use(ai.Agent(client)).
-		Use(flow.Logger("llm response", 200))
+		Use(ctrl.Logger("llm response", 200))
 
 	// list of evaluation results
 	evaluations := make([]Evaluation, 0, len(resumes))

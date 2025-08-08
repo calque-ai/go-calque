@@ -1,17 +1,17 @@
-package flow
+package ctrl
 
 import (
 	"bytes"
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // Chain creates a sequential middleware chain that executes handlers one after another
 // with proper context propagation, similar to HTTP middleware chains.
 //
-// Unlike the default parallel execution in core.Flow, Chain ensures:
+// Unlike the default parallel execution in calque.Flow, Chain ensures:
 // 1. Handlers execute sequentially (Handler1 completes before Handler2 starts)
 // 2. Context values are properly passed from one handler to the next
 // 3. Data is buffered between handlers (no streaming between chain handlers)
@@ -23,7 +23,7 @@ import (
 // Example:
 //
 //	// These handlers will execute sequentially with context propagation
-//	pipe.Use(flow.Chain(
+//	flow.Use(ctrl.Chain(
 //	    tools.Registry(calc, search),  // Adds tools to context
 //	    addToolInformation(),          // Uses tools from context
 //	    llm.Chat(provider),           // LLM processing
@@ -34,8 +34,8 @@ import (
 // so you can still have parallel handlers outside the chain.
 // Data is buffered between handlers in the chain, but each individual handler
 // can still stream internally.
-func Chain(handlers ...core.Handler) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func Chain(handlers ...calque.Handler) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		if len(handlers) == 0 {
 			// Empty chain - just pass through
 			_, err := io.Copy(res.Data, req.Data)
@@ -55,7 +55,7 @@ func Chain(handlers ...core.Handler) core.Handler {
 		for i, handler := range handlers {
 			if i == len(handlers)-1 {
 				// Last handler - write directly to final output (allows streaming)
-				finalReq := &core.Request{
+				finalReq := &calque.Request{
 					Context: currentCtx,
 					Data:    io.NopCloser(strings.NewReader(string(currentData))),
 				}
@@ -64,11 +64,11 @@ func Chain(handlers ...core.Handler) core.Handler {
 
 			// Intermediate handler - buffer output
 			var buf bytes.Buffer
-			tempReq := &core.Request{
+			tempReq := &calque.Request{
 				Context: currentCtx,
 				Data:    io.NopCloser(strings.NewReader(string(currentData))),
 			}
-			tempRes := &core.Response{Data: &buf}
+			tempRes := &calque.Response{Data: &buf}
 
 			if err := handler.ServeFlow(tempReq, tempRes); err != nil {
 				return err

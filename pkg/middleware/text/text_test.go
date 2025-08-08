@@ -1,4 +1,4 @@
-package str
+package text
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 func TestTransform(t *testing.T) {
@@ -71,8 +71,8 @@ func TestTransform(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
@@ -89,15 +89,15 @@ func TestTransform(t *testing.T) {
 
 func TestBranch(t *testing.T) {
 	// Mock handlers for testing
-	mockIfHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
-		return core.Write(res, "if-handler")
+	mockIfHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		return calque.Write(res, "if-handler")
 	})
 
-	mockElseHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
-		return core.Write(res, "else-handler")
+	mockElseHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		return calque.Write(res, "else-handler")
 	})
 
-	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	errorHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -105,8 +105,8 @@ func TestBranch(t *testing.T) {
 		name        string
 		input       string
 		condition   func(string) bool
-		ifHandler   core.Handler
-		elseHandler core.Handler
+		ifHandler   calque.Handler
+		elseHandler calque.Handler
 		expected    string
 		wantErr     bool
 	}{
@@ -173,8 +173,8 @@ func TestBranch(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
@@ -191,16 +191,16 @@ func TestBranch(t *testing.T) {
 
 func TestFilter(t *testing.T) {
 	// Mock handler for testing
-	mockHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	mockHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "processed: "+input)
+		return calque.Write(res, "processed: "+input)
 	})
 
-	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	errorHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		return errors.New("processing error")
 	})
 
@@ -208,7 +208,7 @@ func TestFilter(t *testing.T) {
 		name      string
 		input     string
 		condition func(string) bool
-		handler   core.Handler
+		handler   calque.Handler
 		expected  string
 		wantErr   bool
 	}{
@@ -269,8 +269,8 @@ func TestFilter(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
@@ -364,8 +364,8 @@ func TestLineProcessor(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {

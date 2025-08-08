@@ -1,4 +1,4 @@
-package flow
+package ctrl
 
 import (
 	"bytes"
@@ -7,12 +7,12 @@ import (
 	"io"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // PassThrough creates a simple pass-through handler
-func PassThrough() core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func PassThrough() calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
@@ -30,15 +30,15 @@ func PassThrough() core.Handler {
 //
 // Example:
 //
-//	jsonBranch := flow.Branch(
+//	jsonBranch := ctrl.Branch(
 //	  func(b []byte) bool { return bytes.HasPrefix(b, []byte("{")) },
 //	  jsonHandler,
 //	  textHandler,
 //	)
-func Branch(condition func([]byte) bool, ifHandler core.Handler, elseHandler core.Handler) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func Branch(condition func([]byte) bool, ifHandler calque.Handler, elseHandler calque.Handler) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input []byte
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
@@ -65,10 +65,10 @@ func Branch(condition func([]byte) bool, ifHandler core.Handler, elseHandler cor
 // Example:
 //
 //	logFile, _ := os.Create("flow.log")
-//	tee := flow.TeeReader(logFile, os.Stdout)
+//	tee := ctrl.TeeReader(logFile, os.Stdout)
 //	pipe.Use(tee) // Input goes to logFile, stdout, AND next handler
-func TeeReader(destinations ...io.Writer) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func TeeReader(destinations ...io.Writer) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Create MultiWriter to write to all destinations plus the output
 		allWriters := append(destinations, res.Data)
 		multiWriter := io.MultiWriter(allWriters...)
@@ -93,10 +93,10 @@ func TeeReader(destinations ...io.Writer) core.Handler {
 //
 // Example:
 //
-//	parallel := flow.Parallel(handler1, handler2, handler3)
+//	parallel := ctrl.Parallel(handler1, handler2, handler3)
 //	// All three handlers process the same input concurrently
-func Parallel(handlers ...core.Handler) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func Parallel(handlers ...calque.Handler) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		if len(handlers) == 0 {
 			_, err := io.Copy(res.Data, req.Data)
 			return err
@@ -138,10 +138,10 @@ func Parallel(handlers ...core.Handler) core.Handler {
 
 		// Run handlers concurrently on their streams
 		for i, handler := range handlers {
-			go func(h core.Handler, reader io.Reader) {
+			go func(h calque.Handler, reader io.Reader) {
 				var output bytes.Buffer
-				handlerReq := &core.Request{Context: req.Context, Data: reader}
-				handlerRes := &core.Response{Data: &output}
+				handlerReq := &calque.Request{Context: req.Context, Data: reader}
+				handlerRes := &calque.Response{Data: &output}
 
 				err := h.ServeFlow(handlerReq, handlerRes)
 				results <- result{output.Bytes(), err}
@@ -164,7 +164,7 @@ func Parallel(handlers ...core.Handler) core.Handler {
 		// Combine results
 
 		combined := bytes.Join(outputs, []byte("\n---\n"))
-		err := core.Write(res, combined)
+		err := calque.Write(res, combined)
 		return err
 	})
 }
@@ -181,10 +181,10 @@ func Parallel(handlers ...core.Handler) core.Handler {
 //
 // Example:
 //
-//	timeoutHandler := flow.Timeout(someHandler, 30*time.Second)
+//	timeoutHandler := ctrl.Timeout(someHandler, 30*time.Second)
 //	pipe.Use(timeoutHandler)
-func Timeout(handler core.Handler, timeout time.Duration) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func Timeout(handler calque.Handler, timeout time.Duration) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		timeoutCtx, cancel := context.WithTimeout(req.Context, timeout)
 		defer cancel()
 
@@ -216,12 +216,12 @@ func Timeout(handler core.Handler, timeout time.Duration) core.Handler {
 //
 // Example:
 //
-//	retryHandler := flow.Retry(someHandler, 3)
+//	retryHandler := ctrl.Retry(someHandler, 3)
 //	pipe.Use(retryHandler)
-func Retry(handler core.Handler, maxAttempts int) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func Retry(handler calque.Handler, maxAttempts int) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input []byte
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
@@ -232,7 +232,7 @@ func Retry(handler core.Handler, maxAttempts int) core.Handler {
 			req.Data = bytes.NewReader(input)
 
 			var output bytes.Buffer
-			tempRes := &core.Response{Data: &output}
+			tempRes := &calque.Response{Data: &output}
 			err := handler.ServeFlow(req, tempRes)
 			if err == nil {
 				_, writeErr := res.Data.Write(output.Bytes())

@@ -1,14 +1,14 @@
 package ai
 
 import (
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/invopop/jsonschema"
 )
 
 // Client interface - interface for AI providers
 type Client interface {
 	// Single method handles all cases through options
-	Chat(r *core.Request, w *core.Response, opts *AgentOptions) error
+	Chat(r *calque.Request, w *calque.Response, opts *AgentOptions) error
 }
 
 // Config holds LLM model configuration parameters

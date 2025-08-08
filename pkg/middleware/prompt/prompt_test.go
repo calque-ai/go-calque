@@ -7,7 +7,7 @@ import (
 	"testing"
 	"text/template"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 func TestTemplate(t *testing.T) {
@@ -76,7 +76,7 @@ func TestTemplate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var handler core.Handler
+			var handler calque.Handler
 			if tt.data != nil {
 				handler = Template(tt.template, tt.data)
 			} else {
@@ -86,8 +86,8 @@ func TestTemplate(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
@@ -149,8 +149,8 @@ func TestSystem(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("System() error = %v", err)
@@ -204,8 +204,8 @@ func TestSystemUser(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("SystemUser() error = %v", err)
@@ -277,7 +277,7 @@ func TestChat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var handler core.Handler
+			var handler calque.Handler
 			if len(tt.initialMessage) > 0 {
 				handler = Chat(tt.role, tt.initialMessage...)
 			} else {
@@ -287,8 +287,8 @@ func TestChat(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("Chat() error = %v", err)
@@ -348,8 +348,8 @@ func TestInstruct(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("Instruct() error = %v", err)
@@ -428,7 +428,7 @@ func TestFromTemplate(t *testing.T) {
 				t.Fatalf("Failed to parse template: %v", err)
 			}
 
-			var handler core.Handler
+			var handler calque.Handler
 			if tt.data != nil {
 				handler = FromTemplate(tmpl, tt.data)
 			} else {
@@ -438,8 +438,8 @@ func TestFromTemplate(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err = handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {

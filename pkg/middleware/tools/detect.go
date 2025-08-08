@@ -5,7 +5,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // Detect creates a conditional handler that detects tool calls and routes accordingly.
@@ -29,17 +29,17 @@ import (
 //	pipe.Use(tools.Registry(calc, search)).
 //	     Use(llm.Chat(provider)).
 //	     Use(detector)
-func Detect(ifHandler, elseHandler core.Handler) core.Handler {
+func Detect(ifHandler, elseHandler calque.Handler) calque.Handler {
 	return DetectWithBufferSize(ifHandler, elseHandler, 200)
 }
 
 // DetectWithBufferSize creates a tool detection handler with custom buffer size
-func DetectWithBufferSize(ifHandler, elseHandler core.Handler, bufferSize int) core.Handler {
+func DetectWithBufferSize(ifHandler, elseHandler calque.Handler, bufferSize int) calque.Handler {
 	if bufferSize <= 0 {
 		bufferSize = 200 // Default buffer size
 	}
 
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		// Buffer initial chunk for detection
 		initialBuffer := make([]byte, bufferSize)
 		n, err := r.Data.Read(initialBuffer)
@@ -60,16 +60,16 @@ func DetectWithBufferSize(ifHandler, elseHandler core.Handler, bufferSize int) c
 }
 
 // streamToHandler streams the initial chunk and remaining data to the given handler
-func streamToHandler(handler core.Handler, ctx context.Context, initialChunk []byte, r io.Reader, w io.Writer) error {
+func streamToHandler(handler calque.Handler, ctx context.Context, initialChunk []byte, r io.Reader, w io.Writer) error {
 	// Create a reader that provides the initial chunk followed by remaining data
 	combinedReader := io.MultiReader(bytes.NewReader(initialChunk), r)
-	req := core.NewRequest(ctx, combinedReader)
-	res := core.NewResponse(w)
+	req := calque.NewRequest(ctx, combinedReader)
+	res := calque.NewResponse(w)
 	return handler.ServeFlow(req, res)
 }
 
 // bufferToHandler buffers all input and passes it to the given handler
-func bufferToHandler(handler core.Handler, ctx context.Context, initialChunk []byte, r io.Reader, w io.Writer) error {
+func bufferToHandler(handler calque.Handler, ctx context.Context, initialChunk []byte, r io.Reader, w io.Writer) error {
 	// Read remaining data and combine with initial chunk
 	remainingData, err := io.ReadAll(r)
 	if err != nil {
@@ -82,7 +82,7 @@ func bufferToHandler(handler core.Handler, ctx context.Context, initialChunk []b
 	fullInput.Write(remainingData)
 
 	// Pass combined input to handler
-	req := core.NewRequest(ctx, &fullInput)
-	res := core.NewResponse(w)
+	req := calque.NewRequest(ctx, &fullInput)
+	res := calque.NewResponse(w)
 	return handler.ServeFlow(req, res)
 }

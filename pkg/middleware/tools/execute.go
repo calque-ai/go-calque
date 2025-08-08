@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // ToolCall represents a parsed tool call from LLM output
@@ -57,10 +57,10 @@ type Config struct {
 // Example:
 //
 //	detector := tools.Detect(tools.Execute(), flow.PassThrough())
-//	pipe.Use(tools.Registry(calc, search)).
+//	flow.Use(tools.Registry(calc, search)).
 //	     Use(llm.Chat(provider)).
 //	     Use(detector)
-func Execute() core.Handler {
+func Execute() calque.Handler {
 	return ExecuteWithOptions(Config{
 		PassThroughOnError:    false,
 		MaxConcurrentTools:    0, // No limit
@@ -70,8 +70,8 @@ func Execute() core.Handler {
 
 // ExecuteWithOptions creates an Execute middleware with custom configuration
 // This assumes tool calls are present in the input and will error if none are found
-func ExecuteWithOptions(config Config) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+func ExecuteWithOptions(config Config) calque.Handler {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		tools := GetTools(r.Context)
 		if len(tools) == 0 {
 			return fmt.Errorf("no tools available in context")
@@ -239,8 +239,8 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 	// Execute the tool with panic recovery
 	var result bytes.Buffer
 	args := strings.NewReader(toolCall.Arguments)
-	req := core.NewRequest(ctx, args)
-	res := core.NewResponse(&result)
+	req := calque.NewRequest(ctx, args)
+	res := calque.NewResponse(&result)
 
 	// Execute tool with panic recovery
 	var err error

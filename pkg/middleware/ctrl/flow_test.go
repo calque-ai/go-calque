@@ -1,4 +1,4 @@
-package flow
+package ctrl
 
 import (
 	"bytes"
@@ -8,21 +8,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 func TestBranch(t *testing.T) {
-	mockIfHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	mockIfHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		_, err := res.Data.Write([]byte("if-executed"))
 		return err
 	})
 
-	mockElseHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	mockElseHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		_, err := res.Data.Write([]byte("else-executed"))
 		return err
 	})
 
-	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	errorHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -30,8 +30,8 @@ func TestBranch(t *testing.T) {
 		name        string
 		input       string
 		condition   func([]byte) bool
-		ifHandler   core.Handler
-		elseHandler core.Handler
+		ifHandler   calque.Handler
+		elseHandler calque.Handler
 		expected    string
 		wantErr     bool
 	}{
@@ -107,8 +107,8 @@ func TestBranch(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
@@ -163,8 +163,8 @@ func TestTeeReader(t *testing.T) {
 			handler := TeeReader(&teeBuffer1, &teeBuffer2)
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&output)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&output)
 			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
@@ -194,8 +194,8 @@ func TestTeeReaderNoDestinations(t *testing.T) {
 	handler := TeeReader()
 	reader := strings.NewReader(input)
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&output)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&output)
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("TeeReader() with no destinations error = %v", err)
@@ -207,77 +207,77 @@ func TestTeeReaderNoDestinations(t *testing.T) {
 }
 
 func TestParallel(t *testing.T) {
-	handler1 := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	handler1 := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "handler1:"+input)
+		return calque.Write(res, "handler1:"+input)
 	})
 
-	handler2 := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	handler2 := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "handler2:"+input)
+		return calque.Write(res, "handler2:"+input)
 	})
 
-	slowHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	slowHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		time.Sleep(50 * time.Millisecond)
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "slow:"+input)
+		return calque.Write(res, "slow:"+input)
 	})
 
-	errorHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	errorHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		return errors.New("handler error")
 	})
 
 	tests := []struct {
 		name          string
 		input         string
-		handlers      []core.Handler
+		handlers      []calque.Handler
 		expectedParts []string
 		wantErr       bool
 	}{
 		{
 			name:          "two handlers parallel execution",
 			input:         "test",
-			handlers:      []core.Handler{handler1, handler2},
+			handlers:      []calque.Handler{handler1, handler2},
 			expectedParts: []string{"handler1:test", "handler2:test"},
 			wantErr:       false,
 		},
 		{
 			name:          "single handler",
 			input:         "single",
-			handlers:      []core.Handler{handler1},
+			handlers:      []calque.Handler{handler1},
 			expectedParts: []string{"handler1:single"},
 			wantErr:       false,
 		},
 		{
 			name:          "empty input",
 			input:         "",
-			handlers:      []core.Handler{handler1, handler2},
+			handlers:      []calque.Handler{handler1, handler2},
 			expectedParts: []string{"handler1:", "handler2:"},
 			wantErr:       false,
 		},
 		{
 			name:          "mixed speed handlers",
 			input:         "data",
-			handlers:      []core.Handler{handler1, slowHandler},
+			handlers:      []calque.Handler{handler1, slowHandler},
 			expectedParts: []string{"handler1:data", "slow:data"},
 			wantErr:       false,
 		},
 		{
 			name:     "handler error fails entire operation",
 			input:    "error test",
-			handlers: []core.Handler{handler1, errorHandler},
+			handlers: []calque.Handler{handler1, errorHandler},
 			wantErr:  true,
 		},
 	}
@@ -289,8 +289,8 @@ func TestParallel(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
@@ -333,8 +333,8 @@ func TestParallelNoHandlers(t *testing.T) {
 	handler := Parallel()
 	reader := strings.NewReader(input)
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Parallel() with no handlers error = %v", err)
@@ -346,42 +346,42 @@ func TestParallelNoHandlers(t *testing.T) {
 }
 
 func TestTimeout(t *testing.T) {
-	fastHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	fastHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "fast:"+input)
+		return calque.Write(res, "fast:"+input)
 	})
 
-	slowHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	slowHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		time.Sleep(200 * time.Millisecond)
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "slow:"+input)
+		return calque.Write(res, "slow:"+input)
 	})
 
-	contextCheckHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	contextCheckHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		select {
 		case <-req.Context.Done():
 			return req.Context.Err()
 		case <-time.After(50 * time.Millisecond):
 			var input string
-			err := core.Read(req, &input)
+			err := calque.Read(req, &input)
 			if err != nil {
 				return err
 			}
-			return core.Write(res, "completed:"+input)
+			return calque.Write(res, "completed:"+input)
 		}
 	})
 
 	tests := []struct {
 		name     string
-		handler  core.Handler
+		handler  calque.Handler
 		timeout  time.Duration
 		input    string
 		expected string
@@ -429,8 +429,8 @@ func TestTimeout(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
@@ -454,35 +454,35 @@ func TestTimeout(t *testing.T) {
 
 func TestRetry(t *testing.T) {
 	attemptCount := 0
-	failingHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	failingHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		attemptCount++
 		if attemptCount < 3 {
 			return errors.New("temporary failure")
 		}
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "success:"+input)
+		return calque.Write(res, "success:"+input)
 	})
 
-	alwaysFailHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	alwaysFailHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		return errors.New("persistent failure")
 	})
 
-	successHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	successHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "first-try:"+input)
+		return calque.Write(res, "first-try:"+input)
 	})
 
 	tests := []struct {
 		name        string
-		handler     core.Handler
+		handler     calque.Handler
 		maxAttempts int
 		input       string
 		expected    string
@@ -545,8 +545,8 @@ func TestRetry(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 
 			start := time.Now()
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 			elapsed := time.Since(start)
 

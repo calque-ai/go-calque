@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
 	"github.com/invopop/jsonschema"
 )
@@ -74,7 +74,7 @@ func (m *MockClient) WithJSONMode(enabled bool) *MockClient {
 }
 
 // Chat implements the Client interface with simulated streaming
-func (m *MockClient) Chat(req *core.Request, res *core.Response, opts *AgentOptions) error {
+func (m *MockClient) Chat(req *calque.Request, res *calque.Response, opts *AgentOptions) error {
 	// Extract options
 	var toolList []tools.Tool
 	var schema *ResponseFormat
@@ -90,7 +90,7 @@ func (m *MockClient) Chat(req *core.Request, res *core.Response, opts *AgentOpti
 
 	// Read input
 	var inputStr string
-	if err := core.Read(req, &inputStr); err != nil {
+	if err := calque.Read(req, &inputStr); err != nil {
 		return fmt.Errorf("failed to read input: %w", err)
 	}
 
@@ -114,7 +114,7 @@ func (m *MockClient) Chat(req *core.Request, res *core.Response, opts *AgentOpti
 }
 
 // simulateToolCalls generates mock tool calls in OpenAI format
-func (m *MockClient) simulateToolCalls(res *core.Response) error {
+func (m *MockClient) simulateToolCalls(res *calque.Response) error {
 	// Convert mock tool calls to OpenAI format
 	var toolCalls []map[string]interface{}
 
@@ -144,7 +144,7 @@ func (m *MockClient) simulateToolCalls(res *core.Response) error {
 }
 
 // streamResponse handles streaming text responses
-func (m *MockClient) streamResponse(response string, req *core.Request, res *core.Response) error {
+func (m *MockClient) streamResponse(response string, req *calque.Request, res *calque.Response) error {
 	words := strings.Fields(response)
 	for i, word := range words {
 		// Check if context is cancelled
@@ -176,7 +176,7 @@ func (m *MockClient) streamResponse(response string, req *core.Request, res *cor
 }
 
 // simulateStructuredOutput generates mock structured JSON output
-func (m *MockClient) simulateStructuredOutput(schema *ResponseFormat, input string, res *core.Response) error {
+func (m *MockClient) simulateStructuredOutput(schema *ResponseFormat, input string, res *calque.Response) error {
 	var mockJSON map[string]interface{}
 
 	// Generate a simple mock JSON response based on the schema type

@@ -1,4 +1,4 @@
-package flow
+package ctrl
 
 import (
 	"bytes"
@@ -8,39 +8,39 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 func TestFallback(t *testing.T) {
-	successHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	successHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "success:"+input)
+		return calque.Write(res, "success:"+input)
 	})
 
-	primaryFailHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	primaryFailHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		return errors.New("primary failed")
 	})
 
-	fallbackHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	fallbackHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "fallback:"+input)
+		return calque.Write(res, "fallback:"+input)
 	})
 
-	alwaysFailHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	alwaysFailHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		return errors.New("always fails")
 	})
 
 	tests := []struct {
 		name     string
-		handlers []core.Handler
+		handlers []calque.Handler
 		input    string
 		expected string
 		wantErr  bool
@@ -48,56 +48,56 @@ func TestFallback(t *testing.T) {
 	}{
 		{
 			name:     "primary handler succeeds",
-			handlers: []core.Handler{successHandler, fallbackHandler},
+			handlers: []calque.Handler{successHandler, fallbackHandler},
 			input:    "test",
 			expected: "success:test",
 			wantErr:  false,
 		},
 		{
 			name:     "primary fails, fallback succeeds",
-			handlers: []core.Handler{primaryFailHandler, fallbackHandler},
+			handlers: []calque.Handler{primaryFailHandler, fallbackHandler},
 			input:    "test",
 			expected: "fallback:test",
 			wantErr:  false,
 		},
 		{
 			name:     "single handler success",
-			handlers: []core.Handler{successHandler},
+			handlers: []calque.Handler{successHandler},
 			input:    "single",
 			expected: "success:single",
 			wantErr:  false,
 		},
 		{
 			name:     "single handler failure",
-			handlers: []core.Handler{alwaysFailHandler},
+			handlers: []calque.Handler{alwaysFailHandler},
 			input:    "fail",
 			wantErr:  true,
 			errMsg:   "all handlers failed",
 		},
 		{
 			name:     "all handlers fail",
-			handlers: []core.Handler{alwaysFailHandler, alwaysFailHandler},
+			handlers: []calque.Handler{alwaysFailHandler, alwaysFailHandler},
 			input:    "fail",
 			wantErr:  true,
 			errMsg:   "all handlers failed",
 		},
 		{
 			name:     "empty input with fallback",
-			handlers: []core.Handler{primaryFailHandler, fallbackHandler},
+			handlers: []calque.Handler{primaryFailHandler, fallbackHandler},
 			input:    "",
 			expected: "fallback:",
 			wantErr:  false,
 		},
 		{
 			name:     "multiple fallbacks - first fallback succeeds",
-			handlers: []core.Handler{primaryFailHandler, fallbackHandler, successHandler},
+			handlers: []calque.Handler{primaryFailHandler, fallbackHandler, successHandler},
 			input:    "multi",
 			expected: "fallback:multi",
 			wantErr:  false,
 		},
 		{
 			name:     "binary data with fallback",
-			handlers: []core.Handler{primaryFailHandler, fallbackHandler},
+			handlers: []calque.Handler{primaryFailHandler, fallbackHandler},
 			input:    "\x00\x01\x02\x03",
 			expected: "fallback:\x00\x01\x02\x03",
 			wantErr:  false,
@@ -111,8 +111,8 @@ func TestFallback(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 
 			if (err != nil) != tt.wantErr {
@@ -140,8 +140,8 @@ func TestFallbackNoHandlers(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("test")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := handler.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Fallback() with no handlers should return error")
@@ -349,26 +349,26 @@ func TestCircuitBreakerRecordFailure(t *testing.T) {
 
 func TestFallbackWithCircuitBreaker(t *testing.T) {
 	callCount := 0
-	intermittentHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	intermittentHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		callCount++
 		if callCount <= 5 {
 			return errors.New("intermittent failure")
 		}
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "recovered:"+input)
+		return calque.Write(res, "recovered:"+input)
 	})
 
-	fallbackHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	fallbackHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "fallback:"+input)
+		return calque.Write(res, "fallback:"+input)
 	})
 
 	handler := Fallback(intermittentHandler, fallbackHandler)
@@ -379,8 +379,8 @@ func TestFallbackWithCircuitBreaker(t *testing.T) {
 		buf.Reset()
 		reader := strings.NewReader("circuit-test")
 
-		req := core.NewRequest(context.Background(), reader)
-		res := core.NewResponse(&buf)
+		req := calque.NewRequest(context.Background(), reader)
+		res := calque.NewResponse(&buf)
 		err := handler.ServeFlow(req, res)
 		if err != nil {
 			t.Errorf("Iteration %d: Fallback() error = %v", i, err)
@@ -446,7 +446,7 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 }
 
 func TestFallbackContextCancellation(t *testing.T) {
-	slowHandler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	slowHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		select {
 		case <-req.Context.Done():
 			return req.Context.Err()
@@ -455,13 +455,13 @@ func TestFallbackContextCancellation(t *testing.T) {
 		}
 	})
 
-	fastFallback := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	fastFallback := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
-		err := core.Read(req, &input)
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
-		return core.Write(res, "fast-fallback:"+input)
+		return calque.Write(res, "fast-fallback:"+input)
 	})
 
 	handler := Fallback(slowHandler, fastFallback)
@@ -472,8 +472,8 @@ func TestFallbackContextCancellation(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("context-test")
 
-	req := core.NewRequest(ctx, reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(ctx, reader)
+	res := calque.NewResponse(&buf)
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Fallback() with context cancellation error = %v", err)

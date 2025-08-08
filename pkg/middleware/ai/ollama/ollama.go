@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
 	"github.com/invopop/jsonschema"
@@ -125,7 +125,7 @@ func New(model string, opts ...Option) (*Client, error) {
 }
 
 // Chat implements the Client interface
-func (o *Client) Chat(r *core.Request, w *core.Response, opts *ai.AgentOptions) error {
+func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	// Extract options
 	var toolList []tools.Tool
 	var schema *ai.ResponseFormat
@@ -153,7 +153,7 @@ func (o *Client) Chat(r *core.Request, w *core.Response, opts *ai.AgentOptions) 
 }
 
 // handleChatResponse manages the streaming response and post-processing
-func (o *Client) handleChatResponse(ctx context.Context, req *api.ChatRequest, w *core.Response, toolList []tools.Tool, schema *ai.ResponseFormat) error {
+func (o *Client) handleChatResponse(ctx context.Context, req *api.ChatRequest, w *calque.Response, toolList []tools.Tool, schema *ai.ResponseFormat) error {
 	var fullResponse strings.Builder
 	var toolCalls []api.ToolCall
 
@@ -257,7 +257,7 @@ func (o *Client) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
 }
 
 // writeOllamaToolCalls converts Ollama tool calls to OpenAI format for the agent
-func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *core.Response) error {
+func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *calque.Response) error {
 	// Convert to OpenAI format
 	var openAIToolCalls []map[string]any
 
@@ -301,7 +301,7 @@ func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *core.Response
 }
 
 // convertTextToToolCalls attempts to parse tool calls from text response
-func (o *Client) convertTextToToolCalls(responseText string, w *core.Response) error {
+func (o *Client) convertTextToToolCalls(responseText string, w *calque.Response) error {
 	// This is a fallback for when Ollama returns tool calls as text instead of structured data
 	// For now, just write the text response - this needs more sophisticated parsing
 	_, err := w.Data.Write([]byte(responseText))

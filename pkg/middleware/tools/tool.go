@@ -1,29 +1,29 @@
 package tools
 
 import (
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
 
 // Tool defines a function that can be called by the LLM (OpenAI Function Calling standard).
-// Tools are handlers that extend the core Handler interface with metadata and schema.
+// Tools are handlers that extend the calque Handler interface with metadata and schema.
 // Tools can be composed, logged, timed, cached like any other handler.
 // Tools are streaming-compatible by default.
 type Tool interface {
-	core.Handler                          // ServeFlow method for execution
+	calque.Handler                        // ServeFlow method for execution
 	Name() string                         // Function name (e.g., "get_current_weather")
 	Description() string                  // What the function does
 	ParametersSchema() *jsonschema.Schema // JSON schema for function parameters (OpenAI standard)
 }
 
 // toolImpl is the basic implementation of Tool interface
-// Wraps any existing core.Handler and adds metadata.
+// Wraps any existing calque.Handler and adds metadata.
 type toolImpl struct {
 	name             string
 	description      string
 	parametersSchema *jsonschema.Schema
-	handler          core.Handler
+	handler          calque.Handler
 }
 
 func (t *toolImpl) Name() string {
@@ -38,7 +38,7 @@ func (t *toolImpl) ParametersSchema() *jsonschema.Schema {
 	return t.parametersSchema
 }
 
-func (t *toolImpl) ServeFlow(r *core.Request, w *core.Response) error {
+func (t *toolImpl) ServeFlow(r *calque.Request, w *calque.Response) error {
 	return t.handler.ServeFlow(r, w)
 }
 
@@ -60,7 +60,7 @@ func (t *toolImpl) ServeFlow(r *core.Request, w *core.Response) error {
 //	    schema,
 //	    mySearchHandler,
 //	)
-func New(name, description string, parametersSchema *jsonschema.Schema, handler core.Handler) Tool {
+func New(name, description string, parametersSchema *jsonschema.Schema, handler calque.Handler) Tool {
 	return &toolImpl{
 		name:             name,
 		description:      description,
@@ -99,14 +99,14 @@ func (q *simpleTool) ParametersSchema() *jsonschema.Schema {
 	}
 }
 
-func (q *simpleTool) ServeFlow(r *core.Request, w *core.Response) error {
+func (q *simpleTool) ServeFlow(r *calque.Request, w *calque.Response) error {
 	var input string
-	if err := core.Read(r, &input); err != nil {
+	if err := calque.Read(r, &input); err != nil {
 		return err
 	}
 
 	result := q.fn(input)
-	return core.Write(w, result)
+	return calque.Write(w, result)
 }
 
 // Simple creates a tool from a string-to-string function.
@@ -137,17 +137,17 @@ func Simple(name, description string, fn func(string) string) Tool {
 //	tool := tools.HandlerFunc("file_read", "Read file contents",
 //	    func(ctx context.Context, r io.Reader, w io.Writer) error {
 //	        var filename string
-//	        if err := core.Read(r, &filename); err != nil {
+//	        if err := calque.Read(r, &filename); err != nil {
 //	            return err
 //	        }
 //	        content, err := os.ReadFile(filename)
 //	        if err != nil {
 //	            return err
 //	        }
-//	        return core.Write(w, string(content))
+//	        return calque.Write(w, string(content))
 //	    },
 //	)
-func HandlerFunc(name, description string, fn func(*core.Request, *core.Response) error) Tool {
+func HandlerFunc(name, description string, fn func(*calque.Request, *calque.Response) error) Tool {
 	// HandlerFunc tools use a basic schema with a single "input" string parameter
 	properties := orderedmap.New[string, *jsonschema.Schema]()
 	properties.Set("input", &jsonschema.Schema{
@@ -161,5 +161,5 @@ func HandlerFunc(name, description string, fn func(*core.Request, *core.Response
 		Required:   []string{"input"},
 	}
 
-	return New(name, description, schema, core.HandlerFunc(fn))
+	return New(name, description, schema, calque.HandlerFunc(fn))
 }

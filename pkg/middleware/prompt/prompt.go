@@ -7,7 +7,7 @@ import (
 	"maps"
 	"text/template"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // Template creates a middleware that applies a Go template to the input
@@ -21,12 +21,12 @@ import (
 //	promptWithData := prompt.Template("Role: {{.Role}}\nQuestion: {{.Input}}", map[string]any{
 //	  "Role": "coding expert",
 //	})
-func Template(templateStr string, data ...map[string]any) core.Handler {
+func Template(templateStr string, data ...map[string]any) calque.Handler {
 	// Parse template once at creation time
 	tmpl, err := template.New("prompt").Parse(templateStr)
 	if err != nil {
 		// Return a handler that always returns the parsing error
-		return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 			return fmt.Errorf("template parse error: %w", err)
 		})
 	}
@@ -44,7 +44,7 @@ func Template(templateStr string, data ...map[string]any) core.Handler {
 //	system := prompt.System("You are a helpful coding assistant.")
 //	// Input: "How do I sort an array?"
 //	// Output: "You are a helpful coding assistant.\n\nHow do I sort an array?"
-func System(systemMessage string) core.Handler {
+func System(systemMessage string) calque.Handler {
 	return Template("{{.System}}\n\n{{.Input}}", map[string]any{
 		"System": systemMessage,
 	})
@@ -59,7 +59,7 @@ func System(systemMessage string) core.Handler {
 //	systemUser := prompt.SystemUser("You are a helpful coding assistant.")
 //	// Input: "How do I sort an array?"
 //	// Output: "System: You are a helpful coding assistant.\n\nUser: How do I sort an array?"
-func SystemUser(systemMessage string) core.Handler {
+func SystemUser(systemMessage string) calque.Handler {
 	return Template("System: {{.System}}\n\nUser: {{.Input}}", map[string]any{
 		"System": systemMessage,
 	})
@@ -78,7 +78,7 @@ func SystemUser(systemMessage string) core.Handler {
 //	user := prompt.Chat("user")
 //	// Input: "Hello"
 //	// Output: "user: Hello"
-func Chat(role string, initialMessage ...string) core.Handler {
+func Chat(role string, initialMessage ...string) calque.Handler {
 	if len(initialMessage) == 0 {
 		// Just format as role message
 		return Template("{{.Role}}: {{.Input}}", map[string]any{
@@ -101,7 +101,7 @@ func Chat(role string, initialMessage ...string) core.Handler {
 //	instruct := prompt.Instruct("Translate to French")
 //	// Input: "Hello world"
 //	// Output: "### Instruction: Translate to French\n### Input: Hello world\n### Response:"
-func Instruct(instruction string) core.Handler {
+func Instruct(instruction string) calque.Handler {
 	return Template("### Instruction: {{.Instruction}}\n### Input: {{.Input}}\n### Response:", map[string]any{
 		"Instruction": instruction,
 	})
@@ -128,8 +128,8 @@ func Instruct(instruction string) core.Handler {
 //	// Complex templates with inheritance
 //	tmpl := template.Must(template.New("main").Funcs(funcMap).ParseGlob("*.tmpl"))
 //	prompt.FromTemplate(tmpl.Lookup("system"), data)
-func FromTemplate(tmpl *template.Template, data ...map[string]any) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func FromTemplate(tmpl *template.Template, data ...map[string]any) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Read input
 		inputBytes, err := io.ReadAll(req.Data)
 		if err != nil {

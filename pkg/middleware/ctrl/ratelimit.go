@@ -1,4 +1,4 @@
-package flow
+package ctrl
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 type rateLimiter struct {
@@ -30,12 +30,12 @@ type rateLimiter struct {
 //
 // Example:
 //
-//	rateLimit := flow.RateLimit(10, time.Second) // 10 requests/second
+//	rateLimit := ctrl.RateLimit(10, time.Second) // 10 requests/second
 //	pipe.Use(rateLimit)
-func RateLimit(rate int, per time.Duration) core.Handler {
+func RateLimit(rate int, per time.Duration) calque.Handler {
 	// <= 0 requests per n makes no sense.
 	if rate <= 0 {
-		return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+		return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 			return fmt.Errorf("invalid rate limit: rate must be greater than 0, got %d", rate)
 		})
 	}
@@ -47,7 +47,7 @@ func RateLimit(rate int, per time.Duration) core.Handler {
 		lastRefill: time.Now(),
 	}
 
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		if err := limiter.Wait(req.Context); err != nil {
 			return fmt.Errorf("rate limit exceeded: %w", err)
 		}

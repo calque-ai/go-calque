@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/str"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
 )
 
 func main() {
@@ -33,25 +33,25 @@ func main() {
 
 }
 
-// runTextOnlyExample demonstrates core framework concepts: pipes, handlers, and middleware flow.
+// runTextOnlyExample demonstrates calque framework concepts: pipes, handlers, and middleware flow.
 // Shows how to build processing pipelines using transformations, logging, and branching.
 func runTextOnlyExample() {
 	fmt.Println("\nRunning text-only pipeline (no AI)...")
 
-	pipe := core.New() // Create new pipeline
+	pipe := calque.Flow() // Create new pipeline
 
 	// Build pipeline using middleware pattern - each Use() adds a handler to the flow
 	pipe.
-		Use(flow.Logger("INPUT", 100)).       // Log original input, with prefix and number of bytes to log
-		Use(str.Transform(strings.ToUpper)).  // Transform input to uppercase
-		Use(flow.Logger("TRANSFORMED", 100)). // Log transformed result
-		Use(str.Branch(                       // Branch based on content
-			func(s string) bool { return strings.Contains(s, "HELLO") },                // Condition
-			str.Transform(func(s string) string { return s + " [GREETING DETECTED]" }), // If true
-			str.Transform(func(s string) string { return s + " [GENERAL TEXT]" }),      // If false
+		Use(ctrl.Logger("INPUT", 100)).       // Log original input, with prefix and number of bytes to log
+		Use(text.Transform(strings.ToUpper)). // Transform input to uppercase
+		Use(ctrl.Logger("TRANSFORMED", 100)). // Log transformed result
+		Use(text.Branch(                      // Branch based on content
+			func(s string) bool { return strings.Contains(s, "HELLO") },                 // Condition
+			text.Transform(func(s string) string { return s + " [GREETING DETECTED]" }), // If true
+			text.Transform(func(s string) string { return s + " [GENERAL TEXT]" }),      // If false
 		)).
-		Use(str.Transform(func(s string) string { return fmt.Sprintf("%s\nLength: %d characters", s, len(s)) })). // Add stats
-		Use(flow.Logger("FINAL", 200))                                                                            // Log final result
+		Use(text.Transform(func(s string) string { return fmt.Sprintf("%s\nLength: %d characters", s, len(s)) })). // Add stats
+		Use(ctrl.Logger("FINAL", 200))                                                                             // Log final result
 
 	inputText := "Hello world! This text flows through pipes, getting calqued and transformed along the way."
 	fmt.Printf("\nProcessing: %q\n\n", inputText)
@@ -72,24 +72,24 @@ func runTextOnlyExample() {
 func runAIExample(client ai.Client) {
 	fmt.Println("\nRunning AI-powered pipeline...")
 
-	pipe := core.New()
+	pipe := calque.Flow()
 
 	pipe.
-		Use(flow.Logger("INPUT", 100)).                                                    // Log original input
-		Use(str.Transform(preprocessText)).                                                // Clean text
-		Use(flow.Logger("PREPROCESSED", 80)).                                              // Log cleaned text
+		Use(ctrl.Logger("INPUT", 100)).                                                    // Log original input
+		Use(text.Transform(preprocessText)).                                               // Clean text
+		Use(ctrl.Logger("PREPROCESSED", 80)).                                              // Log cleaned text
 		Use(prompt.Template("Analyze this text and provide a brief summary: {{.Input}}")). // Build AI prompt using a go template
-		Use(flow.Logger("PROMPT", 200)).                                                   // Log prompt
-		Use(flow.Timeout(ai.Agent(client), 30*time.Second)).                               // Send to AI with timeout
-		Use(flow.Logger("AI_RESPONSE", 300)).                                              // Log AI response
-		Use(str.Branch(                                                                    // Branch on response type
+		Use(ctrl.Logger("PROMPT", 200)).                                                   // Log prompt
+		Use(ctrl.Timeout(ai.Agent(client), 30*time.Second)).                               // Send to AI with timeout
+		Use(ctrl.Logger("AI_RESPONSE", 300)).                                              // Log AI response
+		Use(text.Branch(                                                                   // Branch on response type
 			func(response string) bool {
 				return strings.Contains(strings.ToLower(response), "summary")
 			},
-			str.Transform(func(s string) string { return s + "\n\n[Analysis completed successfully]" }), // If summary found
-			str.Transform(func(s string) string { return s + "\n\n[General response provided]" }),       // If no summary
+			text.Transform(func(s string) string { return s + "\n\n[Analysis completed successfully]" }), // If summary found
+			text.Transform(func(s string) string { return s + "\n\n[General response provided]" }),       // If no summary
 		)).
-		Use(flow.Logger("FINAL", 400)) // Log final result
+		Use(ctrl.Logger("FINAL", 400)) // Log final result
 
 	inputText := "This AI framework calques ideas from text processing pipelines - copying and transforming data patterns."
 	fmt.Printf("\nProcessing: %q\n\n", inputText)
@@ -125,20 +125,20 @@ func runStreamingPipeline() {
 	var logBuffer bytes.Buffer
 	var errorBuffer bytes.Buffer
 
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.
-		Use(flow.Logger("INPUT", 100)).                  // Log original input
-		Use(flow.TeeReader(&logBuffer, &errorBuffer)).   // STREAMING: Tee to multiple destinations
-		Use(str.LineProcessor(func(line string) string { // STREAMING: Process line-by-line
+		Use(ctrl.Logger("INPUT", 100)).                   // Log original input
+		Use(ctrl.TeeReader(&logBuffer, &errorBuffer)).    // STREAMING: Tee to multiple destinations
+		Use(text.LineProcessor(func(line string) string { // STREAMING: Process line-by-line
 			return fmt.Sprintf("[STREAM-%d] %s", len(line), strings.TrimSpace(line))
 		})).
-		Use(flow.Timeout( // STREAMING: Timeout protection
-			str.LineProcessor(func(line string) string { // STREAMING: Another line processor
+		Use(ctrl.Timeout( // STREAMING: Timeout protection
+			text.LineProcessor(func(line string) string { // STREAMING: Another line processor
 				return fmt.Sprintf("FINAL: %s", strings.ToUpper(line))
 			}),
 			2*time.Second,
 		)).
-		Use(flow.Logger("FINAL", 200)) // Log final result
+		Use(ctrl.Logger("FINAL", 200)) // Log final result
 
 	inputText := `Streaming processes each line individually
 Data flows through without full buffering
@@ -158,31 +158,31 @@ Memory efficient for large inputs`
 
 // Mixed pipeline showing STREAMING vs BUFFERED side-by-side comparison
 func runMixedPipeline() {
-	pipe := core.New()
+	pipe := calque.Flow()
 
 	// Create streaming handler for comparison
-	streamingHandler := str.LineProcessor(func(line string) string {
+	streamingHandler := text.LineProcessor(func(line string) string {
 		return fmt.Sprintf("STREAMING: %s [processed line-by-line]", line)
 	})
 
 	// Create buffered handler chain for comparison
-	bufferedHandler := flow.Chain(
-		str.Transform(func(s string) string {
+	bufferedHandler := ctrl.Chain(
+		text.Transform(func(s string) string {
 			return fmt.Sprintf("BUFFERED STEP 1: %s [read all %d chars]", s, len(s))
 		}),
-		str.Transform(func(s string) string {
+		text.Transform(func(s string) string {
 			wordCount := len(strings.Fields(s))
 			return fmt.Sprintf("BUFFERED STEP 2: %s [analyzed %d words]", s, wordCount)
 		}),
 	)
 
 	pipe.
-		Use(flow.Logger("INPUT", 100)). // Log original input
-		Use(flow.Parallel(              // Split stream for comparison
+		Use(ctrl.Logger("INPUT", 100)). // Log original input
+		Use(ctrl.Parallel(              // Split stream for comparison
 			streamingHandler, // STREAMING: Line-by-line processing
 			bufferedHandler,  // BUFFERED: Sequential chain processing
 		)).
-		Use(flow.Logger("COMPARISON_RESULTS", 500)) // Show both results
+		Use(ctrl.Logger("COMPARISON_RESULTS", 500)) // Show both results
 
 	inputText := `Line 1: Compare streaming vs buffered
 Line 2: Streaming processes incrementally  

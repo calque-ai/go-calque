@@ -1,4 +1,4 @@
-package flow
+package ctrl
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 func TestRateLimit(t *testing.T) {
@@ -62,8 +62,8 @@ func TestRateLimit(t *testing.T) {
 					input := "request-" + string(rune('0'+index))
 					reader := strings.NewReader(input)
 
-					req := core.NewRequest(context.Background(), reader)
-					res := core.NewResponse(&buf)
+					req := calque.NewRequest(context.Background(), reader)
+					res := calque.NewResponse(&buf)
 					err := handler.ServeFlow(req, res)
 					if err != nil {
 						t.Errorf("Request %d failed: %v", index, err)
@@ -96,8 +96,8 @@ func TestRateLimitContextCancellation(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("first-request")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("First request failed: %v", err)
@@ -109,8 +109,8 @@ func TestRateLimitContextCancellation(t *testing.T) {
 	buf.Reset()
 	reader = strings.NewReader("second-request")
 
-	req = core.NewRequest(ctx, reader)
-	res = core.NewResponse(&buf)
+	req = calque.NewRequest(ctx, reader)
+	res = calque.NewResponse(&buf)
 	err = handler.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Expected context cancellation error, got nil")
@@ -215,8 +215,8 @@ func TestRateLimitConcurrentAccess(t *testing.T) {
 			input := "concurrent-" + string(rune('0'+(index%10)))
 			reader := strings.NewReader(input)
 
-			req := core.NewRequest(ctx, reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(ctx, reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 			if err == nil {
 				mu.Lock()
@@ -247,8 +247,8 @@ func TestRateLimitWithZeroRate(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("zero-rate-test")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := handler.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Expected error with zero rate, got nil")
@@ -276,8 +276,8 @@ func TestRateLimitBurstCapacity(t *testing.T) {
 			input := "burst-" + string(rune('0'+index))
 			reader := strings.NewReader(input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("Burst request %d failed: %v", index, err)
@@ -334,8 +334,8 @@ func TestRateLimitRefillTiming(t *testing.T) {
 
 	var buf bytes.Buffer
 	reader := strings.NewReader("first")
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("First request failed: %v", err)
@@ -343,8 +343,8 @@ func TestRateLimitRefillTiming(t *testing.T) {
 
 	buf.Reset()
 	reader = strings.NewReader("second")
-	req = core.NewRequest(context.Background(), reader)
-	res = core.NewResponse(&buf)
+	req = calque.NewRequest(context.Background(), reader)
+	res = calque.NewResponse(&buf)
 	err = handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Second request failed: %v", err)
@@ -354,8 +354,8 @@ func TestRateLimitRefillTiming(t *testing.T) {
 
 	buf.Reset()
 	reader = strings.NewReader("third")
-	req = core.NewRequest(context.Background(), reader)
-	res = core.NewResponse(&buf)
+	req = calque.NewRequest(context.Background(), reader)
+	res = calque.NewResponse(&buf)
 	err = handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Third request failed: %v", err)

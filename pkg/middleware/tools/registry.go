@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // toolsContextKey is used to store tools in context
@@ -25,7 +25,7 @@ type toolsContextKey struct{}
 //
 //	registry := tools.Registry(calculatorTool, searchTool)
 //	// Tools are available within the registry handler's execution context
-func Registry(tools ...Tool) core.Handler {
+func Registry(tools ...Tool) calque.Handler {
 	return &registryHandler{tools: tools}
 }
 
@@ -34,7 +34,7 @@ type registryHandler struct {
 	tools []Tool
 }
 
-func (rh *registryHandler) ServeFlow(req *core.Request, res *core.Response) error {
+func (rh *registryHandler) ServeFlow(req *calque.Request, res *calque.Response) error {
 	// Create a context with tools for this handler's execution
 	ctx := context.WithValue(req.Context, toolsContextKey{}, rh.tools)
 

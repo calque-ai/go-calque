@@ -1,4 +1,4 @@
-package core
+package calque
 
 import (
 	"context"
@@ -6,28 +6,28 @@ import (
 	"sync"
 )
 
-// Flow is the core orchestration primitive
-type Flow struct {
+// Pipeline is the core pipe orchestration primitive
+type Pipeline struct {
 	handlers []Handler
 }
 
-func New() *Flow {
-	return &Flow{}
+func Flow() *Pipeline {
+	return &Pipeline{}
 }
 
 // Use adds a handler to the flow
-func (f *Flow) Use(handler Handler) *Flow {
+func (f *Pipeline) Use(handler Handler) *Pipeline {
 	f.handlers = append(f.handlers, handler)
 	return f
 }
 
 // UseFunc adds a function as a handler
-func (f *Flow) UseFunc(fn HandlerFunc) *Flow {
+func (f *Pipeline) UseFunc(fn HandlerFunc) *Pipeline {
 	return f.Use(fn)
 }
 
 // Run executes the flow with the given input and writes output to the provided pointer
-func (f *Flow) Run(ctx context.Context, input any, output any) error {
+func (f *Pipeline) Run(ctx context.Context, input any, output any) error {
 	if len(f.handlers) == 0 {
 		// No handlers, just copy input to output with conversion
 		return f.copyInputToOutput(input, output)

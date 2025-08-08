@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
 )
 
@@ -31,11 +31,11 @@ func main() {
 func basicTemplateExample(client ai.Client) {
 	fmt.Println("=== Basic Template Example ===")
 
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.
-		Use(flow.Logger("INPUT", 100)).
+		Use(ctrl.Logger("INPUT", 100)).
 		Use(prompt.Template("You are a helpful assistant. {{.Input}}")).
-		Use(flow.Logger("PROMPT", 100)).
+		Use(ctrl.Logger("PROMPT", 100)).
 		Use(ai.Agent(client))
 
 	var result string
@@ -57,11 +57,11 @@ func templateWithDataExample(client ai.Client) {
 		"Language": "Go",
 	}
 
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.
-		Use(flow.Logger("INPUT", 100)).
+		Use(ctrl.Logger("INPUT", 100)).
 		Use(prompt.Template("You are a {{.Role}} specializing in {{.Language}}. {{.Input}}", params)).
-		Use(flow.Logger("PROMPT", 200)).
+		Use(ctrl.Logger("PROMPT", 200)).
 		Use(ai.Agent(client))
 
 	var result string
@@ -77,11 +77,11 @@ func templateWithDataExample(client ai.Client) {
 func systemPromptExample(client ai.Client) {
 	fmt.Println("=== SystemPrompt Example ===")
 
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.
-		Use(flow.Logger("INPUT", 100)).
+		Use(ctrl.Logger("INPUT", 100)).
 		Use(prompt.System("You are a concise coding expert. Always provide practical examples.")).
-		Use(flow.Logger("PROMPT", 100)).
+		Use(ctrl.Logger("PROMPT", 100)).
 		Use(ai.Agent(client))
 
 	var result string
@@ -97,11 +97,11 @@ func systemPromptExample(client ai.Client) {
 func chatPromptExample(client ai.Client) {
 	fmt.Println("=== ChatPrompt Example ===")
 
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.
-		Use(flow.Logger("INPUT", 100)).
+		Use(ctrl.Logger("INPUT", 100)).
 		Use(prompt.Chat("assistant", "I'm an AI assistant specialized in programming.")).
-		Use(flow.Logger("PROMPT", 100)).
+		Use(ctrl.Logger("PROMPT", 100)).
 		Use(ai.Agent(client))
 
 	var result string

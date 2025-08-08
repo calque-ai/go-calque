@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 func TestRegistry(t *testing.T) {
@@ -54,8 +54,8 @@ func TestRegistry(t *testing.T) {
 
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := registry.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("Registry.ServeFlow() error = %v", err)
@@ -78,8 +78,8 @@ func TestRegistryStreamIntegrity(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader(input)
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := registry.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Registry streaming error = %v", err)
@@ -252,8 +252,8 @@ func TestRegistryWithIOError(t *testing.T) {
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
-	req := core.NewRequest(context.Background(), errorReader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), errorReader)
+	res := calque.NewResponse(&buf)
 	err := registry.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Registry() with IO error = %v, want %v", err, io.ErrUnexpectedEOF)

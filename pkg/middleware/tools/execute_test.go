@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // Mock tools for testing
@@ -32,7 +32,7 @@ func createMockSearch() Tool {
 }
 
 func createErrorTool() Tool {
-	return HandlerFunc("error_tool", "Tool that always errors", func(req *core.Request, res *core.Response) error {
+	return HandlerFunc("error_tool", "Tool that always errors", func(req *calque.Request, res *calque.Response) error {
 		return errors.New("tool execution failed")
 	})
 }
@@ -90,8 +90,8 @@ func TestExecute(t *testing.T) {
 			// Create a pipeline with Registry and Execute
 			pipeline := NewPipelineForTest(tt.tools)
 
-			req := core.NewRequest(ctx, reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(ctx, reader)
+			res := calque.NewResponse(&buf)
 			err := pipeline.ServeFlow(req, res)
 			if tt.isError {
 				if err == nil {
@@ -116,8 +116,8 @@ func TestExecute(t *testing.T) {
 }
 
 // NewPipelineForTest creates a test pipeline that combines Registry and Execute functionality
-func NewPipelineForTest(tools []Tool) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func NewPipelineForTest(tools []Tool) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Create context with tools (simulating what Registry + Execute should do)
 		ctx := context.WithValue(req.Context, toolsContextKey{}, tools)
 		req = req.WithContext(ctx)
@@ -179,8 +179,8 @@ func TestExecuteWithOptions(t *testing.T) {
 			// Create pipeline with config
 			pipeline := NewPipelineForTestWithConfig(tt.tools, tt.config)
 
-			req := core.NewRequest(ctx, reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(ctx, reader)
+			res := calque.NewResponse(&buf)
 			err := pipeline.ServeFlow(req, res)
 			if tt.expectError {
 				if err == nil {
@@ -204,8 +204,8 @@ func TestExecuteWithOptions(t *testing.T) {
 	}
 }
 
-func NewPipelineForTestWithConfig(tools []Tool, config Config) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func NewPipelineForTestWithConfig(tools []Tool, config Config) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Create context with tools (simulating what Registry + Execute should do)
 		ctx := context.WithValue(req.Context, toolsContextKey{}, tools)
 		req = req.WithContext(ctx)
@@ -348,8 +348,8 @@ func TestExecuteWithIOError(t *testing.T) {
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
-	req := core.NewRequest(context.Background(), errorReader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), errorReader)
+	res := calque.NewResponse(&buf)
 	err := execute.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Execute() with IO error = %v, want %v", err, io.ErrUnexpectedEOF)
@@ -362,8 +362,8 @@ func TestExecuteWithEmptyContext(t *testing.T) {
 	reader := strings.NewReader(`{"tool_calls": [{"type": "function", "function": {"name": "test", "arguments": "args"}}]}`)
 
 	// Empty context (no tools)
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := execute.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Execute() with empty context error = %v", err)

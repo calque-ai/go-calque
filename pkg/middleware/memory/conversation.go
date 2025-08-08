@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // Message represents a single conversation message
@@ -91,8 +91,8 @@ func (cm *ConversationMemory) saveConversation(key string, messages []Message) e
 //
 //	convMem := memory.NewConversation()
 //	flow.Use(convMem.Input("user123"))
-func (cm *ConversationMemory) Input(key string) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+func (cm *ConversationMemory) Input(key string) calque.Handler {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		// Read current input
 		inputBytes, err := io.ReadAll(r.Data)
 		if err != nil {
@@ -151,8 +151,8 @@ func (cm *ConversationMemory) Input(key string) core.Handler {
 //		Use(convMem.Input("user123")).
 //		Use(llm.Chat(provider)).
 //		Use(convMem.Output("user123"))
-func (cm *ConversationMemory) Output(key string) core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+func (cm *ConversationMemory) Output(key string) calque.Handler {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		// Create a buffer to capture the response
 		var responseBuffer bytes.Buffer
 

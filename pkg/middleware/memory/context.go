@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // ContextMemory provides sliding window context memory using a pluggable store
@@ -212,8 +212,8 @@ func (cm *ContextMemory) ListKeys() []string {
 //
 //	ctxMem := memory.NewContext()
 //	flow.Use(ctxMem.Input("session123", 4000))
-func (cm *ContextMemory) Input(key string, maxTokens int) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func (cm *ContextMemory) Input(key string, maxTokens int) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Read current input
 		inputBytes, err := io.ReadAll(req.Data)
 		if err != nil {
@@ -266,8 +266,8 @@ func (cm *ContextMemory) Input(key string, maxTokens int) core.Handler {
 //		Use(ctxMem.Input("session123", 4000)).
 //		Use(llm.Chat(provider)).
 //		Use(ctxMem.Output("session123", 4000))
-func (cm *ContextMemory) Output(key string, maxTokens int) core.Handler {
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+func (cm *ContextMemory) Output(key string, maxTokens int) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Create a buffer to capture the response
 		var responseBuffer strings.Builder
 

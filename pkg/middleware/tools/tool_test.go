@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
@@ -20,13 +20,13 @@ type mockHandler struct {
 	transform   func(string) string
 }
 
-func (m *mockHandler) ServeFlow(req *core.Request, res *core.Response) error {
+func (m *mockHandler) ServeFlow(req *calque.Request, res *calque.Response) error {
 	if m.returnError {
 		return errors.New("mock handler error")
 	}
 
 	var input string
-	if err := core.Read(req, &input); err != nil {
+	if err := calque.Read(req, &input); err != nil {
 		return err
 	}
 
@@ -37,7 +37,7 @@ func (m *mockHandler) ServeFlow(req *core.Request, res *core.Response) error {
 		output = "processed: " + input
 	}
 
-	return core.Write(res, output)
+	return calque.Write(res, output)
 }
 
 func TestNew(t *testing.T) {
@@ -104,8 +104,8 @@ func TestNew(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := tool.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("ServeFlow() error = %v", err)
@@ -139,8 +139,8 @@ func TestNewWithError(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("test")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := tool.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Expected error from tool execution, got nil")
@@ -172,8 +172,8 @@ func TestSimple(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("input")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := tool.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("ServeFlow() error = %v", err)
@@ -190,14 +190,14 @@ func TestHandlerFunc(t *testing.T) {
 	name := "inline_tool"
 	description := "Tool created with HandlerFunc"
 
-	tool := HandlerFunc(name, description, func(req *core.Request, res *core.Response) error {
+	tool := HandlerFunc(name, description, func(req *calque.Request, res *calque.Response) error {
 		var input string
-		if err := core.Read(req, &input); err != nil {
+		if err := calque.Read(req, &input); err != nil {
 			return err
 		}
 
 		result := fmt.Sprintf("inline: %s", input)
-		return core.Write(res, result)
+		return calque.Write(res, result)
 	})
 
 	// Test metadata
@@ -213,8 +213,8 @@ func TestHandlerFunc(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("test")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := tool.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("ServeFlow() error = %v", err)
@@ -228,15 +228,15 @@ func TestHandlerFunc(t *testing.T) {
 }
 
 func TestHandlerFuncWithError(t *testing.T) {
-	tool := HandlerFunc("error_tool", "Tool that returns error", func(req *core.Request, res *core.Response) error {
+	tool := HandlerFunc("error_tool", "Tool that returns error", func(req *calque.Request, res *calque.Response) error {
 		return errors.New("handler function error")
 	})
 
 	var buf bytes.Buffer
 	reader := strings.NewReader("test")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := tool.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Expected error from HandlerFunc, got nil")
@@ -269,7 +269,7 @@ func TestToolInterfaceCompliance(t *testing.T) {
 	tools = append(tools, Simple("test", "desc", func(s string) string { return s }))
 
 	// HandlerFunc
-	tools = append(tools, HandlerFunc("test", "desc", func(req *core.Request, res *core.Response) error {
+	tools = append(tools, HandlerFunc("test", "desc", func(req *calque.Request, res *calque.Response) error {
 		return nil
 	}))
 
@@ -288,8 +288,8 @@ func TestToolInterfaceCompliance(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader("test")
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := tool.ServeFlow(req, res)
 			// We don't check for specific errors here, just that the method exists
 			_ = err
@@ -303,8 +303,8 @@ func TestToolWithIOReadError(t *testing.T) {
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
-	req := core.NewRequest(context.Background(), errorReader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), errorReader)
+	res := calque.NewResponse(&buf)
 	err := tool.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Expected io.ErrUnexpectedEOF, got %v", err)
@@ -330,8 +330,8 @@ func TestToolWithLargeInput(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader(largeInput)
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := tool.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("ServeFlow() with large input error = %v", err)

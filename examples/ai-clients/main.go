@@ -6,13 +6,13 @@ import (
 	"log"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/flow"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/str"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
 	"github.com/joho/godotenv"
 )
 
@@ -31,20 +31,20 @@ func ollamaExample() {
 	}
 
 	// Create flow with LLM integration
-	pipe := core.New()
+	flow := calque.Flow()
 
-	pipe.
-		Use(flow.Logger("INPUT", 100)).           // Log first 100 bytes of input
-		Use(str.Transform(func(s string) string { // Transform input by adding context
+	flow.
+		Use(ctrl.Logger("INPUT", 100)).            // Log first 100 bytes of input
+		Use(text.Transform(func(s string) string { // Transform input by adding context
 			return "Please provide a concise response to: " + s
 		})).
-		Use(flow.Logger("PROMPT", 100)).                     // Log finalized input
-		Use(flow.Timeout(ai.Agent(client), 60*time.Second)). // Send the input to the agent and wrap it with a timeout
-		Use(flow.Logger("RESPONSE", 100))                    // Log agents response
+		Use(ctrl.Logger("PROMPT", 100)).                     // Log finalized input
+		Use(ctrl.Timeout(ai.Agent(client), 60*time.Second)). // Send the input to the agent and wrap it with a timeout
+		Use(ctrl.Logger("RESPONSE", 100))                    // Log agents response
 
 	// Run the flow
 	var result string
-	err = pipe.Run(context.Background(), "What is Go programming language?", &result)
+	err = flow.Run(context.Background(), "What is Go programming language?", &result)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -73,19 +73,19 @@ func geminiExample() {
 		log.Fatal("Failed to create Gemini client:", err)
 	}
 
-	// Create pipe with llm agent integration
-	pipe := core.New()
+	// Create flow with llm agent integration
+	flow := calque.Flow()
 
-	pipe.
-		Use(flow.Logger("INPUT", 100)).                                                  // Log input, first 100 bytes
+	flow.
+		Use(ctrl.Logger("INPUT", 100)).                                                  // Log input, first 100 bytes
 		Use(prompt.Template("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt template
-		Use(flow.Logger("PROMPT", 100)).                                                 // Log the finalized prompt
+		Use(ctrl.Logger("PROMPT", 100)).                                                 // Log the finalized prompt
 		Use(ai.Agent(client)).                                                           // Send prompt to llm agent
-		Use(flow.Logger("RESPONSE", 200))                                                // Log the agent response
+		Use(ctrl.Logger("RESPONSE", 200))                                                // Log the agent response
 
-	// Run the pipe
+	// Run the flow
 	var result string
-	err = pipe.Run(context.Background(), "What is the Go programming language?", &result)
+	err = flow.Run(context.Background(), "What is the Go programming language?", &result)
 	if err != nil {
 		log.Fatal(err)
 	}

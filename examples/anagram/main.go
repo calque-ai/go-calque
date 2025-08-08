@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/str"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
 )
 
 // Anagrams represents a map of sorted characters to words that contain them
@@ -100,7 +100,7 @@ func CalquePipe(words []string) map[string]map[string]struct{} {
 	// 1. Filters words (more than one char, lowercase)
 	// 2. Maps each word to anagram format
 	// 3. Accumulates results
-	pipeline := core.New().
+	pipeline := calque.Flow().
 		Use(filterAndLowercase()).
 		Use(mapToAnagramFormat()).
 		Use(accumulateAnagrams())
@@ -116,8 +116,8 @@ func CalquePipe(words []string) map[string]map[string]struct{} {
 }
 
 // filterAndLowercase filters words with more than one character and converts to lowercase
-func filterAndLowercase() core.Handler {
-	return str.LineProcessor(func(line string) string {
+func filterAndLowercase() calque.Handler {
+	return text.LineProcessor(func(line string) string {
 		word := strings.TrimSpace(line)
 		if MoreThanOneChar(word) {
 			return strings.ToLower(word)
@@ -127,8 +127,8 @@ func filterAndLowercase() core.Handler {
 }
 
 // mapToAnagramFormat converts each word line to "sortedkey:word" format
-func mapToAnagramFormat() core.Handler {
-	return str.LineProcessor(func(line string) string {
+func mapToAnagramFormat() calque.Handler {
+	return text.LineProcessor(func(line string) string {
 		word := strings.TrimSpace(line)
 		if word == "" {
 			return ""
@@ -144,10 +144,10 @@ func mapToAnagramFormat() core.Handler {
 }
 
 // accumulateAnagrams collects all anagram mappings
-func accumulateAnagrams() core.Handler {
-	return core.HandlerFunc(func(r *core.Request, w *core.Response) error {
+func accumulateAnagrams() calque.Handler {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		var input string
-		if err := core.Read(r, &input); err != nil {
+		if err := calque.Read(r, &input); err != nil {
 			return err
 		}
 
@@ -183,7 +183,7 @@ func accumulateAnagrams() core.Handler {
 			lines_out = append(lines_out, fmt.Sprintf("%s=%s", key, strings.Join(wordList, ",")))
 		}
 
-		return core.Write(w, strings.Join(lines_out, "\n"))
+		return calque.Write(w, strings.Join(lines_out, "\n"))
 	})
 }
 

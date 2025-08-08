@@ -1,4 +1,4 @@
-package flow
+package ctrl
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // Test basic chain functionality
@@ -17,7 +17,7 @@ func TestChain_BasicSequentialExecution(t *testing.T) {
 	var orderMutex sync.Mutex
 
 	// Create handlers that record execution order
-	handler1 := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	handler1 := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		orderMutex.Lock()
 		executionOrder = append(executionOrder, "handler1")
 		orderMutex.Unlock()
@@ -32,7 +32,7 @@ func TestChain_BasicSequentialExecution(t *testing.T) {
 		return err
 	})
 
-	handler2 := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	handler2 := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		orderMutex.Lock()
 		executionOrder = append(executionOrder, "handler2")
 		orderMutex.Unlock()
@@ -52,7 +52,7 @@ func TestChain_BasicSequentialExecution(t *testing.T) {
 
 	// Test execution
 	var result string
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.Use(chain)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -84,7 +84,7 @@ func TestChain_ContextPropagation(t *testing.T) {
 	type testKey struct{}
 
 	// Handler that adds to context
-	setter := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	setter := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Modify the request context
 		req.Context = context.WithValue(req.Context, testKey{}, "test-value")
 
@@ -94,7 +94,7 @@ func TestChain_ContextPropagation(t *testing.T) {
 
 	// Handler that reads from context
 	var contextValue string
-	getter := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	getter := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		if val := req.Context.Value(testKey{}); val != nil {
 			contextValue = val.(string)
 		}
@@ -108,7 +108,7 @@ func TestChain_ContextPropagation(t *testing.T) {
 
 	// Test execution
 	var result string
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.Use(chain)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -130,7 +130,7 @@ func TestChain_EmptyChain(t *testing.T) {
 	chain := Chain()
 
 	var result string
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.Use(chain)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -148,7 +148,7 @@ func TestChain_EmptyChain(t *testing.T) {
 
 // Test single handler chain
 func TestChain_SingleHandler(t *testing.T) {
-	handler := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		input, err := io.ReadAll(req.Data)
 		if err != nil {
 			return err
@@ -162,7 +162,7 @@ func TestChain_SingleHandler(t *testing.T) {
 	chain := Chain(handler)
 
 	var result string
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.Use(chain)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -181,12 +181,12 @@ func TestChain_SingleHandler(t *testing.T) {
 // Test timeout detection (this should help identify deadlocks)
 func TestChain_DoesNotDeadlock(t *testing.T) {
 	// Create simple pass-through handlers
-	handler1 := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	handler1 := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
 
-	handler2 := core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	handler2 := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		_, err := io.Copy(res.Data, req.Data)
 		return err
 	})
@@ -194,7 +194,7 @@ func TestChain_DoesNotDeadlock(t *testing.T) {
 	chain := Chain(handler1, handler2)
 
 	var result string
-	pipe := core.New()
+	pipe := calque.Flow()
 	pipe.Use(chain)
 
 	// Short timeout to detect deadlocks

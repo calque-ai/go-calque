@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
 	"google.golang.org/genai"
@@ -126,7 +126,7 @@ func New(model string, opts ...Option) (*Client, error) {
 }
 
 // Chat implements the Client interface with streaming support
-func (g *Client) Chat(r *core.Request, w *core.Response, opts *ai.AgentOptions) error {
+func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	// Extract options
 	var tools []tools.Tool
 	var schema *ai.ResponseFormat
@@ -193,7 +193,7 @@ func (g *Client) Chat(r *core.Request, w *core.Response, opts *ai.AgentOptions) 
 }
 
 // writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
-func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *core.Response) error {
+func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calque.Response) error {
 	// Convert to OpenAI format
 	var toolCalls []map[string]any
 

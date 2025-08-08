@@ -1,4 +1,4 @@
-package flow
+package ctrl
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 type mockLogger struct {
@@ -94,8 +94,8 @@ func TestLogger(t *testing.T) {
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
 
-			req := core.NewRequest(context.Background(), reader)
-			res := core.NewResponse(&buf)
+			req := calque.NewRequest(context.Background(), reader)
+			res := calque.NewResponse(&buf)
 			err := handler.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("Logger() error = %v", err)
@@ -124,8 +124,8 @@ func TestLoggerDefaultLogger(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader("test with default logger")
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Logger() with default logger error = %v", err)
@@ -266,8 +266,8 @@ func TestLoggerWithIOError(t *testing.T) {
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
-	req := core.NewRequest(context.Background(), errorReader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), errorReader)
+	res := calque.NewResponse(&buf)
 	err := handler.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Logger() error = %v, want %v", err, io.ErrUnexpectedEOF)
@@ -289,8 +289,8 @@ func TestLoggerPreservesStreamIntegrity(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader(largeInput)
 
-	req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
+	req := calque.NewRequest(context.Background(), reader)
+	res := calque.NewResponse(&buf)
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Errorf("Logger() error = %v", err)

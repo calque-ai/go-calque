@@ -1,4 +1,4 @@
-package flow
+package ctrl
 
 import (
 	"bufio"
@@ -6,7 +6,7 @@ import (
 	"io"
 	"log"
 
-	"github.com/calque-ai/calque-pipe/pkg/core"
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // LoggerInterface allows custom logging implementations
@@ -26,10 +26,10 @@ type LoggerInterface interface {
 //
 // Example:
 //
-//	logger := flow.Logger("STEP1", 100)                    // Default logger, 100 bytes
-//	customLogger := flow.Logger("STEP1", 200, myLogger)   // Custom logger, 200 bytes
-//	pipe.Use(logger) // Logs: [STEP1]: Hello, world!
-func Logger(prefix string, peekBytes int, logger ...LoggerInterface) core.Handler {
+//	logger := ctrl.Logger("STEP1", 100)                    // Default logger, 100 bytes
+//	customLogger := ctrl.Logger("STEP1", 200, myLogger)   // Custom logger, 200 bytes
+//	flow.Use(logger) // Logs: [STEP1]: Hello, world!
+func Logger(prefix string, peekBytes int, logger ...LoggerInterface) calque.Handler {
 	var l LoggerInterface
 	if len(logger) > 0 {
 		l = logger[0]
@@ -37,7 +37,7 @@ func Logger(prefix string, peekBytes int, logger ...LoggerInterface) core.Handle
 		l = log.Default()
 	}
 
-	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		bufReader := bufio.NewReader(req.Data)
 
 		// Peek at first N bytes for logging without consuming
