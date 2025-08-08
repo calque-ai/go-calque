@@ -106,7 +106,7 @@ func TestFallback(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := Fallback[string](tt.handlers...)
+			handler := Fallback(tt.handlers...)
 
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
@@ -135,7 +135,7 @@ func TestFallback(t *testing.T) {
 }
 
 func TestFallbackNoHandlers(t *testing.T) {
-	handler := Fallback[string]()
+	handler := Fallback()
 
 	var buf bytes.Buffer
 	reader := strings.NewReader("test")
@@ -371,7 +371,7 @@ func TestFallbackWithCircuitBreaker(t *testing.T) {
 		return core.Write(res, "fallback:"+input)
 	})
 
-	handler := Fallback[string](intermittentHandler, fallbackHandler)
+	handler := Fallback(intermittentHandler, fallbackHandler)
 
 	var buf bytes.Buffer
 
@@ -464,7 +464,7 @@ func TestFallbackContextCancellation(t *testing.T) {
 		return core.Write(res, "fast-fallback:"+input)
 	})
 
-	handler := Fallback[string](slowHandler, fastFallback)
+	handler := Fallback(slowHandler, fastFallback)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

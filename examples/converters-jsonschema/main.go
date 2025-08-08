@@ -8,7 +8,7 @@
 // - Best for: Single AI calls that need structured output
 // - Output: convert.FromJson() to parse AI's JSON response
 //
-// APPROACH 2: Schema Converters - Context-Aware Processing  
+// APPROACH 2: Schema Converters - Context-Aware Processing
 // - Use convert.ToJsonSchema() to embed schema with input data
 // - Use convert.FromJsonSchema() to validate and parse output
 // - AI sees both data AND schema structure in prompt
@@ -22,7 +22,7 @@
 //
 // This package contains 3 focused examples showing these approaches:
 // 1. Basic WithSchema usage for structured AI output
-// 2. JSON Schema converters for schema-embedded input/output  
+// 2. JSON Schema converters for schema-embedded input/output
 // 3. Advanced combined usage in multi-stage pipelines
 package main
 
@@ -130,7 +130,7 @@ func runExample1WithSchema(client ai.Client) {
 		Use(prompt.Template(promptTemplateEx1)).
 		Use(flow.Logger("PROMPT", 500)).
 		Use(ai.Agent(client, ai.WithSchema(&TaskAnalysis{}))). // WithSchema automatically generates output schema from struct with jsonschema tags
-		Use(flow.Logger("RESPONSE", 500))                         // Log the agents response
+		Use(flow.Logger("RESPONSE", 500))                      // Log the agents response
 
 	// Use standard JSON converters since AI generates structured JSON
 	var analysis TaskAnalysis
@@ -283,7 +283,7 @@ func runExample3AdvancedCombined(client ai.Client) {
 	stage1Pipe.
 		Use(prompt.Template("Extract user profile from: {{.Input}}\nReturn valid JSON only.")).
 		Use(flow.Logger("Prompt", 500)).
-		Use(flow.Retry[UserProfile](ai.Agent(client, ai.WithSchema(&UserProfile{})), 3)). //Wrap agent in Retry handler
+		Use(flow.Retry(ai.Agent(client, ai.WithSchema(&UserProfile{})), 3)). //Wrap agent in Retry handler
 		Use(flow.Logger("Output", 500))
 
 	var profile UserProfile

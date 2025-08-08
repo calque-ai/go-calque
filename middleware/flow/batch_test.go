@@ -92,7 +92,7 @@ func TestBatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			batchHandler := Batch[string](tt.handler, tt.maxSize, tt.maxWait)
+			batchHandler := Batch(tt.handler, tt.maxSize, tt.maxWait)
 
 			var wg sync.WaitGroup
 			results := make([]string, len(tt.inputs))
@@ -107,8 +107,8 @@ func TestBatch(t *testing.T) {
 					reader := strings.NewReader(inp)
 
 					req := core.NewRequest(context.Background(), reader)
-				res := core.NewResponse(&buf)
-				err := batchHandler.ServeFlow(req, res)
+					res := core.NewResponse(&buf)
+					err := batchHandler.ServeFlow(req, res)
 					results[index] = buf.String()
 					errors[index] = err
 				}(i, input)
@@ -153,7 +153,7 @@ func TestBatchProcessingOrder(t *testing.T) {
 		return core.Write(res, result)
 	})
 
-	batchHandler := Batch[string](orderHandler, 3, 100*time.Millisecond)
+	batchHandler := Batch(orderHandler, 3, 100*time.Millisecond)
 
 	inputs := []string{"first", "second", "third"}
 	expected := []string{"order:first", "order:second", "order:third"}
@@ -170,8 +170,8 @@ func TestBatchProcessingOrder(t *testing.T) {
 			reader := strings.NewReader(inp)
 
 			req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
-	err := batchHandler.ServeFlow(req, res)
+			res := core.NewResponse(&buf)
+			err := batchHandler.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
 				return
@@ -203,7 +203,7 @@ func TestBatchContextCancellation(t *testing.T) {
 		}
 	})
 
-	batchHandler := Batch[string](slowHandler, 2, 1*time.Second)
+	batchHandler := Batch(slowHandler, 2, 1*time.Second)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -231,7 +231,7 @@ func TestBatchResponseSplittingFailure(t *testing.T) {
 		return core.Write(res, "response-without-separators")
 	})
 
-	batchHandler := Batch[string](malformedHandler, 2, 100*time.Millisecond)
+	batchHandler := Batch(malformedHandler, 2, 100*time.Millisecond)
 
 	inputs := []string{"input1", "input2"}
 	var wg sync.WaitGroup
@@ -247,8 +247,8 @@ func TestBatchResponseSplittingFailure(t *testing.T) {
 			reader := strings.NewReader(inp)
 
 			req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
-	err := batchHandler.ServeFlow(req, res)
+			res := core.NewResponse(&buf)
+			err := batchHandler.ServeFlow(req, res)
 			results[index] = buf.String()
 			errors[index] = err
 			t.Logf("Request %d: result=%q, error=%v", index, results[index], errors[index])
@@ -325,7 +325,7 @@ func TestBatchConcurrentRequests(t *testing.T) {
 		return core.Write(res, result)
 	})
 
-	batchHandler := Batch[string](concurrentHandler, 5, 200*time.Millisecond)
+	batchHandler := Batch(concurrentHandler, 5, 200*time.Millisecond)
 
 	numRequests := 10
 	var wg sync.WaitGroup
@@ -342,8 +342,8 @@ func TestBatchConcurrentRequests(t *testing.T) {
 			reader := strings.NewReader(input)
 
 			req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
-	err := batchHandler.ServeFlow(req, res)
+			res := core.NewResponse(&buf)
+			err := batchHandler.ServeFlow(req, res)
 			results[index] = buf.String()
 			errors[index] = err
 		}(i)
@@ -379,7 +379,7 @@ func TestBatchTimerBehavior(t *testing.T) {
 		return core.Write(res, fmt.Sprintf("call-%d:%s", callCount, input))
 	})
 
-	batchHandler := Batch[string](timerHandler, 10, 100*time.Millisecond)
+	batchHandler := Batch(timerHandler, 10, 100*time.Millisecond)
 
 	time.Sleep(50 * time.Millisecond)
 

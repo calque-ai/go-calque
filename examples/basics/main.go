@@ -79,7 +79,7 @@ func runAIExample(client ai.Client) {
 		Use(flow.Logger("PREPROCESSED", 80)).                                              // Log cleaned text
 		Use(prompt.Template("Analyze this text and provide a brief summary: {{.Input}}")). // Build AI prompt using a go template
 		Use(flow.Logger("PROMPT", 200)).                                                   // Log prompt
-		Use(flow.Timeout[string](ai.Agent(client), 30*time.Second)).                       // Send to AI with timeout
+		Use(flow.Timeout(ai.Agent(client), 30*time.Second)).                               // Send to AI with timeout
 		Use(flow.Logger("AI_RESPONSE", 300)).                                              // Log AI response
 		Use(str.Branch(                                                                    // Branch on response type
 			func(response string) bool {
@@ -131,7 +131,7 @@ func runStreamingPipeline() {
 		Use(str.LineProcessor(func(line string) string { // STREAMING: Process line-by-line
 			return fmt.Sprintf("[STREAM-%d] %s", len(line), strings.TrimSpace(line))
 		})).
-		Use(flow.Timeout[string]( // STREAMING: Timeout protection
+		Use(flow.Timeout( // STREAMING: Timeout protection
 			str.LineProcessor(func(line string) string { // STREAMING: Another line processor
 				return fmt.Sprintf("FINAL: %s", strings.ToUpper(line))
 			}),
@@ -177,7 +177,7 @@ func runMixedPipeline() {
 
 	pipe.
 		Use(flow.Logger("INPUT", 100)). // Log original input
-		Use(flow.Parallel[[]byte](      // Split stream for comparison
+		Use(flow.Parallel(              // Split stream for comparison
 			streamingHandler, // STREAMING: Line-by-line processing
 			bufferedHandler,  // BUFFERED: Sequential chain processing
 		)).

@@ -30,12 +30,12 @@ func PassThrough() core.Handler {
 //
 // Example:
 //
-//	jsonBranch := flow.Branch[[]byte](
+//	jsonBranch := flow.Branch(
 //	  func(b []byte) bool { return bytes.HasPrefix(b, []byte("{")) },
 //	  jsonHandler,
 //	  textHandler,
 //	)
-func Branch[T any](condition func([]byte) bool, ifHandler core.Handler, elseHandler core.Handler) core.Handler {
+func Branch(condition func([]byte) bool, ifHandler core.Handler, elseHandler core.Handler) core.Handler {
 	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		var input []byte
 		err := core.Read(req, &input)
@@ -93,9 +93,9 @@ func TeeReader(destinations ...io.Writer) core.Handler {
 //
 // Example:
 //
-//	parallel := flow.Parallel[[]byte](handler1, handler2, handler3)
+//	parallel := flow.Parallel(handler1, handler2, handler3)
 //	// All three handlers process the same input concurrently
-func Parallel[T any](handlers ...core.Handler) core.Handler {
+func Parallel(handlers ...core.Handler) core.Handler {
 	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		if len(handlers) == 0 {
 			_, err := io.Copy(res.Data, req.Data)
@@ -181,9 +181,9 @@ func Parallel[T any](handlers ...core.Handler) core.Handler {
 //
 // Example:
 //
-//	timeoutHandler := flow.Timeout[string](someHandler, 30*time.Second)
+//	timeoutHandler := flow.Timeout(someHandler, 30*time.Second)
 //	pipe.Use(timeoutHandler)
-func Timeout[T any](handler core.Handler, timeout time.Duration) core.Handler {
+func Timeout(handler core.Handler, timeout time.Duration) core.Handler {
 	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		timeoutCtx, cancel := context.WithTimeout(req.Context, timeout)
 		defer cancel()
@@ -218,7 +218,7 @@ func Timeout[T any](handler core.Handler, timeout time.Duration) core.Handler {
 //
 //	retryHandler := flow.Retry(someHandler, 3)
 //	pipe.Use(retryHandler)
-func Retry[T any](handler core.Handler, maxAttempts int) core.Handler {
+func Retry(handler core.Handler, maxAttempts int) core.Handler {
 	return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 		var input []byte
 		err := core.Read(req, &input)

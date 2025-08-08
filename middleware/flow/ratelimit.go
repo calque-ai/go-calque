@@ -30,9 +30,9 @@ type rateLimiter struct {
 //
 // Example:
 //
-//	rateLimit := flow.RateLimit[string](10, time.Second) // 10 requests/second
+//	rateLimit := flow.RateLimit(10, time.Second) // 10 requests/second
 //	pipe.Use(rateLimit)
-func RateLimit[T any](rate int, per time.Duration) core.Handler {
+func RateLimit(rate int, per time.Duration) core.Handler {
 	// <= 0 requests per n makes no sense.
 	if rate <= 0 {
 		return core.HandlerFunc(func(req *core.Request, res *core.Response) error {

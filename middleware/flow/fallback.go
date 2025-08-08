@@ -37,8 +37,8 @@ type circuitBreaker struct {
 //
 // Example:
 //
-//	fallback := flow.Fallback[string](primaryLLM, fallbackLLM, localLLM)
-func Fallback[T any](handlers ...core.Handler) core.Handler {
+//	fallback := flow.Fallback(primaryLLM, fallbackLLM, localLLM)
+func Fallback(handlers ...core.Handler) core.Handler {
 	if len(handlers) == 0 {
 		return core.HandlerFunc(func(req *core.Request, res *core.Response) error {
 			return fmt.Errorf("no handlers provided to fallback")

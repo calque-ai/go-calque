@@ -36,9 +36,9 @@ func ollamaExample() {
 		Use(str.Transform(func(s string) string { // Transform input by adding context
 			return "Please provide a concise response to: " + s
 		})).
-		Use(flow.Logger("PROMPT", 100)).                             // Log finalized input
-		Use(flow.Timeout[string](ai.Agent(client), 60*time.Second)). // Send the input to the agent and wrap it with a timeout
-		Use(flow.Logger("RESPONSE", 100))                            // Log agents response
+		Use(flow.Logger("PROMPT", 100)).                     // Log finalized input
+		Use(flow.Timeout(ai.Agent(client), 60*time.Second)). // Send the input to the agent and wrap it with a timeout
+		Use(flow.Logger("RESPONSE", 100))                    // Log agents response
 
 	// Run the flow
 	var result string

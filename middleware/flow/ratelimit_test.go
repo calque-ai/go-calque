@@ -48,7 +48,7 @@ func TestRateLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := RateLimit[string](tt.rate, tt.per)
+			handler := RateLimit(tt.rate, tt.per)
 
 			start := time.Now()
 			var wg sync.WaitGroup
@@ -91,7 +91,7 @@ func TestRateLimit(t *testing.T) {
 }
 
 func TestRateLimitContextCancellation(t *testing.T) {
-	handler := RateLimit[string](1, time.Second)
+	handler := RateLimit(1, time.Second)
 
 	var buf bytes.Buffer
 	reader := strings.NewReader("first-request")
@@ -196,7 +196,7 @@ func TestRateLimiterNoRefillNeeded(t *testing.T) {
 }
 
 func TestRateLimitConcurrentAccess(t *testing.T) {
-	handler := RateLimit[string](10, time.Second)
+	handler := RateLimit(10, time.Second)
 
 	numGoroutines := 20
 	var wg sync.WaitGroup
@@ -242,7 +242,7 @@ func TestRateLimitConcurrentAccess(t *testing.T) {
 }
 
 func TestRateLimitWithZeroRate(t *testing.T) {
-	handler := RateLimit[string](0, time.Second)
+	handler := RateLimit(0, time.Second)
 
 	var buf bytes.Buffer
 	reader := strings.NewReader("zero-rate-test")
@@ -262,7 +262,7 @@ func TestRateLimitWithZeroRate(t *testing.T) {
 }
 
 func TestRateLimitBurstCapacity(t *testing.T) {
-	handler := RateLimit[string](5, time.Second)
+	handler := RateLimit(5, time.Second)
 
 	start := time.Now()
 	var wg sync.WaitGroup
@@ -277,8 +277,8 @@ func TestRateLimitBurstCapacity(t *testing.T) {
 			reader := strings.NewReader(input)
 
 			req := core.NewRequest(context.Background(), reader)
-	res := core.NewResponse(&buf)
-	err := handler.ServeFlow(req, res)
+			res := core.NewResponse(&buf)
+			err := handler.ServeFlow(req, res)
 			if err != nil {
 				t.Errorf("Burst request %d failed: %v", index, err)
 				return
@@ -328,7 +328,7 @@ func TestRateLimitTokenConsumption(t *testing.T) {
 }
 
 func TestRateLimitRefillTiming(t *testing.T) {
-	handler := RateLimit[string](2, 200*time.Millisecond)
+	handler := RateLimit(2, 200*time.Millisecond)
 
 	start := time.Now()
 

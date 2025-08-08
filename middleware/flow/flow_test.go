@@ -102,7 +102,7 @@ func TestBranch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := Branch[[]byte](tt.condition, tt.ifHandler, tt.elseHandler)
+			handler := Branch(tt.condition, tt.ifHandler, tt.elseHandler)
 
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
@@ -240,11 +240,11 @@ func TestParallel(t *testing.T) {
 	})
 
 	tests := []struct {
-		name         string
-		input        string
-		handlers     []core.Handler
+		name          string
+		input         string
+		handlers      []core.Handler
 		expectedParts []string
-		wantErr      bool
+		wantErr       bool
 	}{
 		{
 			name:          "two handlers parallel execution",
@@ -284,7 +284,7 @@ func TestParallel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := Parallel[[]byte](tt.handlers...)
+			handler := Parallel(tt.handlers...)
 
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
@@ -330,7 +330,7 @@ func TestParallelNoHandlers(t *testing.T) {
 	input := "pass through"
 	var buf bytes.Buffer
 
-	handler := Parallel[[]byte]()
+	handler := Parallel()
 	reader := strings.NewReader(input)
 
 	req := core.NewRequest(context.Background(), reader)
@@ -413,18 +413,18 @@ func TestTimeout(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "zero timeout immediate cancellation",
-			handler:  fastHandler,
-			timeout:  0,
-			input:    "test",
-			wantErr:  true,
-			errMsg:   "handler timeout",
+			name:    "zero timeout immediate cancellation",
+			handler: fastHandler,
+			timeout: 0,
+			input:   "test",
+			wantErr: true,
+			errMsg:  "handler timeout",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := Timeout[string](tt.handler, tt.timeout)
+			handler := Timeout(tt.handler, tt.timeout)
 
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)
@@ -539,7 +539,7 @@ func TestRetry(t *testing.T) {
 				tt.setup()
 			}
 
-			handler := Retry[string](tt.handler, tt.maxAttempts)
+			handler := Retry(tt.handler, tt.maxAttempts)
 
 			var buf bytes.Buffer
 			reader := strings.NewReader(tt.input)

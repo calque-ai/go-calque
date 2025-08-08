@@ -40,8 +40,8 @@ type batchResponse struct {
 //
 // Example:
 //
-//	batch := flow.Batch[string](handler, 10, 5*time.Second) // 10 items or 5s
-func Batch[T any](handler core.Handler, maxSize int, maxWait time.Duration) core.Handler {
+//	batch := flow.Batch(handler, 10, 5*time.Second) // 10 items or 5s
+func Batch(handler core.Handler, maxSize int, maxWait time.Duration) core.Handler {
 	batcher := &requestBatcher{
 		handler:  handler,
 		maxSize:  maxSize,
