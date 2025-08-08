@@ -1,12 +1,29 @@
 // Package main demonstrates JSON Schema usage with Calque-Pipe AI agents.
 //
-// This package contains 3 focused examples showing different approaches:
-// 1. Basic WithSchema usage for structured AI output
-// 2. JSON Schema converters for schema-embedded input/output
-// 3. Advanced combined usage in multi-stage pipelines
+// JSON Schema Integration Approaches:
 //
-// Each example demonstrates when and how to use different JSON Schema features
-// for type-safe, validated AI interactions.
+// APPROACH 1: WithSchema() - Simple Structured Output
+// - Use ai.WithSchema(&MyStruct{}) to force AI to generate valid JSON
+// - AI receives schema automatically, returns structured data
+// - Best for: Single AI calls that need structured output
+// - Output: convert.FromJson() to parse AI's JSON response
+//
+// APPROACH 2: Schema Converters - Context-Aware Processing  
+// - Use convert.ToJsonSchema() to embed schema with input data
+// - Use convert.FromJsonSchema() to validate and parse output
+// - AI sees both data AND schema structure in prompt
+// - Best for: When AI needs to understand input/output relationships
+//
+// APPROACH 3: Multi-Stage Pipelines - Complex Workflows
+// - Combine both approaches for sophisticated data flows
+// - Stage 1: WithSchema() + FromJson() for initial extraction
+// - Stage 2: ToJsonSchema() + FromJsonSchema() for context passing
+// - Best for: Multi-step AI processing with data transformation
+//
+// This package contains 3 focused examples showing these approaches:
+// 1. Basic WithSchema usage for structured AI output
+// 2. JSON Schema converters for schema-embedded input/output  
+// 3. Advanced combined usage in multi-stage pipelines
 package main
 
 import (
@@ -19,7 +36,6 @@ import (
 	"github.com/calque-ai/calque-pipe/middleware/ai"
 	"github.com/calque-ai/calque-pipe/middleware/flow"
 	"github.com/calque-ai/calque-pipe/middleware/prompt"
-	"github.com/invopop/jsonschema"
 	"github.com/joho/godotenv"
 )
 
@@ -76,8 +92,8 @@ func main() {
 	fmt.Println("• Example 3: Combined multi-stage pipeline with context passing (Gemini)")
 }
 
-// TaskAnalysisEx1 represents structured analysis of a development task
-type TaskAnalysisEx1 struct {
+// TaskAnalysis represents structured analysis of a development task
+type TaskAnalysis struct {
 	TaskType       string   `json:"task_type" jsonschema:"required,enum=bug_fix,enum=feature,enum=refactor,enum=documentation,description=Type of development task"`
 	Priority       string   `json:"priority" jsonschema:"required,enum=low,enum=medium,enum=high,enum=critical,description=Task priority level"`
 	EstimatedHours int      `json:"estimated_hours" jsonschema:"minimum=1,maximum=40,description=Estimated hours to complete"`
@@ -100,21 +116,12 @@ Analyze the task and provide:
 
 Return valid JSON only.`
 
+// runExample1WithSchema shows how to use ai.WithSchema() for structured AI output
 func runExample1WithSchema(client ai.Client) {
 	fmt.Println("=== Example 1: Basic WithSchema Usage ===")
-	fmt.Println("This example shows how to use ai.WithSchema() for structured AI output")
 
 	// Task description - plain text input
 	taskDescription := "Build a real-time chat application with WebSocket support, user authentication, message history, and emoji reactions. The backend should use Go with a PostgreSQL database."
-
-	// Create JSON schema for the expected response structure
-	reflector := jsonschema.Reflector{}
-	schema := reflector.Reflect(&TaskAnalysisEx1{})
-
-	responseFormat := &ai.ResponseFormat{
-		Type:   "json_schema",
-		Schema: schema,
-	}
 
 	// Pipeline: Text input → AI analysis → Structured JSON output
 	pipe := core.New()
@@ -122,11 +129,11 @@ func runExample1WithSchema(client ai.Client) {
 		Use(flow.Logger("INPUT", 200)).
 		Use(prompt.Template(promptTemplateEx1)).
 		Use(flow.Logger("PROMPT", 500)).
-		Use(ai.Agent(client, ai.WithSchema(responseFormat))). // ← Key: WithSchema tells AI to follow the schema
-		Use(flow.Logger("RESPONSE", 500))                     // Add this to see what AI is returning
+		Use(ai.Agent(client, ai.WithSchema(&TaskAnalysis{}))). // WithSchema automatically generates output schema from struct with jsonschema tags
+		Use(flow.Logger("RESPONSE", 500))                         // Log the agents response
 
 	// Use standard JSON converters since AI generates structured JSON
-	var analysis TaskAnalysisEx1
+	var analysis TaskAnalysis
 	err := pipe.Run(context.Background(), taskDescription, convert.FromJson(&analysis))
 	if err != nil {
 		log.Printf("Analysis failed: %v", err)
@@ -151,8 +158,8 @@ func runExample1WithSchema(client ai.Client) {
 	fmt.Println("\n✅ WithSchema ensured the AI response matches our TaskAnalysis structure")
 }
 
-// UserProfileEx2 represents user input data
-type UserProfileEx2 struct {
+// ProfileInput represents user input data for career advice
+type ProfileInput struct {
 	Name       string   `json:"name" jsonschema:"required,description=Full name"`
 	Role       string   `json:"role" jsonschema:"required,description=Job role or title"`
 	Experience int      `json:"experience" jsonschema:"minimum=0,maximum=50,description=Years of experience"`
@@ -178,12 +185,12 @@ The input includes both the user data and the JSON schema structure. Please prov
 
 Do not include any explanatory text, only the JSON response.`
 
+// runExample2JsonSchemaConverters shows convert.ToJsonSchema() and convert.FromJsonSchema()
 func runExample2JsonSchemaConverters(client ai.Client) {
 	fmt.Println("=== Example 2: JSON Schema Converters Usage ===")
-	fmt.Println("This example shows convert.ToJsonSchema() and convert.FromJsonSchema()")
 
 	// Sample user profile data
-	userProfile := UserProfileEx2{
+	userProfile := ProfileInput{
 		Name:       "Jordan Smith",
 		Role:       "Junior Go Developer",
 		Experience: 2,
@@ -194,30 +201,20 @@ func runExample2JsonSchemaConverters(client ai.Client) {
 	fmt.Printf("Input Profile: %s (%s with %d years experience)\n",
 		userProfile.Name, userProfile.Role, userProfile.Experience)
 
-	// Create JSON schema for the expected response structure
-	reflector := jsonschema.Reflector{}
-	schema := reflector.Reflect(&CareerAdvice{})
-
-	responseFormat := &ai.ResponseFormat{
-		Type:   "json_schema",
-		Schema: schema,
-	}
-
 	// Pipeline using JSON Schema converters WITH WithSchema for reliability
 	pipe := core.New()
 	pipe.
-		Use(flow.Logger("PROFILE_WITH_SCHEMA", 400)). // This will show the embedded schema
+		Use(flow.Logger("PROFILE_WITH_SCHEMA", 400)). // Log input with the embedded schema
 		Use(prompt.Template(promptTemplateEx2)).
-		Use(flow.Logger("AI_PROMPT", 500)).
-		Use(ai.Agent(client, ai.WithSchema(responseFormat))). // WithSchema ensures JSON mode for model
-		Use(flow.Logger("RESPONSE", 600))
+		Use(flow.Logger("AI_PROMPT", 500)).                    // Log complete prompt with input
+		Use(ai.Agent(client, ai.WithSchema(&CareerAdvice{}))). // WithSchema automatically generates output schema from struct with jsonschema tags
+		Use(flow.Logger("RESPONSE", 600))                      // Log the AI response
 
-	// Key difference: Using JSON Schema converters
 	var advice CareerAdvice
 	err := pipe.Run(
 		context.Background(),
-		convert.ToJsonSchema(userProfile),             // ← Embeds schema with data into input
-		convert.FromJsonSchema[CareerAdvice](&advice), // ← Validates output against schema
+		convert.ToJsonSchema(userProfile),             // Embeds schema with data into input
+		convert.FromJsonSchema[CareerAdvice](&advice), // Validates output against schema
 	)
 	if err != nil {
 		log.Printf("Career advice generation failed: %v", err)
@@ -271,26 +268,22 @@ const promptTemplateEx3 = `Enhance this profile with career insights:
 
 The input includes the basic profile with embedded schema. Analyze experience level, identify strengths, and suggest next career role. Return valid JSON only.`
 
+// Shows chaining converters and passing structured data between stages
 func runExample3AdvancedCombined(client ai.Client) {
 	fmt.Println("=== Example 3: Multi-Stage Pipeline with Context Passing ===")
-	fmt.Println("Shows chaining converters and passing structured data between stages")
 
 	// Simple input data
 	inputText := "Alex Johnson, Senior Go Developer, 5 years experience, skills: Go, Kubernetes, PostgreSQL, gRPC"
 	fmt.Printf("Input: %s\n", inputText)
 
 	// Stage 1: Extract basic profile using WithSchema (like Example 1)
-	fmt.Println("\n🔄 Stage 1: Extract structured data (WithSchema + FromJson)")
-
-	reflector := jsonschema.Reflector{}
-	profileSchema := reflector.Reflect(&UserProfile{})
-	profileFormat := &ai.ResponseFormat{Type: "json_schema", Schema: profileSchema}
+	fmt.Println("\n Stage 1: Extract structured data (WithSchema + FromJson)")
 
 	stage1Pipe := core.New()
 	stage1Pipe.
 		Use(prompt.Template("Extract user profile from: {{.Input}}\nReturn valid JSON only.")).
 		Use(flow.Logger("Prompt", 500)).
-		Use(ai.Agent(client, ai.WithSchema(profileFormat))).
+		Use(flow.Retry[UserProfile](ai.Agent(client, ai.WithSchema(&UserProfile{})), 3)). //Wrap agent in Retry handler
 		Use(flow.Logger("Output", 500))
 
 	var profile UserProfile
@@ -300,24 +293,21 @@ func runExample3AdvancedCombined(client ai.Client) {
 		return
 	}
 
-	fmt.Printf("✓ Extracted: %s (%s, %d years)\n", profile.Name, profile.Role, profile.Experience)
+	fmt.Printf("Extracted: %s (%s, %d years)\n", profile.Name, profile.Role, profile.Experience)
 
 	// Stage 2: Enhance profile using context from Stage 1
-	fmt.Println("\n🔄 Stage 2: Enhance with context (ToJsonSchema + FromJsonSchema)")
-
-	enhancedSchema := reflector.Reflect(&EnhancedProfile{})
-	enhancedFormat := &ai.ResponseFormat{Type: "json_schema", Schema: enhancedSchema}
+	fmt.Println("\n Stage 2: Enhance with context (ToJsonSchema + FromJsonSchema)")
 
 	stage2Pipe := core.New()
 	stage2Pipe.
 		Use(prompt.Template(promptTemplateEx3)).
-		Use(ai.Agent(client, ai.WithSchema(enhancedFormat)))
+		Use(ai.Agent(client, ai.WithSchemaFor[EnhancedProfile]())) // Using generic WithSchemaFor() for better performance and compile-time safety
 
 	var enhanced EnhancedProfile
 	err = stage2Pipe.Run(
 		context.Background(),
-		convert.ToJsonSchema(profile),                      // ← Stage 1 output as schema-embedded input
-		convert.FromJsonSchema[EnhancedProfile](&enhanced), // ← Stage 2 output with validation
+		convert.ToJsonSchema(profile),                      // Stage 1 output as schema-embedded input
+		convert.FromJsonSchema[EnhancedProfile](&enhanced), // Stage 2 output with validation
 	)
 	if err != nil {
 		log.Printf("Stage 2 failed: %v", err)
@@ -325,14 +315,14 @@ func runExample3AdvancedCombined(client ai.Client) {
 	}
 
 	// Display results
-	fmt.Printf("\n📋 ENHANCED PROFILE:\n")
+	fmt.Printf("\nENHANCED PROFILE:\n")
 	fmt.Printf("Name: %s | Level: %s\n", enhanced.BasicInfo.Name, enhanced.CareerLevel)
 	fmt.Printf("Next Role: %s\n", enhanced.NextRole)
 	if len(enhanced.Strengths) > 0 {
 		fmt.Printf("Strengths: %v\n", enhanced.Strengths)
 	}
 
-	fmt.Println("\n✅ Multi-stage pipeline completed:")
+	fmt.Println("\nMulti-stage pipeline completed:")
 	fmt.Println("  Stage 1: WithSchema → FromJson (structured extraction)")
 	fmt.Println("  Stage 2: ToJsonSchema → FromJsonSchema (context passing)")
 	fmt.Println("  Key: Stage 1 output becomes Stage 2 input with embedded schema")

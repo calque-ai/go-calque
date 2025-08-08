@@ -26,6 +26,7 @@ func main() {
 }
 
 // Example 1: Basic template usage
+// A Go template receives the input as `.Input` and any additional data as template variables.
 func basicTemplateExample(client ai.Client) {
 	fmt.Println("=== Basic Template Example ===")
 
@@ -45,9 +46,11 @@ func basicTemplateExample(client ai.Client) {
 }
 
 // Example 2: Template with additional data
+// Add additional variables with data for the template
 func templateWithDataExample(client ai.Client) {
 	fmt.Println("=== Template with Data Example ===")
 
+	// additonal variable keys and data for the template
 	params := map[string]any{
 		"Role":     "Senior Software Engineer",
 		"Language": "Go",
@@ -69,6 +72,7 @@ func templateWithDataExample(client ai.Client) {
 }
 
 // Example 3: SystemPrompt convenience function
+// System Adds a system message prefix. Can be combined with other prompt functions for custom formats.
 func systemPromptExample(client ai.Client) {
 	fmt.Println("=== SystemPrompt Example ===")
 
@@ -88,6 +92,7 @@ func systemPromptExample(client ai.Client) {
 }
 
 // Example 4: ChatPrompt convenience function
+// Chat creates a chat-style message with role formatting
 func chatPromptExample(client ai.Client) {
 	fmt.Println("=== ChatPrompt Example ===")
 

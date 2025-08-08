@@ -31,9 +31,9 @@ func main() {
 }
 
 // Example 1: Conversation memory - maintains structured chat history
+// Maintains structured chat history with user/assistant roles
 func conversationExample(client ai.Client) {
 	fmt.Println("\n=== Conversation Memory Example ===")
-	fmt.Println("Maintains structured chat history with user/assistant roles")
 
 	convMem := memory.NewConversation() // Create conversation memory with simple in-memory store
 
@@ -54,6 +54,7 @@ func conversationExample(client ai.Client) {
 		"Can you show me an example?",
 	}
 
+	// run the pipeline on each simulated conversation input.
 	for i, input := range inputs {
 		fmt.Printf("\n--- Message %d ---\n", i+1)
 		var result string
@@ -186,9 +187,9 @@ func customStoreExample(client ai.Client) {
 }
 
 // Example 4: Context memory - maintains sliding window of recent content
+// Maintains sliding window of recent content (token-limited)
 func contextExample(client ai.Client) {
 	fmt.Println("\n=== Context Memory Example ===")
-	fmt.Println("Maintains sliding window of recent content (token-limited)")
 
 	contextMem := memory.NewContext() // Create context memory with default in-memory store
 
@@ -199,7 +200,7 @@ func contextExample(client ai.Client) {
 		Use(contextMem.Input("session456", 200)). // Keep last 200 tokens
 		Use(flow.Logger("WITH_CONTEXT", 100)).
 		Use(prompt.System("You are a helpful assistant. Be concise.")).
-		Use(ai.Agent(client)).                    // Get LLM response
+		Use(ai.Agent(client)).                    // Get agent response
 		Use(contextMem.Output("session456", 200)) // Store response in context
 
 	// Simulate multiple interactions

@@ -77,7 +77,7 @@ func runAIExample(client ai.Client) {
 		Use(flow.Logger("INPUT", 100)).                                                    // Log original input
 		Use(str.Transform(preprocessText)).                                                // Clean text
 		Use(flow.Logger("PREPROCESSED", 80)).                                              // Log cleaned text
-		Use(prompt.Template("Analyze this text and provide a brief summary: {{.Input}}")). // Build AI prompt
+		Use(prompt.Template("Analyze this text and provide a brief summary: {{.Input}}")). // Build AI prompt using a go template
 		Use(flow.Logger("PROMPT", 200)).                                                   // Log prompt
 		Use(flow.Timeout[string](ai.Agent(client), 30*time.Second)).                       // Send to AI with timeout
 		Use(flow.Logger("AI_RESPONSE", 300)).                                              // Log AI response

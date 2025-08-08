@@ -43,7 +43,7 @@ func main() {
 
 // Example 1: Simple agent with basic tools
 func runSimpleAgent() {
-	// Create simple tools that parse JSON arguments
+	// Create a simple demo calculator tool
 	calculator := tools.Simple("calculator", "Performs basic math calculations", func(jsonArgs string) string {
 		// Parse JSON arguments
 		var args struct {
@@ -60,6 +60,7 @@ func runSimpleAgent() {
 		return fmt.Sprintf("%.2f", result)
 	})
 
+	// Create a simple time lookup tool
 	currentTime := tools.Simple("current_time", "Gets the current date and time. Call with empty string or '2006-01-02 15:04:05' format to get current time in default format.", func(jsonArgs string) string {
 		// Parse JSON arguments
 		var args struct {

@@ -66,10 +66,13 @@ func runConverterBasics() {
 	// Pipeline: Json String -> Json -> Uppercase -> Struct
 	pipe := core.New()
 	pipe.
-		Use(flow.Logger("JSON_INPUT", 300)).                                     // Log JSON string input
+		Use(flow.Logger("JSON_INPUT", 300)).                                     // Log original JSON
 		Use(str.Transform(func(s string) string { return strings.ToUpper(s) })). // Convert to uppercase for processing
 		Use(flow.Logger("UPPERCASE_JSON", 300))                                  // Log transformed JSON
 
+	// Execute with json string input
+	// convert.ToJson parses the string to make sure its valid json
+	// convert.FromJson converts the uppercase json string back to a ProductInfo struct
 	var jsonResult ProductInfo
 	err := pipe.Run(context.Background(), convert.ToJson(jsonString), convert.FromJson(&jsonResult))
 	if err != nil {

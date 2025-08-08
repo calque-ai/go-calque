@@ -1,6 +1,9 @@
 package ai
 
-import "github.com/calque-ai/calque-pipe/middleware/tools"
+import (
+	"github.com/calque-ai/calque-pipe/middleware/tools"
+	"github.com/invopop/jsonschema"
+)
 
 // AgentOptions holds all configuration for an AI agent request
 type AgentOptions struct {
@@ -32,9 +35,47 @@ func WithTools(tools ...tools.Tool) AgentOption {
 	return toolsOption{tools: tools}
 }
 
-// WithSchema adds a response schema to the agent
-func WithSchema(schema *ResponseFormat) AgentOption {
-	return schemaOption{schema: schema}
+// WithSchema adds a response schema to the agent. 
+// Accepts either a *ResponseFormat or any struct/pointer for automatic schema generation.
+//
+// Examples:
+//   ai.WithSchema(&UserProfile{})           // Automatic schema from struct
+//   ai.WithSchema(existingResponseFormat)   // Direct ResponseFormat
+func WithSchema(schemaSource any) AgentOption {
+	var resultSchema *ResponseFormat
+	
+	switch v := schemaSource.(type) {
+	case *ResponseFormat:
+		// Direct use (backwards compatible)
+		resultSchema = v
+	case ResponseFormat:
+		// Value passed, convert to pointer
+		resultSchema = &v
+	default:
+		// Generate schema from struct/pointer
+		reflector := jsonschema.Reflector{}
+		schema := reflector.Reflect(v)
+		resultSchema = &ResponseFormat{
+			Type:   "json_schema",
+			Schema: schema,
+		}
+	}
+	
+	return schemaOption{schema: resultSchema}
+}
+
+// WithSchemaFor is a generic version of WithSchema for compile-time type safety.
+// Use this for better performance when the type is known at compile time.
+//
+// Example: ai.WithSchemaFor[UserProfile]()
+func WithSchemaFor[T any]() AgentOption {
+	var zero T
+	reflector := jsonschema.Reflector{}
+	schema := reflector.Reflect(zero)
+	return schemaOption{schema: &ResponseFormat{
+		Type:   "json_schema",
+		Schema: schema,
+	}}
 }
 
 // WithToolsConfig configures tool behavior

@@ -32,13 +32,13 @@ func ollamaExample() {
 	pipe := core.New()
 
 	pipe.
-		Use(flow.Logger("INPUT", 100)).           // Log input
-		Use(str.Transform(func(s string) string { // Add context
+		Use(flow.Logger("INPUT", 100)).           // Log first 100 bytes of input
+		Use(str.Transform(func(s string) string { // Transform input by adding context
 			return "Please provide a concise response to: " + s
 		})).
-		Use(flow.Logger("PROMPT", 100)).                             // Log formatted prompt
-		Use(flow.Timeout[string](ai.Agent(client), 60*time.Second)). // LLM with timeout (longer for local)
-		Use(flow.Logger("RESPONSE", 100))                            // Log response
+		Use(flow.Logger("PROMPT", 100)).                             // Log finalized input
+		Use(flow.Timeout[string](ai.Agent(client), 60*time.Second)). // Send the input to the agent and wrap it with a timeout
+		Use(flow.Logger("RESPONSE", 100))                            // Log agents response
 
 	// Run the flow
 	var result string
@@ -60,26 +60,26 @@ func geminiExample() {
 		log.Fatal("Error loading .env file")
 	}
 
-	// Create a custom configuration
+	// Create an optional custom gemini configuration
 	config := &ai.GeminiConfig{
 		Temperature: ai.Float32Ptr(1.1),
 	}
 
-	// Create Gemini example client (reads GOOGLE_API_KEY from env)
+	// Create Gemini example client (reads GOOGLE_API_KEY from env unless set in the config)
 	client, err := ai.NewGemini("gemini-2.0-flash", ai.WithGeminiConfig(config))
 	if err != nil {
 		log.Fatal("Failed to create Gemini client:", err)
 	}
 
-	// Create pipe with LLM integration
+	// Create pipe with llm agent integration
 	pipe := core.New()
 
 	pipe.
-		Use(flow.Logger("INPUT", 100)).                                                  // Log input
-		Use(prompt.Template("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt
-		Use(flow.Logger("PROMPT", 100)).                                                 // Log formatted prompt
-		Use(flow.Timeout[string](ai.Agent(client), 30*time.Second)).                     // LLM with timeout
-		Use(flow.Logger("RESPONSE", 200))                                                // Log response
+		Use(flow.Logger("INPUT", 100)).                                                  // Log input, first 100 bytes
+		Use(prompt.Template("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt template
+		Use(flow.Logger("PROMPT", 100)).                                                 // Log the finalized prompt
+		Use(ai.Agent(client)).                                                           // Send prompt to llm agent
+		Use(flow.Logger("RESPONSE", 200))                                                // Log the agent response
 
 	// Run the pipe
 	var result string
