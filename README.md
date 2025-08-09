@@ -1,273 +1,138 @@
 # Calque-Pipe
 
-calque-pipe is a **streaming middleware framework** for building AI agents and data processing pipelines. The core innovation is true concurrent execution where handlers process data as it flows through connected `io.Pipe` instances. The framework excels at memory-efficient processing of large datasets and real-time streaming scenarios, making it particularly well-suited for AI applications where latency and resource usage matter.
+A **streaming middleware framework** for building AI agents and data processing pipelines in Go.
 
-### Core Components
+## What is Calque-Pipe?
 
-**Flow Orchestration (`core/`):**
+Calque-Pipe brings HTTP middleware patterns to AI and data processing. Instead of handling HTTP requests, you compose pipelines where each middleware processes streaming data through `io.Pipe` connections.
 
-- `Flow`: Main pipeline orchestrator that manages handler chains
-- `Handler`: Interface with `ServeFlow(ctx, reader, writer) error` method
-- `Pipe`: Wrapper around `io.Pipe` for handler connections
-- `Converter`: Input/output type conversion system
-
-**Key Architectural Patterns:**
-
-1. **Streaming-First**: Built on `io.Reader`/`io.Writer` for memory efficiency
-2. **Concurrent Execution**: Each handler runs in its own goroutine
-3. **Composable Middleware**: Chain handlers with fluent API
-4. **Type-Safe Conversions**: Generic functions for common data types
-
-### Middleware Categories
-
-**Flow Control (`middleware/flow/`):**
-
-- `Parallel()`: Concurrent processing of same input
-- `Branch()`: Conditional routing based on content
-- `Batch()`: Request batching with configurable thresholds
-- `Timeout()`/`Retry()`: Resilience patterns
-- `Logger()`: Non-intrusive logging with content preview
-
-**LLM Integration (`middleware/llm/`):**
-
-- Provider abstraction for Gemini, Ollama, and mock providers
-- Streaming response support for real-time processing
-- Context and conversation management
-
-**Memory Management (`middleware/memory/`):**
-
-- Context memory with sliding window and token limits
-- Conversation memory for structured message history
-- Pluggable storage backends (in-memory, custom)
-
-**Data Processing (`middleware/strings/`, `convert/`):**
-
-- Text transformation and filtering
-- Structured data conversion (JSON, YAML, XML) with schema support
-- Line-by-line streaming processors
-
-### Handler Development Patterns
-
-**Generic I/O Utilities:**
+**Key benefits:**
+- **Streaming first**: Process data as it flows, not after it's fully loaded
+- **True concurrency**: Each middleware runs in its own goroutine  
+- **Memory efficient**: Constant memory usage regardless of input size
+- **Real-time processing**: Responses begin immediately, no waiting for full datasets
+- **Composable**: Chain middleware just like HTTP handlers
 
 ```go
-// In handlers, use these instead of manual io.ReadAll/Write
-var input string
-core.Read(r, &input)  // Reads and converts to string
+flow := calque.Flow().
+    Use(logger.Print("INPUT")).
+    Use(ai.Agent(geminiClient)).
+    Use(logger.Head("RESPONSE", 200))
 
-return core.Write(w, result)  // Writes string/[]byte to output
+var result string
+err := flow.Run(ctx, "What's the capital of France?", &result)
 ```
 
-**Handler Creation:**
+Built on Go's `io.Reader`/`io.Writer` interfaces, every middleware runs concurrently through `io.Pipe` connections for maximum performance.
+
+## How It Works
+
+**The Pattern**: Chain middleware like HTTP handlers, but for streaming data:
 
 ```go
-func myMiddleware() core.Handler {
-    return core.HandlerFunc(func(ctx context.Context, r io.Reader, w io.Writer) error {
-        var input string
-        if err := core.Read(r, &input); err != nil {
-            return err
-        }
+flow := calque.Flow().
+    Use(middleware1).
+    Use(middleware2).
+    Use(middleware3)
 
-        // Process input...
-        processed := transform(input)
-
-        return core.Write(w, processed)
-    })
-}
+err := flow.Run(ctx, input, &output)
 ```
 
-**Pipeline Composition:**
+**The Architecture**: Each middleware runs concurrently, connected by `io.Pipe`:
 
+```
+Input → Middleware1 → Middleware2 → Middleware3 → Output
+         ↓ (pipe)     ↓ (pipe)     ↓ (pipe)
+      goroutine    goroutine    goroutine
+```
+
+**Key Patterns:**
+
+1. **Streaming Processing**: Uses `io.Reader`/`io.Writer` under the hood via `Request`/`Response` wrappers
+2. **Concurrent Execution**: Each middleware runs in its own goroutine  
+3. **Immediate Processing**: No buffering - processing starts as data arrives
+4. **Backpressure Handling**: Pipes automatically handle flow control
+5. **Context Propagation**: Cancellation and timeouts flow through the entire chain
+
+## Middleware Packages
+
+Calque-Pipe includes batteries-included middleware for common AI and data processing patterns:
+
+### AI & LLM (`ai/`, `prompt/`)
+- **AI Agents**: `ai.Agent(client)` - Connect to Gemini, Ollama, or custom providers
+- **Prompt Templates**: `prompt.Template("Question: {{.Input}}")` - Dynamic prompt formatting  
+- **Streaming Support**: Real-time response processing as tokens arrive
+- **Context Management**: Automatic conversation and context handling
+
+### Flow Control (`ctrl/`, `logger/`)
+- **Timeouts**: `ctrl.Timeout(handler, duration)` - Prevent hanging operations
+- **Retries**: `ctrl.Retry(handler, attempts)` - Handle transient failures
+- **Parallel Processing**: `ctrl.Parallel(handlers...)` - Concurrent execution 
+- **Logging**: `logger.Print(label)` - Non-intrusive request/response logging
+- **Conditional Logic**: `ctrl.If(condition, handler)` - Dynamic routing
+
+### Data Processing (`text/`, `convert/`)
+- **Text Transform**: `text.Transform(func)` - Simple string transformations
+- **JSON/YAML/XML**: `convert.JSON()`, `convert.YAML()` - Structured data conversion
+- **Schema Validation**: Ensure data conforms to expected formats
+- **Streaming Parsers**: Process large files without loading into memory
+
+### Memory & State (`memory/`)
+- **Conversation Memory**: Track chat history with configurable limits
+- **Context Windows**: Sliding window memory management for long conversations
+- **Storage Backends**: In-memory, Redis, or custom storage adapters
+- **Token Counting**: Automatic token limit management for LLMs
+
+## Converters
+
+Transform structured data at pipeline boundaries:
+
+**Input Converters** (prepare data for processing):
 ```go
-pipeline := core.New().
-    Use(flow.Logger("input", 100)).
-    Use(myMiddleware()).
-    Use(flow.Timeout(anotherHandler(), 30*time.Second)).
-    Use(flow.Logger("output", 200))
+convert.ToJson(struct)      // Struct → JSON stream
+convert.ToYaml(struct)      // Struct → YAML stream  
+convert.ToJsonSchema(struct) // Struct + schema → stream (for AI context)
 ```
 
-## Data Flow Architecture
-
-**Streaming Execution Model:**
-
-```
-Input → Handler1 → Handler2 → Handler3 → Output
-         ↓         ↓         ↓
-       Pipe1     Pipe2     Pipe3
-      (goroutine)(goroutine)(goroutine)
-```
-
-- Each handler runs concurrently in its own goroutine
-- Connected via `io.Pipe` for true streaming data flow
-- Processing begins immediately as data arrives (no buffering)
-- Context cancellation propagates through entire chain
-- Backpressure handled automatically by pipe blocking behavior
-
-## Key Design Decisions
-
-**Streaming vs Buffered Operations:**
-
-- Use `io.Copy` for streaming operations (memory efficient, real-time)
-- Use `io.ReadAll` only when you need the complete input (transformations, parsing)
-- Most flow middleware is streaming, most processing middleware is buffered
-
-**Error Handling:**
-
-- Context-aware error propagation throughout pipelines
-- Graceful cleanup with defer statements
-- Timeout and cancellation support at every level
-
-**Type Safety:**
-
-- Generic `Read[T]` and `Write[T]` functions for common types
-- Converter interface for complex data transformations
-- Compile-time type checking where possible
-
-**Concurrency Model:**
-
-- True parallelism via goroutines and pipes
-- Thread-safe memory and context management
-- Concurrent execution overlaps processing for better performance
-
-## Development Roadmap
-
-### Critical Missing Middleware
-
-#### 1. ✅ Tool Calling & Function Execution (`middleware/tools/`)
-
-**Priority: HIGH** - Essential for AI agents - **COMPLETED**
-
-- ✅ `tools.Registry()` - Register available functions
-- ✅ `tools.Execute()` - Parse LLM tool calls and execute functions
-- ✅ `tools.Format()` - Format tool results back to LLM
-- ✅ `tools.Agent()` - Complete tool-enabled agent
-- ✅ Multiple tool constructors: `Quick()`, `New()`, `HandlerFunc()`
-- ✅ Flexible parsing: JSON, XML, and simple formats
-- ✅ Comprehensive example in `examples/tool-calling/`
-
+**Output Converters** (parse results):
 ```go
-// Simple usage:
-calc := tools.Quick("calculator", func(expr string) string { return evaluate(expr) })
-agent := tools.Agent(llmProvider, calc)
-
-// Advanced usage:
-pipeline := core.New().
-    Use(tools.Registry(webSearchTool, calculatorTool)).
-    Use(tools.Format(tools.FormatStyleDetailed)).
-    Use(llm.Chat(provider)).
-    Use(tools.Execute()).
-    Use(llm.Chat(provider))
+convert.FromJson(&result)           // JSON stream → struct
+convert.FromJsonSchema(&result)     // Validates output against schema
 ```
 
-#### 2. RAG Components (`middleware/retrieval/`)
-
-**Priority: HIGH** - Core AI agent capability
-
-- `retrieval.VectorSearch()` - Search embeddings database
-- `retrieval.DocumentChunking()` - Split documents into chunks
-- `retrieval.ContextBuilder()` - Combine retrieved docs with query
-
-#### 3. Guardrails & Safety (`middleware/validation/`)
-
-**Priority: HIGH** - Production safety requirements
-
-- `validation.InputFilter()` - Block harmful inputs
-- `validation.OutputValidator()` - Check LLM responses
-- `validation.SchemaValidation()` - Ensure structured output compliance
-
-#### 4. Multi-Agent Coordination (`middleware/routing/`)
-
-**Priority: MEDIUM** - Advanced agent workflows
-
-- `routing.AgentSelector()` - Choose which agent handles request
-- `routing.LoadBalancer()` - Distribute work across agents
-- `routing.ConditionalRouter()` - Route based on content/rules
-
-#### 5. HTTP/API Integration (`middleware/web/`)
-
-**Priority: MEDIUM** - Web deployment capabilities
-
-- `web.HTTPHandler()` - Convert HTTP requests to streams
-- `web.StreamingResponse()` - Stream responses back to clients
-- `web.WebSocketHandler()` - Real-time bidirectional communication
-
-### Framework Enhancements
-
-#### Enhanced Memory Middleware
-
-- `memory.Semantic(embeddings)` - Vector-based memory retrieval for relevant past conversations
-
-#### Advanced Agent Behaviors
-
-- `agent.Tool(name, handler)` - Function calling integration
-- `agent.Planning(steps)` - Multi-step reasoning capabilities
-- `agent.Reflection()` - Self-evaluation of responses
-
-#### Developer Experience Improvements
-
-**Sub-Pipeline Helpers:**
-
+**Usage:**
 ```go
-// Instead of manual sub-pipeline creation:
-Use(flow.SubPipeline(convert.StructuredYAML(data), &result))
-Use(flow.Convert(convert.StructuredYAML)) // Auto-conversion middleware
+// JSON processing pipeline
+err := flow.Run(ctx, convert.ToJson(data), convert.FromJson(&result))
+
+// AI with schema validation  
+err := flow.Run(ctx, convert.ToJsonSchema(input), convert.FromJsonSchema[Output](&result))
 ```
 
-**HandlerFunc Shortcuts:**
+## Roadmap
 
-```go
-// Instead of verbose HandlerFunc:
-Use(flow.Process(func(data Resume) (Evaluation, error) {...}))
-Use(flow.Transform(reduceResults)) // Auto-wrap pure functions
-```
+### Priority Middleware
 
-**Better Type Inference:**
+**✅ Tool Calling** - Function execution for AI agents (completed)  
+**RAG Components** - Vector search, document chunking, context building  
+**Guardrails & Safety** - Input filtering, output validation, schema compliance  
+**Multi-Agent Routing** - Agent selection, load balancing, conditional routing  
+**HTTP/API Integration** - Web handlers, streaming responses, WebSocket support  
 
-```go
-// Remove need for explicit types:
-Use(flow.Batch(handler, 2, 1*time.Second)) // Auto-infer T from handler
-```
+### Framework Improvements
 
-### Essential Examples Development
+**Enhanced Memory** - Vector-based semantic memory retrieval  
+**Advanced Agents** - Planning, reflection, and self-evaluation capabilities  
+**Developer Experience** - Better type inference, pipeline helpers, function shortcuts  
 
-#### Core Framework Examples (3)
+### Essential Examples
 
-1. ✅ **basics** - Basic pipeline with string middleware
-2. ✅ **converters** - JSON/YAML processing
-3. ✅ **descriptive-converters** - descriptive JSON/YAML processing
-4. 🔲 **schema-converters** - JSON schema processing
-5. 🔲 **streaming-chats** - Real-time LLM streaming with memory
+**Core Framework**: ✅ basics, ✅ converters, ✅ converters-jsonschema, 🔲 streaming-chats  
+**Data Processing**: ✅ memory, 🔲 batch-processing, 🔲 pipeline-composition  
+**AI Agents**: ✅ tool-calling, 🔲 rag-pipeline, 🔲 multi-agent-workflow, 🔲 guardrails-validation  
+**Advanced**: 🔲 web-api-agent, 🔲 human-in-the-loop  
 
-#### Data Processing Patterns (3)
+### Nice-to-Have
 
-4. ✅ **map-reduce** - Parallel data processing
-5. 🔲 **batch-processing** - Handle large datasets efficiently
-6. 🔲 **pipeline-composition** - Complex multi-stage data transformation
-
-#### AI Agent Essentials (4)
-
-7. 🔲 **rag-pipeline** - Document retrieval + LLM generation
-8. ✅ **tool-calling** - LLM function calling with multiple tools
-9. 🔲 **multi-agent-workflow** - Agents collaborating via pipelines
-10. 🔲 **guardrails-validation** - Input/output safety checks
-
-#### Advanced Examples (2)
-
-11. 🔲 **web-api-agent** - HTTP integration with streaming responses
-12. 🔲 **human-in-the-loop** - Interactive agent with approval workflows
-
-### Nice-to-Have Middleware
-
-#### Batch Processing Utilities (`middleware/batch/`)
-
-- `batch.Splitter()` - Split large inputs into batches
-- `batch.Aggregator()` - Combine batch results
-- `batch.ParallelProcessor()` - Process batches concurrently
-
-#### Workflow State Management (`middleware/state/`)
-
-- `state.StateMachine()` - Manage agent workflows
-- `state.Checkpoint()` - Save/restore pipeline state
-- `state.ConditionalFlow()` - Branch based on state
-
----
+**Batch Processing** - Splitters, aggregators, parallel processors  
+**State Management** - State machines, checkpoints, conditional flows

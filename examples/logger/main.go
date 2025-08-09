@@ -34,7 +34,7 @@ func setupSimpleExample() {
 		Use(logger.Head("QUICK_DEBUG", 30)). // Define a prefix and the number of bytes to preview (streaming)
 		Use(text.Transform(func(s string) string {
 			return fmt.Sprintf("Processed: %s", s)
-		})).                                        // Transform without timing wrapper
+		})).
 		Use(logger.HeadTail("FINAL_CHECK", 20, 15)) // Log n bytes of the begining and end of an input (buffered)
 
 	input := "Quick debugging example"
