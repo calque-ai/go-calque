@@ -30,6 +30,9 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect

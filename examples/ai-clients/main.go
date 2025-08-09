@@ -11,6 +11,7 @@ import (
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/logger"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
 	"github.com/joho/godotenv"
@@ -34,13 +35,13 @@ func ollamaExample() {
 	flow := calque.Flow()
 
 	flow.
-		Use(ctrl.Logger("INPUT", 100)).            // Log first 100 bytes of input
+		Use(logger.Print("INPUT")).                // Log input
 		Use(text.Transform(func(s string) string { // Transform input by adding context
 			return "Please provide a concise response to: " + s
 		})).
-		Use(ctrl.Logger("PROMPT", 100)).                     // Log finalized input
+		Use(logger.Print("PROMPT")).                         // Log finalized input
 		Use(ctrl.Timeout(ai.Agent(client), 60*time.Second)). // Send the input to the agent and wrap it with a timeout
-		Use(ctrl.Logger("RESPONSE", 100))                    // Log agents response
+		Use(logger.Head("RESPONSE", 100))                    // Log first 100 bytes of the agents response
 
 	// Run the flow
 	var result string
@@ -77,11 +78,11 @@ func geminiExample() {
 	flow := calque.Flow()
 
 	flow.
-		Use(ctrl.Logger("INPUT", 100)).                                                  // Log input, first 100 bytes
+		Use(logger.Print("INPUT")).                                                      // Log input
 		Use(prompt.Template("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt template
-		Use(ctrl.Logger("PROMPT", 100)).                                                 // Log the finalized prompt
+		Use(logger.Print("PROMPT")).                                                     // Log the finalized prompt
 		Use(ai.Agent(client)).                                                           // Send prompt to llm agent
-		Use(ctrl.Logger("RESPONSE", 200))                                                // Log the agent response
+		Use(logger.Head("RESPONSE", 200))                                                // Log the agent response using logger.head for streaming
 
 	// Run the flow
 	var result string

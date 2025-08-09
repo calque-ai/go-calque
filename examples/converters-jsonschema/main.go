@@ -37,6 +37,7 @@ import (
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/logger"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
 	"github.com/joho/godotenv"
 )
@@ -128,11 +129,11 @@ func runExample1WithSchema(client ai.Client) {
 	// Pipeline: Text input → AI analysis → Structured JSON output
 	pipe := calque.Flow()
 	pipe.
-		Use(ctrl.Logger("INPUT", 200)).
+		Use(logger.Print("INPUT")).
 		Use(prompt.Template(promptTemplateEx1)).
-		Use(ctrl.Logger("PROMPT", 500)).
+		Use(logger.Print("PROMPT")).
 		Use(ai.Agent(client, ai.WithSchema(&TaskAnalysis{}))). // WithSchema automatically generates output schema from struct with jsonschema tags
-		Use(ctrl.Logger("RESPONSE", 500))                      // Log the agents response
+		Use(logger.Head("RESPONSE", 500))                      // Log the agents response
 
 	// Use standard JSON converters since AI generates structured JSON
 	var analysis TaskAnalysis
@@ -206,11 +207,11 @@ func runExample2JsonSchemaConverters(client ai.Client) {
 	// Pipeline using JSON Schema converters WITH WithSchema for reliability
 	pipe := calque.Flow()
 	pipe.
-		Use(ctrl.Logger("PROFILE_WITH_SCHEMA", 400)). // Log input with the embedded schema
+		Use(logger.Print("PROFILE_WITH_SCHEMA")). // Log input with the embedded schema
 		Use(prompt.Template(promptTemplateEx2)).
-		Use(ctrl.Logger("AI_PROMPT", 500)).                    // Log complete prompt with input
+		Use(logger.Print("AI_PROMPT")).                        // Log complete prompt with input
 		Use(ai.Agent(client, ai.WithSchema(&CareerAdvice{}))). // WithSchema automatically generates output schema from struct with jsonschema tags
-		Use(ctrl.Logger("RESPONSE", 600))                      // Log the AI response
+		Use(logger.Head("RESPONSE", 600))                      // Log the AI response
 
 	var advice CareerAdvice
 	err := pipe.Run(
@@ -284,9 +285,9 @@ func runExample3AdvancedCombined(client ai.Client) {
 	stage1Pipe := calque.Flow()
 	stage1Pipe.
 		Use(prompt.Template("Extract user profile from: {{.Input}}\nReturn valid JSON only.")).
-		Use(ctrl.Logger("Prompt", 500)).
+		Use(logger.Print("Prompt")).
 		Use(ctrl.Retry(ai.Agent(client, ai.WithSchema(&UserProfile{})), 3)). //Wrap agent in Retry handler
-		Use(ctrl.Logger("Output", 500))
+		Use(logger.Head("Output", 500))
 
 	var profile UserProfile
 	err := stage1Pipe.Run(context.Background(), inputText, convert.FromJson(&profile))

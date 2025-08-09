@@ -20,7 +20,7 @@ import (
 	"github.com/calque-ai/calque-pipe/pkg/convert"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/logger"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
 )
@@ -67,9 +67,9 @@ func runConverterBasics() {
 	// Pipeline: Json String -> Json -> Uppercase -> Struct
 	pipe := calque.Flow()
 	pipe.
-		Use(ctrl.Logger("JSON_INPUT", 300)).                                      // Log original JSON
+		Use(logger.Print("JSON_INPUT")).                                          // Log original JSON
 		Use(text.Transform(func(s string) string { return strings.ToUpper(s) })). // Convert to uppercase for processing
-		Use(ctrl.Logger("UPPERCASE_JSON", 300))                                   // Log transformed JSON
+		Use(logger.Print("UPPERCASE_JSON"))                                       // Log transformed JSON
 
 	// Execute with json string input
 	// convert.ToJson parses the string to make sure its valid json
@@ -102,9 +102,9 @@ func runAIConverterExample(client ai.Client) {
 	// Pipeline: struct -> YAML -> AI analysis -> result string
 	pipe := calque.Flow()
 	pipe.
-		Use(ctrl.Logger("STRUCT_INPUT", 200)).
+		Use(logger.Print("STRUCT_INPUT")).
 		Use(prompt.Template("Analyze this product data and suggest improvements:\n\n{{.Input}}\n\nProvide a brief analysis.")).
-		Use(ctrl.Logger("AI_PROMPT", 320)).
+		Use(logger.Print("AI_PROMPT")).
 		Use(ai.Agent(client))
 
 	// Execute with struct input, get string result

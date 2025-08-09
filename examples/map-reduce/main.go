@@ -13,7 +13,7 @@ import (
 	"github.com/calque-ai/calque-pipe/pkg/convert"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/logger"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
 )
 
@@ -80,13 +80,13 @@ func main() {
 
 	// Create AI evaluation pipeline
 	evaluationPipeline := calque.Flow().
-		Use(ctrl.Logger("resume evaluation", 200)).
+		Use(logger.Head("resume evaluation", 200)).
 		Use(prompt.Template("System: {{.System}}\n\nResume data to evaluate: {{.Input}}", map[string]any{
 			"System": systemPrompt,
 		})).
-		Use(ctrl.Logger("prompt with data", 1000)).
-		Use(ai.Agent(client)).
-		Use(ctrl.Logger("llm response", 200))
+		Use(logger.Head("prompt with data", 1000)).
+		Use(logger.Timing("AI Response Time", ai.Agent(client))).
+		Use(logger.Head("llm response", 200))
 
 	// list of evaluation results
 	evaluations := make([]Evaluation, 0, len(resumes))

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
+	"github.com/calque-ai/calque-pipe/pkg/middleware/logger"
 	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
 )
 
@@ -47,10 +47,10 @@ func main() {
 func createAgentPipeline() *calque.Pipeline {
 	pipe := calque.Flow()
 	pipe.
-		Use(ctrl.Logger("HTTP_REQUEST", 200)).                                    // Log incoming request
+		Use(logger.Head("HTTP_REQUEST", 200)).                                    // Log incoming request
 		Use(text.Transform(func(s string) string { return strings.ToUpper(s) })). // Transform message to uppercase
 		Use(text.Transform(func(s string) string { return "Processed: " + s })).  // Add prefix
-		Use(ctrl.Logger("PROCESSED_MESSAGE", 200))                                // Log processed result
+		Use(logger.Head("PROCESSED_MESSAGE", 200))                                // Log processed result
 
 	return pipe
 }
