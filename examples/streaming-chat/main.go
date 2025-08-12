@@ -34,14 +34,17 @@ func main() {
 	fmt.Println("Calque-Pipe Streaming Chat")
 	fmt.Println("Using SSE converter and memory middleware")
 
+	// Initialize AI client (expensive resource created once)
+	client, err := ollama.New("llama3.2:1b")
+	if err != nil {
+		log.Fatal("Failed to create Ollama provider:", err)
+	}
+
 	// Create conversation memory
 	conversationMemory := memory.NewConversation()
 
-	// Create chat pipeline
-	chatPipeline := createChatPipeline(conversationMemory)
-
-	// Set up routes
-	http.HandleFunc("POST /chat", handleStreamingChat(chatPipeline))
+	// Set up routes with initialized resources
+	http.HandleFunc("POST /chat", handleStreamingChat(client, conversationMemory))
 	http.HandleFunc("GET /", serveHTML)
 
 	// Start server
@@ -50,54 +53,9 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-// createChatPipeline builds the streaming chat processing pipeline
-func createChatPipeline(conversationMemory *memory.ConversationMemory) *calque.Pipeline {
-	config := calque.PipelineConfig{
-		MaxConcurrent: calque.ConcurrencyAuto, // limit goroutines based on GOMAXPROCS
-	}
-
-	flow := calque.Flow(config)
-
-	// create Ollama client (connects to localhost:11434 by default)
-	// You can replace this with any other AI client as needed
-	client, err := ollama.New("llama3.2:1b")
-	if err != nil {
-		log.Fatal("Failed to create Ollama provider:", err)
-	}
-
-	// Create agents
-	primaryAgent := ai.Agent(client)
-	fallbackAgent := ai.Agent(ai.NewMockClient("Hi there! I'm a backup assistant ready to help."))
-
-	flow.
-		// 1. Rate limiting
-		Use(ctrl.RateLimit(10, time.Second)).
-
-		// 2. Request logging
-		Use(logger.Head("CHAT_REQUEST", 100)).
-
-		// 3. Memory input (automatically uses key from context)
-		Use(conversationMemory.InputFromContext()).
-
-		// 4. Chat prompt template
-		Use(prompt.Template("You are a helpful but zany AI assistant. Continue the conversation naturally.\n\n{{.Input}}\n\nagent:")).
-
-		// 5. Agent with fallback
-		Use(ctrl.Fallback(primaryAgent, fallbackAgent)).
-
-		// 6. Memory output (automatically uses key from context)
-		Use(conversationMemory.OutputFromContext()).
-
-		// 7. Response logging
-		Use(logger.Head("CHAT_RESPONSE", 100))
-
-	return flow
-}
-
-// handleStreamingChat http handler creates an SSE handler for streaming chat responses
-func handleStreamingChat(pipeline *calque.Pipeline) http.HandlerFunc {
+// handleStreamingChat creates an SSE handler for streaming chat responses
+func handleStreamingChat(client *ollama.Client, conversationMemory *memory.ConversationMemory) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Parse JSON request
 		var chatReq ChatRequest
 		if err := json.NewDecoder(r.Body).Decode(&chatReq); err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -109,20 +67,37 @@ func handleStreamingChat(pipeline *calque.Pipeline) http.HandlerFunc {
 			return
 		}
 
-		// Add user ID to context for memory
-		ctx := memory.WithKey(r.Context(), chatReq.UserID)
-
-		// Create SSE converter with custom event fields
-		sseConverter := convert.ToSSE(w).
-			WithChunkMode(convert.SSEChunkByWord).
+		// Create SSE converter with chunk by word and custom event fields
+		sseConverter := convert.ToSSE(w).WithChunkMode(convert.SSEChunkByWord).
 			WithEventFields(map[string]any{
 				"user_id":   chatReq.UserID,
 				"timestamp": time.Now(),
-				"session":   "chat_session", // Any custom fields you want
+				"session":   "chat_session",
 			})
 
+		// Create agents with fallback
+		primaryAgent := ai.Agent(client)
+		fallbackAgent := ai.Agent(ai.NewMockClient("Hi there! I'm a mock backup assistant ready to help."))
+
+		// Build pipeline with direct userID access (no context needed)
+		pipeline := calque.Flow().
+			// 1. Rate limiting
+			Use(ctrl.RateLimit(10, time.Second)).
+			// 2. Request logging
+			Use(logger.Head("CHAT_REQUEST", 100)).
+			// 3. Memory input - retrieves memory using userID as a key
+			Use(conversationMemory.Input(chatReq.UserID)).
+			// 4. Chat prompt template
+			Use(prompt.Template("You are a helpful but zany AI assistant. Continue the conversation naturally.\n\n{{.Input}}\n\nagent:")).
+			// 5. Agent with fallback
+			Use(ctrl.Fallback(primaryAgent, fallbackAgent)).
+			// 6. Memory output - stores response with userID
+			Use(conversationMemory.Output(chatReq.UserID)).
+			// 7. Response logging
+			Use(logger.Head("CHAT_RESPONSE", 100))
+
 		// Run pipeline
-		err := pipeline.Run(ctx, strings.NewReader(chatReq.Message), sseConverter)
+		err := pipeline.Run(r.Context(), strings.NewReader(chatReq.Message), sseConverter)
 		if err != nil {
 			log.Printf("Pipeline error: %v", err)
 			sseConverter.WriteError(err) // SSE converter handles error formatting

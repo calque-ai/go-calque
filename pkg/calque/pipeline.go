@@ -1,6 +1,7 @@
 package calque
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"runtime"
@@ -168,6 +169,24 @@ func (f *Pipeline) UseFunc(fn HandlerFunc) *Pipeline {
 	return f.Use(fn)
 }
 
+// ServeFlow implements the Handler interface, enabling pipeline composability.
+//
+// Input: *Request containing context and input data stream
+// Output: error if pipeline execution fails
+// Behavior: STREAMING - executes the entire pipeline as a single handler
+//
+// This allows pipelines to be used as handlers in other pipelines, enabling
+// true composability where complex sub-pipelines can be embedded anywhere
+// a handler is expected.
+//
+// Example:
+//
+//	subPipeline := calque.Flow().Use(handler1).Use(handler2)
+//	mainPipeline := calque.Flow().Use(subPipeline).Use(handler3)
+func (f *Pipeline) ServeFlow(req *Request, res *Response) error {
+	return f.runWithStreaming(req.Context, req.Data, res.Data)
+}
+
 // Run executes the pipeline with streaming data flow and concurrent handler processing.
 //
 // Input: context.Context for cancellation, input data (any type), output pointer (any type)
@@ -192,10 +211,40 @@ func (f *Pipeline) UseFunc(fn HandlerFunc) *Pipeline {
 //	}
 //	fmt.Println("Output:", result)
 func (f *Pipeline) Run(ctx context.Context, input any, output any) error {
-
 	if len(f.handlers) == 0 {
 		// No handlers, just copy input to output with conversion
 		return f.copyInputToOutput(input, output)
+	}
+
+	// 1. Convert input (any) -> io.Reader
+	reader, err := f.inputToReader(input)
+	if err != nil {
+		return err
+	}
+
+	// 2. Execute pipeline with pure streaming I/O
+	var outputBuffer bytes.Buffer
+	if err := f.runWithStreaming(ctx, reader, &outputBuffer); err != nil {
+		return err
+	}
+
+	// 3. Convert io.Reader -> output (any)
+	return f.readerToOutput(&outputBuffer, output)
+}
+
+// runWithStreaming executes the pipeline with pure streaming I/O (no conversions).
+//
+// Input: context.Context for cancellation, io.Reader for input stream, io.Writer for output
+// Output: error if pipeline execution fails
+// Behavior: STREAMING - each handler runs in its own goroutine connected by io.Pipe
+//
+// This is the core streaming execution logic separated from conversion concerns.
+// Enables pipeline composability by working with raw streaming I/O interfaces.
+func (f *Pipeline) runWithStreaming(ctx context.Context, input io.Reader, output io.Writer) error {
+	if len(f.handlers) == 0 {
+		// No handlers, just copy input to output
+		_, err := io.Copy(output, input)
+		return err
 	}
 
 	// Create a chain of pipes between handlers
@@ -209,27 +258,16 @@ func (f *Pipeline) Run(ctx context.Context, input any, output any) error {
 		pipes[i].r, pipes[i].w = Pipe()
 	}
 
-	// Convert input to reader
-	reader, err := f.inputToReader(input)
-	if err != nil {
-		return err
-	}
-
 	// Creates inputReader for the first handler's input
 	inputR, inputW := io.Pipe()                    // Create a pipe for input
 	inputReader := &PipeReader{PipeReader: inputR} // Wraps the input reader
 	go func() {
 		defer inputW.Close()
-		io.Copy(inputW, reader) // Copy input reader to pipe writer
+		io.Copy(inputW, input) // Copy input reader to pipe writer
 	}()
 
 	// Sets finalReader to read the last handler's output
-	var finalReader io.Reader
-	if len(f.handlers) > 0 {
-		finalReader = pipes[len(pipes)-1].r
-	} else {
-		finalReader = inputReader
-	}
+	finalReader := pipes[len(pipes)-1].r
 
 	//  Runs all handlers concurrently in goroutines for streaming
 	//  Handler1: [========]
@@ -275,7 +313,7 @@ func (f *Pipeline) Run(ctx context.Context, input any, output any) error {
 	// Consume final output in background
 	outputDone := make(chan error, 2)
 	go func() {
-		err := f.readerToOutput(finalReader, output)
+		_, err := io.Copy(output, finalReader)
 		outputDone <- err
 	}()
 

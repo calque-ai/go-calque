@@ -7,8 +7,9 @@ A **streaming middleware framework** for building AI agents and data processing 
 Calque-Pipe brings HTTP middleware patterns to AI and data processing. Instead of handling HTTP requests, you compose pipelines where each middleware processes streaming data through `io.Pipe` connections.
 
 **Key benefits:**
+
 - **Streaming first**: Process data as it flows, not after it's fully loaded
-- **True concurrency**: Each middleware runs in its own goroutine  
+- **True concurrency**: Each middleware runs in its own goroutine
 - **Memory efficient**: Constant memory usage regardless of input size
 - **Real-time processing**: Responses begin immediately, no waiting for full datasets
 - **Composable**: Chain middleware just like HTTP handlers
@@ -49,7 +50,7 @@ Input → Middleware1 → Middleware2 → Middleware3 → Output
 **Key Patterns:**
 
 1. **Streaming Processing**: Uses `io.Reader`/`io.Writer` under the hood via `Request`/`Response` wrappers
-2. **Concurrent Execution**: Each middleware runs in its own goroutine  
+2. **Concurrent Execution**: Each middleware runs in its own goroutine
 3. **Immediate Processing**: No buffering - processing starts as data arrives
 4. **Backpressure Handling**: Pipes automatically handle flow control
 5. **Context Propagation**: Cancellation and timeouts flow through the entire chain
@@ -59,25 +60,29 @@ Input → Middleware1 → Middleware2 → Middleware3 → Output
 Calque-Pipe includes batteries-included middleware for common AI and data processing patterns:
 
 ### AI & LLM (`ai/`, `prompt/`)
+
 - **AI Agents**: `ai.Agent(client)` - Connect to Gemini, Ollama, or custom providers
-- **Prompt Templates**: `prompt.Template("Question: {{.Input}}")` - Dynamic prompt formatting  
+- **Prompt Templates**: `prompt.Template("Question: {{.Input}}")` - Dynamic prompt formatting
 - **Streaming Support**: Real-time response processing as tokens arrive
 - **Context Management**: Automatic conversation and context handling
 
 ### Flow Control (`ctrl/`, `logger/`)
+
 - **Timeouts**: `ctrl.Timeout(handler, duration)` - Prevent hanging operations
 - **Retries**: `ctrl.Retry(handler, attempts)` - Handle transient failures
-- **Parallel Processing**: `ctrl.Parallel(handlers...)` - Concurrent execution 
+- **Parallel Processing**: `ctrl.Parallel(handlers...)` - Concurrent execution
 - **Logging**: `logger.Print(label)` - Non-intrusive request/response logging
 - **Conditional Logic**: `ctrl.If(condition, handler)` - Dynamic routing
 
 ### Data Processing (`text/`, `convert/`)
+
 - **Text Transform**: `text.Transform(func)` - Simple string transformations
 - **JSON/YAML/XML**: `convert.JSON()`, `convert.YAML()` - Structured data conversion
 - **Schema Validation**: Ensure data conforms to expected formats
 - **Streaming Parsers**: Process large files without loading into memory
 
 ### Memory & State (`memory/`)
+
 - **Conversation Memory**: Track chat history with configurable limits
 - **Context Windows**: Sliding window memory management for long conversations
 - **Storage Backends**: In-memory, Redis, or custom storage adapters
@@ -88,24 +93,27 @@ Calque-Pipe includes batteries-included middleware for common AI and data proces
 Transform structured data at pipeline boundaries:
 
 **Input Converters** (prepare data for processing):
+
 ```go
 convert.ToJson(struct)      // Struct → JSON stream
-convert.ToYaml(struct)      // Struct → YAML stream  
+convert.ToYaml(struct)      // Struct → YAML stream
 convert.ToJsonSchema(struct) // Struct + schema → stream (for AI context)
 ```
 
 **Output Converters** (parse results):
+
 ```go
 convert.FromJson(&result)           // JSON stream → struct
 convert.FromJsonSchema(&result)     // Validates output against schema
 ```
 
 **Usage:**
+
 ```go
 // JSON processing pipeline
 err := flow.Run(ctx, convert.ToJson(data), convert.FromJson(&result))
 
-// AI with schema validation  
+// AI with schema validation
 err := flow.Run(ctx, convert.ToJsonSchema(input), convert.FromJsonSchema[Output](&result))
 ```
 
@@ -113,24 +121,24 @@ err := flow.Run(ctx, convert.ToJsonSchema(input), convert.FromJsonSchema[Output]
 
 ### Priority Middleware
 
-**✅ Tool Calling** - Function execution for AI agents (completed)  
-**RAG Components** - Vector search, document chunking, context building  
+**Tool Calling** - ✅ Function execution for AI agents
+**Information Retrieval** - Vector search, context building, semantic filtering
+**Multi-Agent Collaboration** - Agent selection, load balancing, conditional routing  
 **Guardrails & Safety** - Input filtering, output validation, schema compliance  
-**Multi-Agent Routing** - Agent selection, load balancing, conditional routing  
-**HTTP/API Integration** - Web handlers, streaming responses, WebSocket support  
+**HTTP/API Integration** - ✅ streaming responses
 
 ### Framework Improvements
 
 **Enhanced Memory** - Vector-based semantic memory retrieval  
 **Advanced Agents** - Planning, reflection, and self-evaluation capabilities  
-**Developer Experience** - Better type inference, pipeline helpers, function shortcuts  
+**Developer Experience** - Better type inference, pipeline helpers, function shortcuts
 
 ### Essential Examples
 
-**Core Framework**: ✅ basics, ✅ converters, ✅ converters-jsonschema, 🔲 streaming-chats  
+**Core Framework**: ✅ basics, ✅ converters, ✅ converters-jsonschema, ✅ streaming-chats  
 **Data Processing**: ✅ memory, 🔲 batch-processing, 🔲 pipeline-composition  
 **AI Agents**: ✅ tool-calling, 🔲 rag-pipeline, 🔲 multi-agent-workflow, 🔲 guardrails-validation  
-**Advanced**: 🔲 web-api-agent, 🔲 human-in-the-loop  
+**Advanced**: ✅ web-api-agent, 🔲 human-in-the-loop
 
 ### Nice-to-Have
 
