@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Streaming Chat</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        #chat { border: 1px solid #ccc; height: 400px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
+        #messageInput { width: 80%; padding: 8px; }
+        #sendButton { padding: 8px 16px; }
+        .message { margin: 5px 0; }
+        .user { color: blue; font-weight: bold; }
+        .assistant { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Streaming Chat</h1>
+    <p>This example uses the new SSE converter and contextual memory middleware.</p>
+    <div id="chat"></div>
+    <input type="text" id="messageInput" placeholder="Type a message..." />
+    <button id="sendButton" onclick="sendMessage()">Send</button>
+    
+    <script>
+        const userID = 'user_' + Math.random().toString(36).substr(2, 9);
+        const chat = document.getElementById('chat');
+        let currentMessage = '';
+        
+        function addMessage(role, content) {
+            const div = document.createElement('div');
+            div.className = 'message ' + role;
+            div.textContent = content;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+        
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            addMessage('user', 'You: ' + message);
+            input.value = '';
+            currentMessage = '';
+            
+            fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message, user_id: userID })
+            }).then(response => {
+                if (!response.ok) throw new Error('Network error');
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                function readStream() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) return;
+                        
+                        const chunk = decoder.decode(value, { stream: true });
+                        buffer += chunk;
+                        
+                        // Process complete SSE events
+                        const lines = buffer.split('\n\n');
+                        buffer = lines.pop();
+                        
+                        for (const eventBlock of lines) {
+                            if (eventBlock.trim()) {
+                                processSSEEvent(eventBlock);
+                            }
+                        }
+                        
+                        readStream();
+                    }).catch(err => {
+                        console.error('Stream error:', err);
+                        addMessage('error', 'Error: ' + err.message);
+                    });
+                }
+                readStream();
+            }).catch(err => {
+                addMessage('error', 'Error: ' + err.message);
+            });
+        }
+        
+        function processSSEEvent(eventBlock) {
+            const lines = eventBlock.split('\n');
+            let event = '';
+            let data = '';
+            
+            for (const line of lines) {
+                if (line.startsWith('event: ')) {
+                    event = line.substring(7);
+                } else if (line.startsWith('data: ')) {
+                    data = line.substring(6);
+                }
+            }
+            
+            if (event === 'message' && data) {
+                try {
+                    const response = JSON.parse(data);
+                    if (response.content && !response.done) {
+                        currentMessage += response.content;
+                        updateCurrentMessage();
+                    }
+                } catch (e) {
+                    console.error('Parse error:', e);
+                }
+            } else if (event === 'completion') {
+               // message is complete
+            } else if (event === 'error') {
+                try {
+                    const error = JSON.parse(data);
+                    addMessage('error', 'Error: ' + error.error);
+                } catch (e) {
+                    addMessage('error', 'Unknown error occurred');
+                }
+            }
+        }
+        
+        function updateCurrentMessage() {
+            let lastMessage = chat.lastElementChild;
+            if (!lastMessage || !lastMessage.classList.contains('assistant')) {
+                lastMessage = document.createElement('div');
+                lastMessage.className = 'message assistant';
+                chat.appendChild(lastMessage);
+            }
+            lastMessage.textContent = 'Assistant: ' + currentMessage;
+            chat.scrollTop = chat.scrollHeight;
+        }
+        
+
+        
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>

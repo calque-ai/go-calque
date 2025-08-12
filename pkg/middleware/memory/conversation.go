@@ -2,6 +2,7 @@ package memory
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -209,4 +210,67 @@ func (cm *ConversationMemory) Info(key string) (messageCount int, exists bool, e
 // ListKeys returns all active conversation keys
 func (cm *ConversationMemory) ListKeys() []string {
 	return cm.store.List()
+}
+
+// ContextKey is a type for context keys to avoid collisions
+type ContextKey string
+
+const (
+	// MemoryKey is the context key for memory identification
+	MemoryKey ContextKey = "memory_key"
+)
+
+// WithKey adds a memory key to the context
+func WithKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, MemoryKey, key)
+}
+
+// GetKey extracts memory key from context
+func GetKey(ctx context.Context) string {
+	if key, ok := ctx.Value(MemoryKey).(string); ok {
+		return key
+	}
+	return ""
+}
+
+// InputFromContext creates input middleware that uses key from context
+func (cm *ConversationMemory) InputFromContext() calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		key := GetKey(req.Context)
+		if key == "" {
+			return fmt.Errorf("no memory key found in context for memory input")
+		}
+
+		return cm.Input(key).ServeFlow(req, res)
+	})
+}
+
+// OutputFromContext creates output middleware that uses key from context
+func (cm *ConversationMemory) OutputFromContext() calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		key := GetKey(req.Context)
+		if key == "" {
+			return fmt.Errorf("no memory key found in context for memory output")
+		}
+
+		return cm.Output(key).ServeFlow(req, res)
+	})
+}
+
+// WrapFromContext wraps a handler with both input and output memory using key from context
+func (cm *ConversationMemory) WrapFromContext(handler calque.Handler) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		key := GetKey(req.Context)
+		if key == "" {
+			return fmt.Errorf("no memory key found in context for memory")
+		}
+
+		// Create a pipeline: Input → Handler → Output
+		memoryPipeline := calque.Flow().
+			Use(cm.Input(key)).
+			Use(handler).
+			Use(cm.Output(key))
+
+		return memoryPipeline.Run(req.Context, req.Data, res.Data)
+	})
 }
