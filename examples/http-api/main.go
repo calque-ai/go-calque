@@ -45,7 +45,15 @@ func main() {
 
 // createAgentPipeline builds the processing pipeline that will handle requests
 func createAgentPipeline() *calque.Pipeline {
-	pipe := calque.Flow()
+
+	// For a pipeline used in an http handler you may want to limit the number of goroutines created
+	// since you might have thousands of concurrent requests X each handler in your pipeline.
+	config := calque.PipelineConfig{
+		MaxConcurrent: calque.ConcurrencyAuto, // Auto uses the default multiplier (50x) with GOMAXPROCS
+		// CPUMultiplier: 100,  // Or set your own multiplier
+	}
+
+	pipe := calque.Flow(config)
 	pipe.
 		Use(logger.Head("HTTP_REQUEST", 200)).                                    // Log incoming request
 		Use(text.Transform(func(s string) string { return strings.ToUpper(s) })). // Transform message to uppercase

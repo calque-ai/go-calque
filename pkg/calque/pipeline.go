@@ -3,31 +3,196 @@ package calque
 import (
 	"context"
 	"io"
+	"runtime"
 	"sync"
 )
+
+// ConcurrencyUnlimited disables concurrency limits, allowing unlimited handler goroutines.
+// This provides maximum performance but may exhaust resources under high load.
+// Use for development and moderate load scenarios.
+const ConcurrencyUnlimited = 0
+
+// ConcurrencyAuto automatically calculates concurrency limits based on CPU cores.
+// Uses runtime.GOMAXPROCS(0) * CPUMultiplier to determine the maximum concurrent
+// handler goroutines. Balances performance with resource protection.
+// Use for production HTTP APIs and high-load scenarios.
+const ConcurrencyAuto = -1
+
+// DefaultCPUMultiplier provides a conservative default for mixed I/O workloads.
+//
+// On a 4-core system: 4 * 50 = 200 concurrent handlers.
+// Since workload depends on the individual pipeline this is just a starting point,
+// Increase for heavily I/O-bound workloads or decrease for CPU-intensive tasks.
+//
+// Example usage:
+//
+//	config := PipelineConfig{
+//		MaxConcurrent: ConcurrencyAuto,
+//		CPUMultiplier: 100, // More aggressive for AI API calls
+//	}
+const DefaultCPUMultiplier = 50
+
+// PipelineConfig configures pipeline concurrency behavior and resource limits.
+//
+// MaxConcurrent controls the maximum number of handler goroutines that can run
+// simultaneously across all pipeline executions. Use ConcurrencyUnlimited for no limits,
+// ConcurrencyAuto for CPU-based limits, or a positive integer for fixed limits.
+//
+// CPUMultiplier is used when MaxConcurrent = ConcurrencyAuto to calculate the
+// actual limit: runtime.GOMAXPROCS(0) * CPUMultiplier. Higher values allow more
+// concurrency for I/O-bound workloads.
+//
+// Example configurations:
+//
+//	// Default: unlimited concurrency (best for development)
+//	pipeline := Flow()
+//
+//	// Auto-scaling based on CPU cores (good for production)
+//	pipeline := Flow(PipelineConfig{
+//		MaxConcurrent: ConcurrencyAuto,
+//		CPUMultiplier: 75, // Adjust based on workload
+//	})
+//
+//	// Fixed limit (precise resource control)
+//	pipeline := Flow(PipelineConfig{MaxConcurrent: 100})
+type PipelineConfig struct {
+	MaxConcurrent int // ConcurrencyUnlimited, ConcurrencyAuto, or positive integer
+	CPUMultiplier int // multiplier for GOMAXPROCS (used when MaxConcurrent = ConcurrencyAuto)
+}
 
 // Pipeline is the core pipe orchestration primitive
 type Pipeline struct {
 	handlers []Handler
+	sem      chan struct{} // nil = unlimited concurrency
 }
 
-func Flow() *Pipeline {
-	return &Pipeline{}
+// Flow creates a new pipeline with optional concurrency configuration.
+//
+// Input: optional PipelineConfig for concurrency control
+// Output: *Pipeline ready for handler registration
+// Behavior: Creates pipeline with specified or default concurrency limits
+//
+// With no config, uses unlimited concurrency (good for development and moderate load).
+// With config, applies semaphore-based goroutine limiting for resource protection.
+// Each handler in the pipeline runs in its own goroutine, connected by io.Pipe.
+//
+// The semaphore limits the total number of handler goroutines across ALL pipeline
+// executions, preventing resource exhaustion under high concurrent load.
+//
+// Example usage:
+//
+//	// Default: unlimited concurrency
+//	pipeline := calque.Flow()
+//
+//	// Auto-scaling: limits based on CPU cores
+//	pipeline := calque.Flow(calque.PipelineConfig{
+//		MaxConcurrent: calque.ConcurrencyAuto,
+//		CPUMultiplier: 100, // 100x CPU cores
+//	})
+//
+//	// Fixed limit: precise control
+//	pipeline := calque.Flow(calque.PipelineConfig{MaxConcurrent: 50})
+func Flow(configs ...PipelineConfig) *Pipeline {
+	var config PipelineConfig
+	if len(configs) > 0 {
+		config = configs[0]
+	} else {
+		// Default: unlimited concurrency
+		config = PipelineConfig{
+			MaxConcurrent: ConcurrencyUnlimited,
+			CPUMultiplier: DefaultCPUMultiplier,
+		}
+	}
+
+	var sem chan struct{}
+	switch config.MaxConcurrent {
+	case ConcurrencyUnlimited:
+		// Unlimited concurrency
+		sem = nil
+	case ConcurrencyAuto:
+		// Auto-calculate based on CPU
+		multiplier := config.CPUMultiplier
+		if multiplier <= 0 {
+			multiplier = DefaultCPUMultiplier
+		}
+		limit := runtime.GOMAXPROCS(0) * multiplier
+		sem = make(chan struct{}, limit)
+	default:
+		// Fixed limit
+		if config.MaxConcurrent > 0 {
+			sem = make(chan struct{}, config.MaxConcurrent)
+		}
+	}
+
+	return &Pipeline{sem: sem}
 }
 
-// Use adds a handler to the flow
+// Use adds a handler to the pipeline chain.
+//
+// Input: calque.Handler to add to the processing chain
+// Output: *Pipeline (fluent interface for chaining)
+// Behavior: Appends handler to the pipeline chain
+//
+// Handlers are executed in the order they are added. Each handler runs in its own
+// goroutine and connects to the next handler via io.Pipe for streaming data flow.
+// The pipeline supports unlimited handler chaining.
+//
+// Example:
+//
+//	pipeline := calque.Flow().
+//		Use(logger.Print("INPUT")).
+//		Use(ai.Agent(client)).
+//		Use(logger.Print("OUTPUT"))
 func (f *Pipeline) Use(handler Handler) *Pipeline {
 	f.handlers = append(f.handlers, handler)
 	return f
 }
 
-// UseFunc adds a function as a handler
+// UseFunc adds a function as a handler using the HandlerFunc adapter.
+//
+// Input: HandlerFunc - function matching the handler signature
+// Output: *Pipeline (fluent interface for chaining)
+// Behavior: Wraps function as Handler and adds to pipeline
+//
+// Convenience method for adding functions directly without explicit HandlerFunc wrapping.
+// The function must match the signature: func(*Request, *Response) error
+//
+// Example:
+//
+//	pipeline := calque.Flow().
+//		UseFunc(func(req *calque.Request, res *calque.Response) error {
+//			// Custom processing logic
+//			return calque.Write(res, "processed")
+//		})
 func (f *Pipeline) UseFunc(fn HandlerFunc) *Pipeline {
 	return f.Use(fn)
 }
 
-// Run executes the flow with the given input and writes output to the provided pointer
+// Run executes the pipeline with streaming data flow and concurrent handler processing.
+//
+// Input: context.Context for cancellation, input data (any type), output pointer (any type)
+// Output: error if pipeline execution fails
+// Behavior: CONCURRENT - each handler runs in its own goroutine connected by io.Pipe
+//
+// The pipeline creates a chain of handler goroutines connected by io.Pipe instances.
+// Data flows through the chain as it's processed, enabling true streaming with constant
+// memory usage regardless of input size. If concurrency limiting is configured,
+// handler goroutines acquire semaphore slots before execution.
+//
+// Input is automatically converted to io.Reader, output is parsed from final io.Writer.
+// Context cancellation propagates through all handlers for clean shutdown.
+// Pipeline execution fails if any handler returns an error.
+//
+// Example:
+//
+//	var result string
+//	err := pipeline.Run(context.Background(), "input data", &result)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	fmt.Println("Output:", result)
 func (f *Pipeline) Run(ctx context.Context, input any, output any) error {
+
 	if len(f.handlers) == 0 {
 		// No handlers, just copy input to output with conversion
 		return f.copyInputToOutput(input, output)
@@ -76,6 +241,18 @@ func (f *Pipeline) Run(ctx context.Context, input any, output any) error {
 	for i, handler := range f.handlers {
 		wg.Add(1)
 		go func(idx int, h Handler) {
+			// Acquire semaphore if limiting is enabled
+			if f.sem != nil {
+				select {
+				case f.sem <- struct{}{}: // Try to acquire semaphore slot
+					defer func() { <-f.sem }() // Release when this handler completes
+				case <-ctx.Done():
+					errCh <- ctx.Err() // Pipeline cancelled while waiting for semaphore
+					wg.Done()
+					return
+				}
+			}
+
 			defer wg.Done()
 			defer pipes[idx].w.Close()
 

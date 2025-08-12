@@ -1,9 +1,13 @@
 package convert
 
 import (
+	"bytes"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/goccy/go-yaml"
 )
 
 func TestYaml(t *testing.T) {
@@ -16,6 +20,7 @@ func TestYaml(t *testing.T) {
 		{"slice data", []any{1, 2, 3}},
 		{"string data", `key: value`},
 		{"byte data", []byte(`key: value`)},
+		{"io.Reader data", strings.NewReader(`reader: test`)},
 	}
 
 	for _, tt := range tests {
@@ -92,7 +97,7 @@ value: 42`,
 		},
 		{
 			name:    "unsupported type",
-			data:    make(chan int),
+			data:    complex(1, 2),
 			wantErr: true,
 		},
 	}
@@ -104,7 +109,15 @@ value: 42`,
 
 			if tt.wantErr {
 				if err == nil {
-					t.Error("ToReader() expected error, got nil")
+					// For streaming cases, error might occur during read
+					if reader != nil {
+						_, readErr := io.ReadAll(reader)
+						if readErr == nil {
+							t.Error("ToReader() expected error, got nil")
+						}
+					} else {
+						t.Error("ToReader() expected error, got nil")
+					}
 				}
 				return
 			}
@@ -438,6 +451,188 @@ func TestYamlOutputConverter_FromReader_EmptyInput(t *testing.T) {
 	}
 }
 
+func TestYamlInputConverter_ToReader_IoReader(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:  "valid YAML object",
+			input: "name: test\nvalue: 42",
+			want:  "name: test\nvalue: 42",
+		},
+		{
+			name:  "valid YAML array",
+			input: "- 1\n- 2\n- 3\n- test",
+			want:  "- 1\n- 2\n- 3\n- test",
+		},
+		{
+			name:  "valid YAML string",
+			input: `simple string`,
+			want:  `simple string`,
+		},
+		{
+			name:  "valid YAML number",
+			input: `42.5`,
+			want:  `42.5`,
+		},
+		{
+			name:  "valid YAML boolean",
+			input: `true`,
+			want:  `true`,
+		},
+		{
+			name:  "valid YAML null",
+			input: `null`,
+			want:  `null`,
+		},
+		{
+			name:  "valid nested YAML",
+			input: "users:\n  - name: alice\n    age: 30\n  - name: bob\n    age: 25",
+			want:  "users:\n  - name: alice\n    age: 30\n  - name: bob\n    age: 25",
+		},
+		{
+			name:  "valid YAML with comments",
+			input: "# Configuration\nname: test # inline comment\nvalue: 42",
+			want:  "# Configuration\nname: test # inline comment\nvalue: 42",
+		},
+		{
+			name:    "invalid YAML - bad indentation",
+			input:   "name: test\n  bad: indentation",
+			wantErr: true,
+		},
+		{
+			name:    "invalid YAML - malformed",
+			input:   "name: [unclosed array",
+			wantErr: true,
+		},
+		{
+			name:    "empty input",
+			input:   ``,
+			want:    ``,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader(tt.input)
+			y := &yamlInputConverter{data: reader}
+			
+			result, err := y.ToReader()
+			
+			if tt.wantErr {
+				if err == nil {
+					// For streaming validation, error might come when reading
+					data, readErr := io.ReadAll(result)
+					if readErr == nil {
+						t.Errorf("ToReader() expected error, but got valid result: %s", string(data))
+					}
+				}
+				return
+			}
+			
+			if err != nil {
+				t.Errorf("ToReader() error = %v", err)
+				return
+			}
+			
+			if result == nil {
+				t.Fatal("ToReader() returned nil reader")
+			}
+			
+			data, err := io.ReadAll(result)
+			if err != nil {
+				t.Errorf("Failed to read from result: %v", err)
+				return
+			}
+			
+			got := string(data)
+			if got != tt.want {
+				t.Errorf("ToReader() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestYamlInputConverter_ToReader_IoReader_LargeData(t *testing.T) {
+	// Test with data larger than buffer sizes to ensure chunked validation works
+	largeObject := make(map[string]any)
+	for i := 0; i < 1000; i++ {
+		largeObject[fmt.Sprintf("key_%d", i)] = fmt.Sprintf("value_%d", i)
+	}
+	
+	// Convert to YAML bytes first
+	yamlData, err := yaml.Marshal(largeObject)
+	if err != nil {
+		t.Fatalf("Failed to marshal large object: %v", err)
+	}
+	
+	reader := bytes.NewReader(yamlData)
+	y := &yamlInputConverter{data: reader}
+	
+	result, err := y.ToReader()
+	if err != nil {
+		t.Errorf("ToReader() error = %v", err)
+		return
+	}
+	
+	// Read result and verify it's valid YAML
+	data, err := io.ReadAll(result)
+	if err != nil {
+		t.Errorf("Failed to read from result: %v", err)
+		return
+	}
+	
+	// Verify the result is valid YAML by unmarshaling
+	var parsed map[string]any
+	if err := yaml.Unmarshal(data, &parsed); err != nil {
+		t.Errorf("Result is not valid YAML: %v", err)
+		return
+	}
+	
+	// Verify some content
+	if len(parsed) != 1000 {
+		t.Errorf("Parsed object length = %d, want 1000", len(parsed))
+	}
+}
+
+func TestYamlInputConverter_ToReader_IoReader_ErrorCases(t *testing.T) {
+	tests := []struct {
+		name   string
+		reader io.Reader
+	}{
+		{
+			name:   "reader error during streaming",
+			reader: &failingReader{},
+		},
+		{
+			name:   "slow reader with invalid YAML",
+			reader: &slowReader{data: []byte("invalid: [yaml")},
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			y := &yamlInputConverter{data: tt.reader}
+			
+			result, err := y.ToReader()
+			if err != nil {
+				// Error during setup is acceptable
+				return
+			}
+			
+			// Error should occur when reading from result
+			_, err = io.ReadAll(result)
+			if err == nil {
+				t.Error("Expected error when reading from result, got nil")
+			}
+		})
+	}
+}
+
 func TestYamlIntegration(t *testing.T) {
 	t.Run("input to output roundtrip", func(t *testing.T) {
 		original := map[string]any{
@@ -573,6 +768,46 @@ items:
 		}
 		if items[1] != "item2" {
 			t.Errorf("items[1] = %v, want item2", items[1])
+		}
+	})
+
+	t.Run("io.Reader to output roundtrip", func(t *testing.T) {
+		yamlInput := `name: test
+value: 42
+array: [1, 2, 3]`
+		reader := strings.NewReader(yamlInput)
+		
+		// Convert io.Reader to reader via ToYaml
+		inputConverter := ToYaml(reader)
+		pipeReader, err := inputConverter.ToReader()
+		if err != nil {
+			t.Fatalf("ToReader() error = %v", err)
+		}
+		
+		// Convert back from reader
+		var result map[string]any
+		outputConverter := FromYaml(&result)
+		err = outputConverter.FromReader(pipeReader)
+		if err != nil {
+			t.Fatalf("FromReader() error = %v", err)
+		}
+		
+		// Verify roundtrip
+		if result["name"] != "test" {
+			t.Errorf("name = %v, want test", result["name"])
+		}
+		if result["value"] != uint64(42) {
+			t.Errorf("value = %v, want 42", result["value"])
+		}
+		
+		array := result["array"].([]any)
+		if len(array) != 3 {
+			t.Errorf("array length = %d, want 3", len(array))
+		}
+		for i, expected := range []uint64{1, 2, 3} {
+			if array[i] != expected {
+				t.Errorf("array[%d] = %v, want %v", i, array[i], expected)
+			}
 		}
 	})
 }

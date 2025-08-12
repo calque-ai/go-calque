@@ -2,7 +2,6 @@ package calque
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -22,13 +21,6 @@ type Converter interface {
 	InputConverter
 	OutputConverter
 }
-
-// Common errors
-var (
-	ErrUnsupportedInputType  = errors.New("unsupported input type")
-	ErrUnsupportedOutputType = errors.New("unsupported output type")
-	ErrConversionFailed      = errors.New("conversion failed")
-)
 
 // inputToReader converts input to io.Reader
 func (f *Pipeline) inputToReader(input any) (io.Reader, error) {

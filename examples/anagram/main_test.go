@@ -1,7 +1,13 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
 // Test data - mix of small and larger word sets
@@ -60,5 +66,223 @@ func BenchmarkBaselineLarge(b *testing.B) {
 func BenchmarkCalquePipeLarge(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		CalquePipe(largeTestWords)
+	}
+}
+
+// CalquePipeWithConfig creates a pipeline with specific concurrency configuration
+func CalquePipeWithConfig(words []string, config calque.PipelineConfig) map[string]map[string]struct{} {
+	if len(words) == 0 {
+		return nil
+	}
+
+	input := strings.Join(words, "\n")
+
+	pipeline := calque.Flow(config).
+		Use(filterAndLowercase()).
+		Use(mapToAnagramFormat()).
+		Use(accumulateAnagrams())
+
+	var outputStr string
+	err := pipeline.Run(context.Background(), input, &outputStr)
+	if err != nil {
+		return nil
+	}
+
+	return parseAnagramOutput(outputStr)
+}
+
+// Benchmark with unlimited concurrency (old behavior)
+func BenchmarkCalquePipeUnlimited(b *testing.B) {
+	config := calque.PipelineConfig{
+		MaxConcurrent: calque.ConcurrencyUnlimited,
+	}
+	for i := 0; i < b.N; i++ {
+		CalquePipeWithConfig(testWords, config)
+	}
+}
+
+func BenchmarkCalquePipeUnlimitedLarge(b *testing.B) {
+	config := calque.PipelineConfig{
+		MaxConcurrent: calque.ConcurrencyUnlimited,
+	}
+	for i := 0; i < b.N; i++ {
+		CalquePipeWithConfig(largeTestWords, config)
+	}
+}
+
+// Benchmark with fixed concurrency limit
+func BenchmarkCalquePipeFixed(b *testing.B) {
+	config := calque.PipelineConfig{
+		MaxConcurrent: 10, // Fixed limit of 10 concurrent pipelines
+	}
+	for i := 0; i < b.N; i++ {
+		CalquePipeWithConfig(testWords, config)
+	}
+}
+
+func BenchmarkCalquePipeFixedLarge(b *testing.B) {
+	config := calque.PipelineConfig{
+		MaxConcurrent: 10, // Fixed limit of 10 concurrent pipelines
+	}
+	for i := 0; i < b.N; i++ {
+		CalquePipeWithConfig(largeTestWords, config)
+	}
+}
+
+// Benchmark with auto CPU-based limiting (current default)
+func BenchmarkCalquePipeAuto(b *testing.B) {
+	config := calque.PipelineConfig{
+		MaxConcurrent: calque.ConcurrencyAuto,
+		CPUMultiplier: 4, // 4x CPU cores
+	}
+	for i := 0; i < b.N; i++ {
+		CalquePipeWithConfig(testWords, config)
+	}
+}
+
+func BenchmarkCalquePipeAutoLarge(b *testing.B) {
+	config := calque.PipelineConfig{
+		MaxConcurrent: calque.ConcurrencyAuto,
+		CPUMultiplier: 4, // 4x CPU cores
+	}
+	for i := 0; i < b.N; i++ {
+		CalquePipeWithConfig(largeTestWords, config)
+	}
+}
+
+// Benchmark with high CPU multiplier
+func BenchmarkCalquePipeHighCPU(b *testing.B) {
+	config := calque.PipelineConfig{
+		MaxConcurrent: calque.ConcurrencyAuto,
+		CPUMultiplier: 8, // 8x CPU cores
+	}
+	for i := 0; i < b.N; i++ {
+		CalquePipeWithConfig(testWords, config)
+	}
+}
+
+func BenchmarkCalquePipeHighCPULarge(b *testing.B) {
+	config := calque.PipelineConfig{
+		MaxConcurrent: calque.ConcurrencyAuto,
+		CPUMultiplier: 8, // 8x CPU cores
+	}
+	for i := 0; i < b.N; i++ {
+		CalquePipeWithConfig(largeTestWords, config)
+	}
+}
+
+// Benchmark with goroutine counting
+func BenchmarkGoroutineUsage(b *testing.B) {
+	fmt.Printf("\n=== Goroutine Usage Analysis ===\n")
+	
+	// Baseline goroutine count
+	runtime.GC()
+	runtime.GC() // Run twice to ensure cleanup
+	baselineGoroutines := runtime.NumGoroutine()
+	fmt.Printf("Baseline goroutines: %d\n", baselineGoroutines)
+
+	configs := []struct {
+		name   string
+		config *calque.PipelineConfig
+	}{
+		{"Default", nil},
+		{"Unlimited", &calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyUnlimited}},
+		{"Fixed3", &calque.PipelineConfig{MaxConcurrent: 3}},
+		{"Fixed5", &calque.PipelineConfig{MaxConcurrent: 5}},
+		{"Auto1x", &calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 1}},
+		{"Auto2x", &calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 2}},
+	}
+
+	for _, cfg := range configs {
+		b.Run(cfg.name, func(b *testing.B) {
+			var maxGoroutines, minGoroutines int = 0, 999999
+			var totalGoroutines int64 = 0
+			
+			for i := 0; i < b.N; i++ {
+				// Measure goroutines before
+				beforeGoroutines := runtime.NumGoroutine()
+				
+				// Run the pipeline
+				if cfg.config == nil {
+					CalquePipe(testWords) // Default
+				} else {
+					CalquePipeWithConfig(testWords, *cfg.config)
+				}
+				
+				// Measure goroutines after
+				afterGoroutines := runtime.NumGoroutine()
+				
+				// Track statistics
+				if afterGoroutines > maxGoroutines {
+					maxGoroutines = afterGoroutines
+				}
+				if beforeGoroutines < minGoroutines {
+					minGoroutines = beforeGoroutines
+				}
+				totalGoroutines += int64(afterGoroutines)
+			}
+			
+			avgGoroutines := float64(totalGoroutines) / float64(b.N)
+			fmt.Printf("  %s: min=%d, max=%d, avg=%.1f goroutines\n", 
+				cfg.name, minGoroutines, maxGoroutines, avgGoroutines)
+		})
+	}
+}
+
+// Test concurrent pipeline execution to see semaphore effects
+func TestConcurrentPipelineExecution(t *testing.T) {
+	fmt.Printf("\n=== Concurrent Execution Test ===\n")
+	
+	configs := []struct {
+		name   string
+		config calque.PipelineConfig
+	}{
+		{"Unlimited", calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyUnlimited}},
+		{"Fixed3", calque.PipelineConfig{MaxConcurrent: 3}},
+		{"Fixed5", calque.PipelineConfig{MaxConcurrent: 5}},
+		{"Auto1x", calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 1}},
+		{"Auto2x", calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 2}},
+	}
+
+	for _, cfg := range configs {
+		t.Run(cfg.name, func(t *testing.T) {
+			// Run 20 concurrent pipelines
+			const numPipelines = 20
+			
+			// Measure baseline
+			runtime.GC()
+			baselineGoroutines := runtime.NumGoroutine()
+			
+			results := make(chan int, numPipelines)
+			
+			// Launch concurrent pipelines
+			for i := 0; i < numPipelines; i++ {
+				go func(id int) {
+					// Measure goroutines during concurrent execution
+					duringGoroutines := runtime.NumGoroutine()
+					results <- duringGoroutines
+					
+					// Run pipeline
+					CalquePipeWithConfig(testWords, cfg.config)
+				}(i)
+			}
+			
+			// Collect results
+			var maxConcurrentGoroutines int
+			for i := 0; i < numPipelines; i++ {
+				goroutineCount := <-results
+				if goroutineCount > maxConcurrentGoroutines {
+					maxConcurrentGoroutines = goroutineCount
+				}
+			}
+			
+			// Wait a moment for cleanup
+			runtime.GC()
+			finalGoroutines := runtime.NumGoroutine()
+			
+			fmt.Printf("  %s: baseline=%d, peak=%d, final=%d, increase=%d goroutines\n",
+				cfg.name, baselineGoroutines, maxConcurrentGoroutines, finalGoroutines,
+				maxConcurrentGoroutines-baselineGoroutines)
+		})
 	}
 }
