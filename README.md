@@ -2,7 +2,7 @@
 
 <img src=".github/images/go-calque.jpg" alt="Go-Calque" width="350">
 
-A **streaming middleware framework** for building AI agents and data processing flows in Go.
+An idiomatic streaming **memory-efficient AI agent framework** for Go.
 
 ## Installation
 
@@ -51,7 +51,8 @@ func main() {
 ✅ **Memory Efficient** - Constant memory usage regardless of input size  
 ✅ **Real-time Processing** - Responses begin immediately, no waiting for full datasets  
 ✅ **Composable** - Chain middleware just like HTTP handlers  
-✅ **AI-Native** - Built-in support for LLMs and AI workflows
+✅ **AI-Native** - Built-in support for LLMs and AI workflows  
+✅ **Go-Idiomatic** - Built with Go conventions using `io.Reader`/`io.Writer`, not porting Python patterns
 
 ## Philosophy
 
@@ -60,7 +61,7 @@ Go-Calque brings **HTTP middleware patterns** to AI and data processing. Instead
 **The Pattern**: Chain middleware like HTTP handlers, but for streaming data:
 
 ```go
-flow := calque.Flow().
+flow := calque.NewFlow().
     Use(middleware1).
     Use(middleware2).
     Use(middleware3)
@@ -310,6 +311,20 @@ func StreamingProcessor() calque.HandlerFunc {
 
 ## Advanced Topics
 
+### Concurrency Control
+
+```go
+// For high-traffic scenarios, limit goroutine creation
+config := calque.FlowConfig{
+    MaxConcurrent: calque.ConcurrencyAuto, // Auto-scales with CPU cores
+    CPUMultiplier: 10,                     // 10x GOMAXPROCS
+}
+
+flow := calque.NewFlow(config).
+    Use(ai.Agent(client)).
+    Use(logger.Print("RESPONSE"))
+```
+
 ### Error Handling & Retries
 
 ```go
@@ -359,6 +374,27 @@ currentTime := tools.Simple("current_time", "Gets current date and time", func(f
 flow := calque.NewFlow().
     Use(ai.Agent(client, ai.WithTools(calculator, currentTime)))
 ```
+
+## Performance
+
+Go-Calque's streaming architecture provides significant memory efficiency benefits. Benchmarks from our [anagram processing example](examples/anagram/) show:
+
+### Memory Usage (Large Dataset - 1000 words)
+
+```
+Baseline:        4,011,708 B/op    33,990 allocs/op
+Go-Calque:         248,295 B/op     9,574 allocs/op
+Memory Reduction:  94% less memory,  72% fewer allocations
+```
+
+### Processing Characteristics
+
+- **Constant Memory**: Memory usage remains stable regardless of input size
+- **Streaming Processing**: Data flows through pipelines without full buffering
+- **Concurrent Execution**: Each middleware stage runs in its own goroutine
+- **Backpressure Handling**: Automatic flow control prevents memory overflow
+
+_Run the benchmarks yourself: `cd examples/anagram && go test -bench=.`_
 
 ## Roadmap
 
