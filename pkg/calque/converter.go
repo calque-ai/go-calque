@@ -23,7 +23,7 @@ type Converter interface {
 }
 
 // inputToReader converts input to io.Reader
-func (f *Pipeline) inputToReader(input any) (io.Reader, error) {
+func (f *Flow) inputToReader(input any) (io.Reader, error) {
 	// Check if input is a converter with data
 	if conv, ok := input.(InputConverter); ok {
 		return conv.ToReader()
@@ -43,7 +43,7 @@ func (f *Pipeline) inputToReader(input any) (io.Reader, error) {
 }
 
 // readerToOutput writes the final reader data to the output pointer
-func (f *Pipeline) readerToOutput(reader io.Reader, output any) error {
+func (f *Flow) readerToOutput(reader io.Reader, output any) error {
 	// Check if output is a converter - it handles its own target
 	if conv, ok := output.(OutputConverter); ok {
 		return conv.FromReader(reader)
@@ -71,7 +71,7 @@ func (f *Pipeline) readerToOutput(reader io.Reader, output any) error {
 }
 
 // copyInputToOutput handles the case when there are no handlers
-func (f *Pipeline) copyInputToOutput(input any, output any) error {
+func (f *Flow) copyInputToOutput(input any, output any) error {
 	// convert input to reader
 	reader, err := f.inputToReader(input)
 	if err != nil {

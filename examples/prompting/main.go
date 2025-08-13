@@ -31,7 +31,7 @@ func main() {
 func basicTemplateExample(client ai.Client) {
 	fmt.Println("=== Basic Template Example ===")
 
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.
 		Use(logger.Print("INPUT")).
 		Use(prompt.Template("You are a helpful assistant. {{.Input}}")).
@@ -57,7 +57,7 @@ func templateWithDataExample(client ai.Client) {
 		"Language": "Go",
 	}
 
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.
 		Use(logger.Print("INPUT")).
 		Use(prompt.Template("You are a {{.Role}} specializing in {{.Language}}. {{.Input}}", params)).
@@ -77,7 +77,7 @@ func templateWithDataExample(client ai.Client) {
 func systemPromptExample(client ai.Client) {
 	fmt.Println("=== SystemPrompt Example ===")
 
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.
 		Use(logger.Print("INPUT")).
 		Use(prompt.System("You are a concise coding expert. Always provide practical examples.")).
@@ -97,7 +97,7 @@ func systemPromptExample(client ai.Client) {
 func chatPromptExample(client ai.Client) {
 	fmt.Println("=== ChatPrompt Example ===")
 
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.
 		Use(logger.Print("INPUT")).
 		Use(prompt.Chat("assistant", "I'm an AI assistant specialized in programming.")).

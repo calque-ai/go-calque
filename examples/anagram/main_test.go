@@ -70,20 +70,20 @@ func BenchmarkCalquePipeLarge(b *testing.B) {
 }
 
 // CalquePipeWithConfig creates a pipeline with specific concurrency configuration
-func CalquePipeWithConfig(words []string, config calque.PipelineConfig) map[string]map[string]struct{} {
+func CalquePipeWithConfig(words []string, config calque.FlowConfig) map[string]map[string]struct{} {
 	if len(words) == 0 {
 		return nil
 	}
 
 	input := strings.Join(words, "\n")
 
-	pipeline := calque.Flow(config).
+	flow := calque.NewFlow(config).
 		Use(filterAndLowercase()).
 		Use(mapToAnagramFormat()).
 		Use(accumulateAnagrams())
 
 	var outputStr string
-	err := pipeline.Run(context.Background(), input, &outputStr)
+	err := flow.Run(context.Background(), input, &outputStr)
 	if err != nil {
 		return nil
 	}
@@ -93,7 +93,7 @@ func CalquePipeWithConfig(words []string, config calque.PipelineConfig) map[stri
 
 // Benchmark with unlimited concurrency (old behavior)
 func BenchmarkCalquePipeUnlimited(b *testing.B) {
-	config := calque.PipelineConfig{
+	config := calque.FlowConfig{
 		MaxConcurrent: calque.ConcurrencyUnlimited,
 	}
 	for i := 0; i < b.N; i++ {
@@ -102,7 +102,7 @@ func BenchmarkCalquePipeUnlimited(b *testing.B) {
 }
 
 func BenchmarkCalquePipeUnlimitedLarge(b *testing.B) {
-	config := calque.PipelineConfig{
+	config := calque.FlowConfig{
 		MaxConcurrent: calque.ConcurrencyUnlimited,
 	}
 	for i := 0; i < b.N; i++ {
@@ -112,7 +112,7 @@ func BenchmarkCalquePipeUnlimitedLarge(b *testing.B) {
 
 // Benchmark with fixed concurrency limit
 func BenchmarkCalquePipeFixed(b *testing.B) {
-	config := calque.PipelineConfig{
+	config := calque.FlowConfig{
 		MaxConcurrent: 10, // Fixed limit of 10 concurrent pipelines
 	}
 	for i := 0; i < b.N; i++ {
@@ -121,7 +121,7 @@ func BenchmarkCalquePipeFixed(b *testing.B) {
 }
 
 func BenchmarkCalquePipeFixedLarge(b *testing.B) {
-	config := calque.PipelineConfig{
+	config := calque.FlowConfig{
 		MaxConcurrent: 10, // Fixed limit of 10 concurrent pipelines
 	}
 	for i := 0; i < b.N; i++ {
@@ -131,7 +131,7 @@ func BenchmarkCalquePipeFixedLarge(b *testing.B) {
 
 // Benchmark with auto CPU-based limiting (current default)
 func BenchmarkCalquePipeAuto(b *testing.B) {
-	config := calque.PipelineConfig{
+	config := calque.FlowConfig{
 		MaxConcurrent: calque.ConcurrencyAuto,
 		CPUMultiplier: 4, // 4x CPU cores
 	}
@@ -141,7 +141,7 @@ func BenchmarkCalquePipeAuto(b *testing.B) {
 }
 
 func BenchmarkCalquePipeAutoLarge(b *testing.B) {
-	config := calque.PipelineConfig{
+	config := calque.FlowConfig{
 		MaxConcurrent: calque.ConcurrencyAuto,
 		CPUMultiplier: 4, // 4x CPU cores
 	}
@@ -152,7 +152,7 @@ func BenchmarkCalquePipeAutoLarge(b *testing.B) {
 
 // Benchmark with high CPU multiplier
 func BenchmarkCalquePipeHighCPU(b *testing.B) {
-	config := calque.PipelineConfig{
+	config := calque.FlowConfig{
 		MaxConcurrent: calque.ConcurrencyAuto,
 		CPUMultiplier: 8, // 8x CPU cores
 	}
@@ -162,7 +162,7 @@ func BenchmarkCalquePipeHighCPU(b *testing.B) {
 }
 
 func BenchmarkCalquePipeHighCPULarge(b *testing.B) {
-	config := calque.PipelineConfig{
+	config := calque.FlowConfig{
 		MaxConcurrent: calque.ConcurrencyAuto,
 		CPUMultiplier: 8, // 8x CPU cores
 	}
@@ -183,14 +183,14 @@ func BenchmarkGoroutineUsage(b *testing.B) {
 
 	configs := []struct {
 		name   string
-		config *calque.PipelineConfig
+		config *calque.FlowConfig
 	}{
 		{"Default", nil},
-		{"Unlimited", &calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyUnlimited}},
-		{"Fixed3", &calque.PipelineConfig{MaxConcurrent: 3}},
-		{"Fixed5", &calque.PipelineConfig{MaxConcurrent: 5}},
-		{"Auto1x", &calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 1}},
-		{"Auto2x", &calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 2}},
+		{"Unlimited", &calque.FlowConfig{MaxConcurrent: calque.ConcurrencyUnlimited}},
+		{"Fixed3", &calque.FlowConfig{MaxConcurrent: 3}},
+		{"Fixed5", &calque.FlowConfig{MaxConcurrent: 5}},
+		{"Auto1x", &calque.FlowConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 1}},
+		{"Auto2x", &calque.FlowConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 2}},
 	}
 
 	for _, cfg := range configs {
@@ -235,13 +235,13 @@ func TestConcurrentPipelineExecution(t *testing.T) {
 	
 	configs := []struct {
 		name   string
-		config calque.PipelineConfig
+		config calque.FlowConfig
 	}{
-		{"Unlimited", calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyUnlimited}},
-		{"Fixed3", calque.PipelineConfig{MaxConcurrent: 3}},
-		{"Fixed5", calque.PipelineConfig{MaxConcurrent: 5}},
-		{"Auto1x", calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 1}},
-		{"Auto2x", calque.PipelineConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 2}},
+		{"Unlimited", calque.FlowConfig{MaxConcurrent: calque.ConcurrencyUnlimited}},
+		{"Fixed3", calque.FlowConfig{MaxConcurrent: 3}},
+		{"Fixed5", calque.FlowConfig{MaxConcurrent: 5}},
+		{"Auto1x", calque.FlowConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 1}},
+		{"Auto2x", calque.FlowConfig{MaxConcurrent: calque.ConcurrencyAuto, CPUMultiplier: 2}},
 	}
 
 	for _, cfg := range configs {

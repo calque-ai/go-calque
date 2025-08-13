@@ -29,13 +29,13 @@ type Response struct {
 
 func main() {
 	fmt.Println("Calque-Pipe HTTP API Server Example")
-	fmt.Println("This demonstrates transforming pipelines into HTTP endpoints")
+	fmt.Println("This demonstrates transforming flows into HTTP endpoints")
 
-	// Create the agent pipeline once and reuse it
-	agentPipeline := createAgentPipeline()
+	// Create the agent flow once and reuse it
+	agentFlow := createAgentFlow()
 
 	// Set up routes
-	http.HandleFunc("POST /agent", handleAgent(agentPipeline))
+	http.HandleFunc("POST /agent", handleAgent(agentFlow))
 
 	// Start the HTTP server
 	fmt.Println("\nServer starting on port 8080...")
@@ -43,37 +43,37 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-// createAgentPipeline builds the processing pipeline that will handle requests
-func createAgentPipeline() *calque.Pipeline {
+// createAgentFlow builds the processing flow that will handle requests
+func createAgentFlow() *calque.Flow {
 
-	// For a pipeline used in an http handler you may want to limit the number of goroutines created
-	// since you might have thousands of concurrent requests X each handler in your pipeline.
-	config := calque.PipelineConfig{
+	// For a flow used in an http handler you may want to limit the number of goroutines created
+	// since you might have thousands of concurrent requests X each handler in your flow.
+	config := calque.FlowConfig{
 		MaxConcurrent: calque.ConcurrencyAuto, // Auto uses the default multiplier (50x) with GOMAXPROCS
 		// CPUMultiplier: 100,  // Or set your own multiplier
 	}
 
-	pipe := calque.Flow(config)
-	pipe.
+	flow := calque.NewFlow(config)
+	flow.
 		Use(logger.Head("HTTP_REQUEST", 200)).                                    // Log incoming request
 		Use(text.Transform(func(s string) string { return strings.ToUpper(s) })). // Transform message to uppercase
 		Use(text.Transform(func(s string) string { return "Processed: " + s })).  // Add prefix
 		Use(logger.Head("PROCESSED_MESSAGE", 200))                                // Log processed result
 
-	return pipe
+	return flow
 }
 
-// handleAgent creates an HTTP handler that uses the Calque-Pipe pipeline
-func handleAgent(pipeline *calque.Pipeline) http.HandlerFunc {
+// handleAgent creates an HTTP handler that uses the Calque-Pipe flow
+func handleAgent(flow *calque.Flow) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Set response headers
 		w.Header().Set("Content-Type", "application/json")
 
-		// Process the message through the pipeline
+		// Process the message through the flow
 		var processedMessage string
-		err := pipeline.Run(r.Context(), r.Body, &processedMessage)
+		err := flow.Run(r.Context(), r.Body, &processedMessage)
 		if err != nil {
-			log.Printf("Pipeline error: %v", err)
+			log.Printf("Flow error: %v", err)
 			http.Error(w, `{"error":"Internal processing error"}`, http.StatusInternalServerError)
 			return
 		}

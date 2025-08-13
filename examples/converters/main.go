@@ -65,7 +65,7 @@ func runConverterBasics() {
 	}`
 
 	// Pipeline: Json String -> Json -> Uppercase -> Struct
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.
 		Use(logger.Print("JSON_INPUT")).                                          // Log original JSON
 		Use(text.Transform(func(s string) string { return strings.ToUpper(s) })). // Convert to uppercase for processing
@@ -100,7 +100,7 @@ func runAIConverterExample(client ai.Client) {
 	}
 
 	// Pipeline: struct -> YAML -> AI analysis -> result string
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.
 		Use(logger.Print("STRUCT_INPUT")).
 		Use(prompt.Template("Analyze this product data and suggest improvements:\n\n{{.Input}}\n\nProvide a brief analysis.")).

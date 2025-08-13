@@ -64,7 +64,7 @@ func smartRouter() {
 	router := multiagent.Router(selectionClient, mathHandler, codeHandler)
 
 	// Complete pipeline
-	pipeline := calque.Flow().Use(router)
+	pipeline := calque.NewFlow().Use(router)
 
 	// The router will automatically select the best handler based on the input
 	var result string
@@ -88,7 +88,7 @@ func loadBalancer() {
 	// Distribute requests using round-robin
 	scaledAgent := multiagent.LoadBalancer(agent1, agent2, agent3)
 
-	pipeline := calque.Flow().Use(scaledAgent)
+	pipeline := calque.NewFlow().Use(scaledAgent)
 
 	// Each request goes to a different agent instance
 	for i := range 3 {
@@ -115,7 +115,7 @@ func fallbackExample() {
 		backupAgent,
 		localAgent)
 
-	pipeline := calque.Flow().Use(reliableAgent)
+	pipeline := calque.NewFlow().Use(reliableAgent)
 
 	var result string
 	err := pipeline.Run(context.Background(), "Explain quantum computing", &result)
@@ -142,7 +142,7 @@ func complexPipeline() {
 		}),
 	}
 
-	codeWithTools := calque.Flow().
+	codeWithTools := calque.NewFlow().
 		Use(ai.Agent(ai.NewMockClient("func hello() { fmt.Println(\"Hello!\") }"), ai.WithTools(codeTools...)))
 
 	codeAgent := multiagent.Route(
@@ -161,7 +161,7 @@ func complexPipeline() {
 	router := multiagent.Router(selectionClient, mathAgent, codeAgent, researchAgent)
 
 	// Complete pipeline
-	pipeline := calque.Flow().Use(router)
+	pipeline := calque.NewFlow().Use(router)
 
 	var result string
 	err := pipeline.Run(context.Background(), "What's the meaning of life?", &result)
@@ -198,7 +198,7 @@ func combinedRouting() {
 	// High-level routing to agent pools
 	router := multiagent.Router(selectionClient, mathHandler, codeHandler)
 
-	pipeline := calque.Flow().Use(router)
+	pipeline := calque.NewFlow().Use(router)
 
 	var result string
 	err := pipeline.Run(context.Background(), "code: write a hello world function", &result)

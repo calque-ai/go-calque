@@ -52,7 +52,7 @@ func TestChain_BasicSequentialExecution(t *testing.T) {
 
 	// Test execution
 	var result string
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.Use(chain)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -108,7 +108,7 @@ func TestChain_ContextPropagation(t *testing.T) {
 
 	// Test execution
 	var result string
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.Use(chain)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -130,7 +130,7 @@ func TestChain_EmptyChain(t *testing.T) {
 	chain := Chain()
 
 	var result string
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.Use(chain)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -162,7 +162,7 @@ func TestChain_SingleHandler(t *testing.T) {
 	chain := Chain(handler)
 
 	var result string
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.Use(chain)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -194,7 +194,7 @@ func TestChain_DoesNotDeadlock(t *testing.T) {
 	chain := Chain(handler1, handler2)
 
 	var result string
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.Use(chain)
 
 	// Short timeout to detect deadlocks

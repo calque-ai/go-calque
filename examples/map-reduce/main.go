@@ -79,7 +79,7 @@ func main() {
 	}
 
 	// Create AI evaluation pipeline
-	evaluationPipeline := calque.Flow().
+	evaluationPipeline := calque.NewFlow().
 		Use(logger.Head("resume evaluation", 200)).
 		Use(prompt.Template("System: {{.System}}\n\nResume data to evaluate: {{.Input}}", map[string]any{
 			"System": systemPrompt,

@@ -127,7 +127,7 @@ func runExample1WithSchema(client ai.Client) {
 	taskDescription := "Build a real-time chat application with WebSocket support, user authentication, message history, and emoji reactions. The backend should use Go with a PostgreSQL database."
 
 	// Pipeline: Text input → AI analysis → Structured JSON output
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.
 		Use(logger.Print("INPUT")).
 		Use(prompt.Template(promptTemplateEx1)).
@@ -205,7 +205,7 @@ func runExample2JsonSchemaConverters(client ai.Client) {
 		userProfile.Name, userProfile.Role, userProfile.Experience)
 
 	// Pipeline using JSON Schema converters WITH WithSchema for reliability
-	pipe := calque.Flow()
+	pipe := calque.NewFlow()
 	pipe.
 		Use(logger.Print("PROFILE_WITH_SCHEMA")). // Log input with the embedded schema
 		Use(prompt.Template(promptTemplateEx2)).
@@ -282,7 +282,7 @@ func runExample3AdvancedCombined(client ai.Client) {
 	// Stage 1: Extract basic profile using WithSchema (like Example 1)
 	fmt.Println("\n Stage 1: Extract structured data (WithSchema + FromJson)")
 
-	stage1Pipe := calque.Flow()
+	stage1Pipe := calque.NewFlow()
 	stage1Pipe.
 		Use(prompt.Template("Extract user profile from: {{.Input}}\nReturn valid JSON only.")).
 		Use(logger.Print("Prompt")).
@@ -301,7 +301,7 @@ func runExample3AdvancedCombined(client ai.Client) {
 	// Stage 2: Enhance profile using context from Stage 1
 	fmt.Println("\n Stage 2: Enhance with context (ToJsonSchema + FromJsonSchema)")
 
-	stage2Pipe := calque.Flow()
+	stage2Pipe := calque.NewFlow()
 	stage2Pipe.
 		Use(prompt.Template(promptTemplateEx3)).
 		Use(ai.Agent(client, ai.WithSchemaFor[EnhancedProfile]())) // Using generic WithSchemaFor() for better performance and compile-time safety

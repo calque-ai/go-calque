@@ -32,7 +32,7 @@ func ollamaExample() {
 	}
 
 	// Create flow with LLM integration
-	flow := calque.Flow()
+	flow := calque.NewFlow()
 
 	flow.
 		Use(logger.Print("INPUT")).                // Log input
@@ -75,7 +75,7 @@ func geminiExample() {
 	}
 
 	// Create flow with llm agent integration
-	flow := calque.Flow()
+	flow := calque.NewFlow()
 
 	flow.
 		Use(logger.Print("INPUT")).                                                      // Log input

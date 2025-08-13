@@ -100,7 +100,7 @@ func CalquePipe(words []string) map[string]map[string]struct{} {
 	// 1. Filters words (more than one char, lowercase)
 	// 2. Maps each word to anagram format
 	// 3. Accumulates results
-	pipeline := calque.Flow().
+	pipeline := calque.NewFlow().
 		Use(filterAndLowercase()).
 		Use(mapToAnagramFormat()).
 		Use(accumulateAnagrams())

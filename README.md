@@ -1,10 +1,10 @@
-# Calque-Pipe
+# Go-Calque
 
-A **streaming middleware framework** for building AI agents and data processing pipelines in Go.
+A **streaming middleware framework** for building AI agents and data processing flow in Go.
 
-## What is Calque-Pipe?
+## What is Go-Calque?
 
-Calque-Pipe brings HTTP middleware patterns to AI and data processing. Instead of handling HTTP requests, you compose pipelines where each middleware processes streaming data through `io.Pipe` connections.
+Go-Calque brings HTTP middleware patterns to AI and data processing. Instead of handling HTTP requests, you compose flows where each middleware processes streaming data through `io.Pipe` connections.
 
 **Key benefits:**
 
@@ -57,7 +57,7 @@ Input → Middleware1 → Middleware2 → Middleware3 → Output
 
 ## Middleware Packages
 
-Calque-Pipe includes batteries-included middleware for common AI and data processing patterns:
+Go-Calque includes middleware for common AI and data processing patterns:
 
 ### AI & LLM (`ai/`, `prompt/`)
 
@@ -77,7 +77,7 @@ Calque-Pipe includes batteries-included middleware for common AI and data proces
 ### Data Processing (`text/`, `convert/`)
 
 - **Text Transform**: `text.Transform(func)` - Simple string transformations
-- **JSON/YAML/XML**: `convert.JSON()`, `convert.YAML()` - Structured data conversion
+- **JSON/YAML**: `convert.JSON()`, `convert.YAML()` - Structured data conversion
 - **Schema Validation**: Ensure data conforms to expected formats
 - **Streaming Parsers**: Process large files without loading into memory
 
@@ -86,11 +86,10 @@ Calque-Pipe includes batteries-included middleware for common AI and data proces
 - **Conversation Memory**: Track chat history with configurable limits
 - **Context Windows**: Sliding window memory management for long conversations
 - **Storage Backends**: In-memory, Redis, or custom storage adapters
-- **Token Counting**: Automatic token limit management for LLMs
 
 ## Converters
 
-Transform structured data at pipeline boundaries:
+Transform structured data at flow boundaries:
 
 **Input Converters** (prepare data for processing):
 
@@ -110,7 +109,7 @@ convert.FromJsonSchema(&result)     // Validates output against schema
 **Usage:**
 
 ```go
-// JSON processing pipeline
+// JSON processing flow
 err := flow.Run(ctx, convert.ToJson(data), convert.FromJson(&result))
 
 // AI with schema validation
@@ -131,13 +130,13 @@ err := flow.Run(ctx, convert.ToJsonSchema(input), convert.FromJsonSchema[Output]
 
 **Enhanced Memory** - Vector-based semantic memory retrieval  
 **Advanced Agents** - Planning, reflection, and self-evaluation capabilities  
-**Developer Experience** - Better type inference, pipeline helpers, function shortcuts
+**Developer Experience** - Better type inference, flow helpers, function shortcuts
 
 ### Essential Examples
 
 **Core Framework**: ✅ basics, ✅ converters, ✅ converters-jsonschema, ✅ streaming-chats  
-**Data Processing**: ✅ memory, 🔲 batch-processing, 🔲 pipeline-composition  
-**AI Agents**: ✅ tool-calling, 🔲 rag-pipeline, 🔲 multi-agent-workflow, 🔲 guardrails-validation  
+**Data Processing**: ✅ memory, 🔲 batch-processing, ✅ flow-composition  
+**AI Agents**: ✅ tool-calling, 🔲 rag, 🔲 multi-agent-workflow, 🔲 guardrails-validation  
 **Advanced**: ✅ web-api-agent, 🔲 human-in-the-loop
 
 ### Nice-to-Have

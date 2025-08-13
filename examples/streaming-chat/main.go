@@ -80,7 +80,7 @@ func handleStreamingChat(client *ollama.Client, conversationMemory *memory.Conve
 		fallbackAgent := ai.Agent(ai.NewMockClient("Hi there! I'm a mock backup assistant ready to help."))
 
 		// Build pipeline with direct userID access (no context needed)
-		pipeline := calque.Flow().
+		pipeline := calque.NewFlow().
 			// 1. Rate limiting
 			Use(ctrl.RateLimit(10, time.Second)).
 			// 2. Request logging

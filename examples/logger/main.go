@@ -27,7 +27,7 @@ func main() {
 func setupSimpleExample() {
 	fmt.Println("1. Simple Logging Using Standard Library log Package:")
 
-	flow := calque.Flow()
+	flow := calque.NewFlow()
 
 	flow.
 		Use(logger.Print("FULL_INPUT")).     // Log the complete input content (buffered)
@@ -64,7 +64,7 @@ func setupSlogExample() {
 	log := logger.New(logger.NewSlogAdapter(slogLogger))
 
 	// Build pipeline using slog structured logging
-	flow := calque.Flow()
+	flow := calque.NewFlow()
 
 	flow.
 		Use(log.Info().Head("INPUT", 40,
@@ -107,7 +107,7 @@ func setupZerologExample() {
 
 	log := logger.New(logger.NewZerologAdapter(zlog))
 
-	flow := calque.Flow()
+	flow := calque.NewFlow()
 
 	flow.
 		Use(log.Info().Head("INFO_START", 30)).

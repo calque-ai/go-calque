@@ -380,12 +380,12 @@ func (cm *ConversationMemory) WrapFromContext(handler calque.Handler) calque.Han
 			return fmt.Errorf("no memory key found in context for memory")
 		}
 
-		// Create a pipeline: Input → Handler → Output
-		memoryPipeline := calque.Flow().
+		// Create a flow: Input → Handler → Output
+		memoryFlow := calque.NewFlow().
 			Use(cm.Input(key)).
 			Use(handler).
 			Use(cm.Output(key))
 
-		return memoryPipeline.Run(req.Context, req.Data, res.Data)
+		return memoryFlow.Run(req.Context, req.Data, res.Data)
 	})
 }

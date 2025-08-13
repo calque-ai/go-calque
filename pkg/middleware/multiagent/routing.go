@@ -161,13 +161,13 @@ func Router(client ai.Client, handlers ...calque.Handler) calque.Handler {
 
 // callSelectorWithSchema creates schema input, calls selector, and parses structured output
 func callSelectorWithSchema(ctx context.Context, selector calque.Handler, routerInput RouterInput) (*RouteSelection, error) {
-	// Create pipeline with schema converters - agent already has WithSchema
-	pipeline := calque.Flow().Use(selector)
+	// Create flow with schema converters - agent already has WithSchema
+	flow := calque.NewFlow().Use(selector)
 	
 	var selection RouteSelection
-	err := pipeline.Run(ctx, convert.ToJsonSchema(routerInput), convert.FromJson(&selection))
+	err := flow.Run(ctx, convert.ToJsonSchema(routerInput), convert.FromJson(&selection))
 	if err != nil {
-		return nil, fmt.Errorf("selector pipeline failed: %w", err)
+		return nil, fmt.Errorf("selector flow failed: %w", err)
 	}
 	
 	// Validate required fields

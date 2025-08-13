@@ -64,7 +64,7 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 		return err
 	}
 
-	flow := calque.Flow()
+	flow := calque.NewFlow()
 
 	// Chain: Registry → AddToolInfo → LLM → Detect → [Execute + Synthesize] OR PassThrough
 	flow.Use(ctrl.Chain(

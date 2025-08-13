@@ -36,14 +36,14 @@ func main() {
 
 }
 
-// runTextOnlyExample demonstrates calque framework concepts: flows, handlers, and middleware flow.
-// Shows how to build processing pipelines using transformations, logging, and branching.
+// runTextOnlyExample demonstrates calque framework concepts: flows, middleware handlers.
+// Shows how to build processing flows using transformations, logging, and branching.
 func runTextOnlyExample() {
-	fmt.Println("\nRunning text-only pipeline (no AI)...")
+	fmt.Println("\nRunning text-only flow (no AI)")
 
-	flow := calque.Flow() // Create new flow
+	flow := calque.NewFlow() // Create new flow
 
-	// Build pipeline using middleware pattern - each Use() adds a handler to the flow
+	// Build flow using middleware pattern - each Use() adds a handler to the flow
 	flow.
 		Use(logger.Print("INPUT")).           // Log original input, with a prefix
 		Use(text.Transform(strings.ToUpper)). // Transform input to uppercase
@@ -60,7 +60,7 @@ func runTextOnlyExample() {
 	fmt.Printf("\nProcessing: %q\n\n", inputText)
 
 	var result string                                         // Output placeholder
-	err := flow.Run(context.Background(), inputText, &result) // Execute pipeline
+	err := flow.Run(context.Background(), inputText, &result) // Execute flow
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return
@@ -70,12 +70,12 @@ func runTextOnlyExample() {
 	fmt.Println(result)
 }
 
-// runAIExample shows how to integrate ai clients into processing pipelines.
+// runAIExample shows how to integrate ai clients into processing flows.
 // Demonstrates prompt templates, AI chat requests, timeouts, and response handling.
 func runAIExample(client ai.Client) {
-	fmt.Println("\nRunning AI-powered pipeline...")
+	fmt.Println("\nRunning AI-powered flow...")
 
-	flow := calque.Flow()
+	flow := calque.NewFlow()
 
 	flow.
 		Use(logger.Print("INPUT")).                                                        // Log original input
@@ -94,13 +94,13 @@ func runAIExample(client ai.Client) {
 		)).
 		Use(logger.Head("FINAL", 400)) // Log first 400 bytes result
 
-	inputText := "This AI framework calques ideas from text processing pipelines - copying and transforming data patterns."
+	inputText := "This AI framework calques ideas from text processing flows - copying and transforming data patterns."
 	fmt.Printf("\nProcessing: %q\n\n", inputText)
 
 	var result string
 	err := flow.Run(context.Background(), inputText, &result)
 	if err != nil {
-		log.Printf("Pipeline error: %v", err)
+		log.Printf("Flow error: %v", err)
 		return
 	}
 
@@ -114,8 +114,8 @@ func runAIExample(client ai.Client) {
 func runStreamingExample() {
 	fmt.Println("\nRunning streaming vs buffered middleware demo...")
 
-	// Demo 1: Pure streaming pipeline
-	fmt.Println("\n=== STREAMING PIPELINE ===")
+	// Demo 1: Pure streaming flow
+	fmt.Println("\n=== STREAMING Flow ===")
 	runStreamingPipeline()
 
 	// Demo 2: Mixed streaming/buffered pipeline
@@ -128,7 +128,7 @@ func runStreamingPipeline() {
 	var logBuffer bytes.Buffer
 	var errorBuffer bytes.Buffer
 
-	flow := calque.Flow()
+	flow := calque.NewFlow()
 	flow.
 		Use(logger.Head("INPUT", 100)).                   // Log first 100 bytes of original input
 		Use(ctrl.TeeReader(&logBuffer, &errorBuffer)).    // STREAMING: Tee to multiple destinations
@@ -161,7 +161,7 @@ Memory efficient for large inputs`
 
 // Mixed pipeline showing STREAMING vs BUFFERED side-by-side comparison
 func runMixedPipeline() {
-	flow := calque.Flow()
+	flow := calque.NewFlow()
 
 	// Create streaming handler for comparison
 	streamingHandler := text.LineProcessor(func(line string) string {
@@ -210,7 +210,7 @@ func runComposedPipelineExample() {
 
 	// Build reusable sub-pipeline for text preprocessing
 	// Important: Don't Run this sub-pipeline directly, it will be composed into the main pipeline
-	textPreprocessor := calque.Flow()
+	textPreprocessor := calque.NewFlow()
 	textPreprocessor.
 		Use(logger.Print("PREPROCESS_INPUT")).
 		Use(text.Transform(strings.TrimSpace)).
@@ -222,7 +222,7 @@ func runComposedPipelineExample() {
 		Use(logger.Print("PREPROCESS_OUTPUT"))
 
 	// Build reusable sub-pipeline for text analysis
-	textAnalyzer := calque.Flow()
+	textAnalyzer := calque.NewFlow()
 	textAnalyzer.
 		Use(logger.Print("ANALYZE_INPUT")).
 		Use(text.Transform(func(s string) string {
@@ -233,8 +233,8 @@ func runComposedPipelineExample() {
 		Use(logger.Print("ANALYZE_OUTPUT"))
 
 	// Build main pipeline that composes the sub-pipelines
-	mainPipeline := calque.Flow()
-	mainPipeline.
+	mainFlow := calque.NewFlow()
+	mainFlow.
 		Use(logger.Print("MAIN_START")).
 		Use(textPreprocessor). // Use preprocessing sub-pipeline
 		Use(text.Branch(       // Branch based on content length
@@ -262,7 +262,7 @@ func runComposedPipelineExample() {
 		fmt.Printf("Input: %q\n\n", input)
 
 		var result string
-		err := mainPipeline.Run(context.Background(), input, &result)
+		err := mainFlow.Run(context.Background(), input, &result)
 		if err != nil {
 			log.Printf("Error: %v", err)
 			continue

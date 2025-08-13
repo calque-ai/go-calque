@@ -15,7 +15,7 @@ import (
 
 // Test helper handlers
 func TestNew(t *testing.T) {
-	flow := Flow()
+	flow := NewFlow()
 	if flow == nil {
 		t.Fatal("Flow() returned nil")
 	}
@@ -25,7 +25,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestFlow_Use(t *testing.T) {
-	flow := Flow()
+	flow := NewFlow()
 
 	handler1 := HandlerFunc(func(req *Request, res *Response) error {
 		return nil
@@ -50,7 +50,7 @@ func TestFlow_Use(t *testing.T) {
 }
 
 func TestFlow_UseFunc(t *testing.T) {
-	flow := Flow()
+	flow := NewFlow()
 
 	handlerFunc := func(req *Request, res *Response) error {
 		return nil
@@ -70,7 +70,7 @@ func TestFlow_UseFunc(t *testing.T) {
 }
 
 func TestFlow_Run_NoHandlers(t *testing.T) {
-	flow := Flow()
+	flow := NewFlow()
 
 	tests := []struct {
 		name     string
@@ -154,7 +154,7 @@ func TestFlow_Run_SingleHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			flow := Flow().Use(tt.handler)
+			flow := NewFlow().Use(tt.handler)
 
 			var output string
 			err := flow.Run(context.Background(), tt.input, &output)
@@ -200,7 +200,7 @@ func TestFlow_Run_MultipleHandlers(t *testing.T) {
 		return err
 	})
 
-	flow := Flow().
+	flow := NewFlow().
 		Use(uppercaseHandler).
 		Use(prefixHandler).
 		Use(suffixHandler)
@@ -233,7 +233,7 @@ func TestFlow_Run_HandlerError(t *testing.T) {
 		return errors.New("processing failed")
 	})
 
-	flow := Flow().
+	flow := NewFlow().
 		Use(handler1).
 		Use(errorHandler)
 
@@ -266,7 +266,7 @@ func TestFlow_Run_ConcurrentHandlerError(t *testing.T) {
 		return errors.New("handler2 failed")
 	})
 
-	flow := Flow().Use(handler1).Use(handler2)
+	flow := NewFlow().Use(handler1).Use(handler2)
 
 	var output string
 	err := flow.Run(context.Background(), "test input", &output)
@@ -300,7 +300,7 @@ func TestFlow_Run_ContextCancellation(t *testing.T) {
 		}
 	})
 
-	flow := Flow().Use(blockingHandler)
+	flow := NewFlow().Use(blockingHandler)
 
 	// Create a context that cancels quickly
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -361,7 +361,7 @@ func TestFlow_Run_ConcurrentExecution(t *testing.T) {
 		return err
 	})
 
-	flow := Flow().
+	flow := NewFlow().
 		Use(handler1).
 		Use(handler2).
 		Use(handler3)
@@ -421,7 +421,7 @@ func TestFlow_Run_StreamingBehavior(t *testing.T) {
 		return err
 	})
 
-	flow := Flow().Use(handler1).Use(handler2)
+	flow := NewFlow().Use(handler1).Use(handler2)
 
 	var output string
 	err := flow.Run(context.Background(), "stream", &output)
@@ -455,7 +455,7 @@ func TestFlow_Run_EmptyInput(t *testing.T) {
 		return err
 	})
 
-	flow := Flow().Use(handler)
+	flow := NewFlow().Use(handler)
 
 	var output string
 	err := flow.Run(context.Background(), "", &output)
@@ -492,7 +492,7 @@ func TestFlow_Run_LargeData(t *testing.T) {
 		return nil
 	})
 
-	flow := Flow().Use(handler)
+	flow := NewFlow().Use(handler)
 
 	var output string
 	err := flow.Run(context.Background(), largeInput, &output)
@@ -519,7 +519,7 @@ func TestFlow_Run_MultipleGoroutines(t *testing.T) {
 		return err
 	})
 
-	flow := Flow().Use(handler)
+	flow := NewFlow().Use(handler)
 
 	var wg sync.WaitGroup
 	var successCount int64
@@ -568,7 +568,7 @@ func TestFlow_Run_PipeClosureHandling(t *testing.T) {
 		return writeErr
 	})
 
-	flow := Flow().Use(closingHandler)
+	flow := NewFlow().Use(closingHandler)
 
 	var output string
 	err := flow.Run(context.Background(), "test", &output)
@@ -586,7 +586,7 @@ func TestFlow_Run_InputOutputTypes(t *testing.T) {
 		return err
 	})
 
-	flow := Flow().Use(echoHandler)
+	flow := NewFlow().Use(echoHandler)
 
 	tests := []struct {
 		name   string
@@ -667,7 +667,7 @@ func TestFlow_Run_PartialWrite(t *testing.T) {
 		return nil
 	})
 
-	flow := Flow().Use(partialHandler)
+	flow := NewFlow().Use(partialHandler)
 
 	var output string
 	err := flow.Run(context.Background(), "streaming test data", &output)
@@ -689,7 +689,7 @@ func TestFlow_Run_BinaryData(t *testing.T) {
 		return err
 	})
 
-	flow := Flow().Use(binaryHandler)
+	flow := NewFlow().Use(binaryHandler)
 
 	// Create test binary data
 	binaryInput := make([]byte, 256)
@@ -711,7 +711,7 @@ func TestFlow_Run_BinaryData(t *testing.T) {
 
 func TestFlow_Run_InvalidOutput(t *testing.T) {
 	// Test that flow handles invalid output parameters gracefully
-	flow := Flow()
+	flow := NewFlow()
 
 	// Test with non-pointer output (should fail)
 	var invalidOutput string // not a pointer
@@ -740,7 +740,7 @@ func TestFlow_Run_ResourceCleanup(t *testing.T) {
 		return err
 	})
 
-	flow := Flow().Use(resourceHandler)
+	flow := NewFlow().Use(resourceHandler)
 
 	var output string
 	err := flow.Run(context.Background(), "cleanup test", &output)
@@ -764,7 +764,7 @@ func BenchmarkFlow_Run_SingleHandler(b *testing.B) {
 		return err
 	})
 
-	flow := Flow().Use(handler)
+	flow := NewFlow().Use(handler)
 	input := "benchmark test data"
 
 	for b.Loop() {
@@ -789,7 +789,7 @@ func BenchmarkFlow_Run_MultipleHandlers(b *testing.B) {
 		return err
 	})
 
-	flow := Flow().Use(handler1).Use(handler2).Use(handler3)
+	flow := NewFlow().Use(handler1).Use(handler2).Use(handler3)
 	input := "benchmark test data"
 
 	for b.Loop() {
