@@ -5,7 +5,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Detect creates a conditional handler that detects tool calls and routes accordingly.

@@ -6,14 +6,14 @@ import (
 	"log"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/gemini"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/logger"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
+	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
+	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
+	"github.com/calque-ai/go-calque/pkg/middleware/text"
 	"github.com/joho/godotenv"
 )
 
@@ -26,7 +26,7 @@ func main() {
 func ollamaExample() {
 
 	// Create Ollama client (connects to localhost:11434 by default)
-	client, err := ollama.New("llama3.2:1b")
+	client, err := ollama.New("llama3.2:3b")
 	if err != nil {
 		log.Fatal("Failed to create Ollama provider:", err)
 	}

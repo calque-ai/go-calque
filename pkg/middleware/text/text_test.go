@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 func TestTransform(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
 // Helper function to create a mock client for agent tests

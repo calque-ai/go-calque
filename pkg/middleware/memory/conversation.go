@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Message represents a single conversation message.

@@ -7,9 +7,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/convert"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/convert"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 )
 
 // routeHandler holds handler with its metadata
@@ -90,7 +90,7 @@ func Router(client ai.Client, handlers ...calque.Handler) calque.Handler {
 	// Extract route metadata from wrapped handlers
 	routes := make([]*routeHandler, len(handlers))
 	routeOptions := make([]RouteOption, len(handlers))
-	
+
 	for i, h := range handlers {
 		if rh, ok := h.(*routeHandler); ok {
 			routes[i] = rh
@@ -134,10 +134,10 @@ func Router(client ai.Client, handlers ...calque.Handler) calque.Handler {
 		// Try selection with retry logic
 		maxRetries := 2
 		var selectedHandler calque.Handler
-		
+
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			selection, err := callSelectorWithSchema(req.Context, selector, routerInput)
-			
+
 			if err == nil {
 				// Validate the selected route exists
 				if selectedHandler = findHandlerByID(selection.Route, routes); selectedHandler != nil {
@@ -145,14 +145,14 @@ func Router(client ai.Client, handlers ...calque.Handler) calque.Handler {
 				}
 				err = fmt.Errorf("invalid route selected: %s", selection.Route)
 			}
-			
+
 			if attempt == maxRetries {
 				// Final fallback - use first handler
 				selectedHandler = routes[0].handler
 				break
 			}
 		}
-		
+
 		// Route to selected handler
 		req.Data = bytes.NewReader(input)
 		return selectedHandler.ServeFlow(req, res)
@@ -163,18 +163,18 @@ func Router(client ai.Client, handlers ...calque.Handler) calque.Handler {
 func callSelectorWithSchema(ctx context.Context, selector calque.Handler, routerInput RouterInput) (*RouteSelection, error) {
 	// Create flow with schema converters - agent already has WithSchema
 	flow := calque.NewFlow().Use(selector)
-	
+
 	var selection RouteSelection
 	err := flow.Run(ctx, convert.ToJsonSchema(routerInput), convert.FromJson(&selection))
 	if err != nil {
 		return nil, fmt.Errorf("selector flow failed: %w", err)
 	}
-	
+
 	// Validate required fields
 	if selection.Route == "" {
 		return nil, fmt.Errorf("selector output missing required 'route' field")
 	}
-	
+
 	return &selection, nil
 }
 

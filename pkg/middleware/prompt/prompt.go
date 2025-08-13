@@ -7,7 +7,7 @@ import (
 	"maps"
 	"text/template"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Template creates a middleware that applies a Go template to the input

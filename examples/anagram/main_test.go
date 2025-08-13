@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Test data - mix of small and larger word sets
@@ -174,7 +174,7 @@ func BenchmarkCalquePipeHighCPULarge(b *testing.B) {
 // Benchmark with goroutine counting
 func BenchmarkGoroutineUsage(b *testing.B) {
 	fmt.Printf("\n=== Goroutine Usage Analysis ===\n")
-	
+
 	// Baseline goroutine count
 	runtime.GC()
 	runtime.GC() // Run twice to ensure cleanup
@@ -197,21 +197,21 @@ func BenchmarkGoroutineUsage(b *testing.B) {
 		b.Run(cfg.name, func(b *testing.B) {
 			var maxGoroutines, minGoroutines int = 0, 999999
 			var totalGoroutines int64 = 0
-			
+
 			for i := 0; i < b.N; i++ {
 				// Measure goroutines before
 				beforeGoroutines := runtime.NumGoroutine()
-				
+
 				// Run the pipeline
 				if cfg.config == nil {
 					CalquePipe(testWords) // Default
 				} else {
 					CalquePipeWithConfig(testWords, *cfg.config)
 				}
-				
+
 				// Measure goroutines after
 				afterGoroutines := runtime.NumGoroutine()
-				
+
 				// Track statistics
 				if afterGoroutines > maxGoroutines {
 					maxGoroutines = afterGoroutines
@@ -221,9 +221,9 @@ func BenchmarkGoroutineUsage(b *testing.B) {
 				}
 				totalGoroutines += int64(afterGoroutines)
 			}
-			
+
 			avgGoroutines := float64(totalGoroutines) / float64(b.N)
-			fmt.Printf("  %s: min=%d, max=%d, avg=%.1f goroutines\n", 
+			fmt.Printf("  %s: min=%d, max=%d, avg=%.1f goroutines\n",
 				cfg.name, minGoroutines, maxGoroutines, avgGoroutines)
 		})
 	}
@@ -232,7 +232,7 @@ func BenchmarkGoroutineUsage(b *testing.B) {
 // Test concurrent pipeline execution to see semaphore effects
 func TestConcurrentPipelineExecution(t *testing.T) {
 	fmt.Printf("\n=== Concurrent Execution Test ===\n")
-	
+
 	configs := []struct {
 		name   string
 		config calque.FlowConfig
@@ -248,25 +248,25 @@ func TestConcurrentPipelineExecution(t *testing.T) {
 		t.Run(cfg.name, func(t *testing.T) {
 			// Run 20 concurrent pipelines
 			const numPipelines = 20
-			
+
 			// Measure baseline
 			runtime.GC()
 			baselineGoroutines := runtime.NumGoroutine()
-			
+
 			results := make(chan int, numPipelines)
-			
+
 			// Launch concurrent pipelines
 			for i := 0; i < numPipelines; i++ {
 				go func(id int) {
 					// Measure goroutines during concurrent execution
 					duringGoroutines := runtime.NumGoroutine()
 					results <- duringGoroutines
-					
+
 					// Run pipeline
 					CalquePipeWithConfig(testWords, cfg.config)
 				}(i)
 			}
-			
+
 			// Collect results
 			var maxConcurrentGoroutines int
 			for i := 0; i < numPipelines; i++ {
@@ -275,11 +275,11 @@ func TestConcurrentPipelineExecution(t *testing.T) {
 					maxConcurrentGoroutines = goroutineCount
 				}
 			}
-			
+
 			// Wait a moment for cleanup
 			runtime.GC()
 			finalGoroutines := runtime.NumGoroutine()
-			
+
 			fmt.Printf("  %s: baseline=%d, peak=%d, final=%d, increase=%d goroutines\n",
 				cfg.name, baselineGoroutines, maxConcurrentGoroutines, finalGoroutines,
 				maxConcurrentGoroutines-baselineGoroutines)

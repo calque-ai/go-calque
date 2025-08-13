@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/multiagent"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
+	"github.com/calque-ai/go-calque/pkg/middleware/multiagent"
+	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
 func main() {

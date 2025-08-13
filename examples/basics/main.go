@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/logger"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
+	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
+	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
+	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
 
 func main() {

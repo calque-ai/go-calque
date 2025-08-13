@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Chain creates a sequential middleware chain that executes handlers one after another

@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 	"google.golang.org/genai"
 )
 

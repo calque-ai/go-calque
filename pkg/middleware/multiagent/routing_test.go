@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 )
 
 // createMockHandler creates a simple test handler
@@ -303,7 +303,7 @@ func TestRouterSchemaValidation(t *testing.T) {
 				t.Fatalf("Router failed: %v", err)
 			}
 
-			expectedOutput := test.expectedHandler + ": " + 
+			expectedOutput := test.expectedHandler + ": " +
 				map[string]string{"math": "42", "code": "func() {}"}[test.expectedHandler]
 			if output.String() != expectedOutput {
 				t.Errorf("Expected %q, got %q", expectedOutput, output.String())

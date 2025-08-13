@@ -5,14 +5,14 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ctrl"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
+	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
 // Agent creates an AI agent handler with optional configuration.
 //
-// Input: string prompt/query  
+// Input: string prompt/query
 // Output: string AI response
 // Behavior: BUFFERED - reads entire input for processing
 //
@@ -24,7 +24,7 @@ import (
 //
 //	// Simple chat agent
 //	agent := ai.Agent(client)
-//	
+//
 //	// Agent with tools
 //	agent := ai.Agent(client, ai.WithTools(searchTool, calcTool))
 //	pipe.Use(agent)

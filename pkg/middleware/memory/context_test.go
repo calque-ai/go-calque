@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 func TestNewContext(t *testing.T) {

@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/calque-ai/calque-pipe/examples/memory/badger"
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/logger"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/memory"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/prompt"
+	"github.com/calque-ai/go-calque/examples/memory/badger"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
+	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/memory"
+	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
 
 func main() {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Test basic chain functionality

@@ -1,7 +1,7 @@
 package logger
 
 import (
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Package-level convenience functions for quick debugging using standard log.

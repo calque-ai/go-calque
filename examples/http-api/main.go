@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/logger"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
 
 // Request represents the incoming API request structure

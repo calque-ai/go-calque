@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Transform applies a function to transform the entire input content.

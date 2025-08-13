@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Head logs a preview of the first N bytes of the input stream.

@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/ai"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 	"github.com/invopop/jsonschema"
 	"github.com/ollama/ollama/api"
 )
@@ -278,21 +278,11 @@ func (o *Client) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
 		schema := tool.ParametersSchema()
 
 		// Convert schema properties to Ollama format
-		properties := make(map[string]struct {
-			Type        api.PropertyType `json:"type"`
-			Items       any              `json:"items,omitempty"`
-			Description string           `json:"description"`
-			Enum        []any            `json:"enum,omitempty"`
-		})
+		properties := make(map[string]api.ToolProperty)
 
 		if schema.Properties != nil {
 			for pair := schema.Properties.Oldest(); pair != nil; pair = pair.Next() {
-				properties[pair.Key] = struct {
-					Type        api.PropertyType `json:"type"`
-					Items       any              `json:"items,omitempty"`
-					Description string           `json:"description"`
-					Enum        []any            `json:"enum,omitempty"`
-				}{
+				properties[pair.Key] = api.ToolProperty{
 					Type:        api.PropertyType{pair.Value.Type},
 					Description: pair.Value.Description,
 				}
@@ -402,7 +392,7 @@ func (o *Client) buildChatRequest(input string, schemaOverride *ai.ResponseForma
 		req.Stream = o.config.Stream
 	}
 	if o.config.Think != nil {
-		req.Think = o.config.Think
+		req.Think = &api.ThinkValue{Value: *o.config.Think}
 	}
 
 	// Apply custom options (these override individual fields above)

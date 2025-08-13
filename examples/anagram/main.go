@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
 
 // Anagrams represents a map of sorted characters to words that contain them

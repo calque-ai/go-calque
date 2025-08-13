@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // ContextMemory provides sliding window context memory using a pluggable store.

@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 type requestBatcher struct {

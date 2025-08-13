@@ -1,32 +1,61 @@
 # Go-Calque
 
-A **streaming middleware framework** for building AI agents and data processing flow in Go.
+<img src=".github/images/go-calque.jpg" alt="Go-Calque" width="350">
 
-## What is Go-Calque?
+A **streaming middleware framework** for building AI agents and data processing flows in Go.
 
-Go-Calque brings HTTP middleware patterns to AI and data processing. Instead of handling HTTP requests, you compose flows where each middleware processes streaming data through `io.Pipe` connections.
+## Installation
 
-**Key benefits:**
-
-- **Streaming first**: Process data as it flows, not after it's fully loaded
-- **True concurrency**: Each middleware runs in its own goroutine
-- **Memory efficient**: Constant memory usage regardless of input size
-- **Real-time processing**: Responses begin immediately, no waiting for full datasets
-- **Composable**: Chain middleware just like HTTP handlers
-
-```go
-flow := calque.Flow().
-    Use(logger.Print("INPUT")).
-    Use(ai.Agent(geminiClient)).
-    Use(logger.Head("RESPONSE", 200))
-
-var result string
-err := flow.Run(ctx, "What's the capital of France?", &result)
+```bash
+go get github.com/calque-ai/go-calque
 ```
 
-Built on Go's `io.Reader`/`io.Writer` interfaces, every middleware runs concurrently through `io.Pipe` connections for maximum performance.
+## Quickstart
 
-## How It Works
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "time"
+
+    "github.com/calque-ai/go-calque/pkg/calque"
+    "github.com/calque-ai/go-calque/pkg/middleware/ai"
+    "github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
+)
+
+func main() {
+    // Initialize AI client
+    client, err := ollama.New("llama3.2:3b")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Create AI flow
+    flow := calque.NewFlow().
+        Use(ai.Agent(client)).
+
+    var result string
+    err = flow.Run(context.Background(), "What's the capital of France?", &result)
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+## Features
+
+✅ **Streaming First** - Process data as it flows, not after it's fully loaded  
+✅ **True Concurrency** - Each middleware runs in its own goroutine  
+✅ **Memory Efficient** - Constant memory usage regardless of input size  
+✅ **Real-time Processing** - Responses begin immediately, no waiting for full datasets  
+✅ **Composable** - Chain middleware just like HTTP handlers  
+✅ **AI-Native** - Built-in support for LLMs and AI workflows
+
+## Philosophy
+
+Go-Calque brings **HTTP middleware patterns** to AI and data processing. Instead of handling HTTP requests, you compose flows where each middleware processes streaming data through `io.Pipe` connections.
 
 **The Pattern**: Chain middleware like HTTP handlers, but for streaming data:
 
@@ -54,6 +83,7 @@ Input → Middleware1 → Middleware2 → Middleware3 → Output
 3. **Immediate Processing**: No buffering - processing starts as data arrives
 4. **Backpressure Handling**: Pipes automatically handle flow control
 5. **Context Propagation**: Cancellation and timeouts flow through the entire chain
+6. **Buffered vs Streaming**: Middleware can be buffered (reads all data first) or streaming (processes data incrementally) based on their implementation needs
 
 ## Middleware Packages
 
@@ -66,26 +96,42 @@ Go-Calque includes middleware for common AI and data processing patterns:
 - **Streaming Support**: Real-time response processing as tokens arrive
 - **Context Management**: Automatic conversation and context handling
 
-### Flow Control (`ctrl/`, `logger/`)
+### Flow Control (`ctrl/`)
 
 - **Timeouts**: `ctrl.Timeout(handler, duration)` - Prevent hanging operations
 - **Retries**: `ctrl.Retry(handler, attempts)` - Handle transient failures
 - **Parallel Processing**: `ctrl.Parallel(handlers...)` - Concurrent execution
-- **Logging**: `logger.Print(label)` - Non-intrusive request/response logging
-- **Conditional Logic**: `ctrl.If(condition, handler)` - Dynamic routing
+- **Chain Composition**: `ctrl.Chain(handlers...)` - Sequential middleware chains
+- **Conditional Logic**: `ctrl.Branch(condition, ifTrue, ifFalse)` - Dynamic routing
 
-### Data Processing (`text/`, `convert/`)
+### Data Processing (`text/`)
 
 - **Text Transform**: `text.Transform(func)` - Simple string transformations
-- **JSON/YAML**: `convert.JSON()`, `convert.YAML()` - Structured data conversion
-- **Schema Validation**: Ensure data conforms to expected formats
-- **Streaming Parsers**: Process large files without loading into memory
+- **Line Processing**: `text.LineProcessor(func)` - Process large files line-by-line
+- **Text Branching**: `text.Branch(condition, ifTrue, ifFalse)` - Conditional text processing
 
 ### Memory & State (`memory/`)
 
 - **Conversation Memory**: Track chat history with configurable limits
 - **Context Windows**: Sliding window memory management for long conversations
 - **Storage Backends**: In-memory, Redis, or custom storage adapters
+
+### Observability (`logger/`)
+
+- **Logging**: `logger.Print(label)` - Non-intrusive request/response logging
+- **Head Logging**: `logger.Head(label, bytes)` - Log first N bytes for streaming
+- **Chunk Logging**: `logger.Chunks(label, size)` - Log streaming data in chunks
+
+### Tool Integration (`tools/`)
+
+- **Function Calling**: Execute Go functions from AI agents
+- **Tool Registry**: Manage and discover available functions
+- **Automatic Detection**: Parse AI responses for function calls
+
+### Multi-Agent (`multiagent/`)
+
+- **Agent Routing**: Route requests to different agents based on content
+- **Load Balancing**: Distribute load across multiple agent instances
 
 ## Converters
 
@@ -103,6 +149,7 @@ convert.ToJsonSchema(struct) // Struct + schema → stream (for AI context)
 
 ```go
 convert.FromJson(&result)           // JSON stream → struct
+convert.FromYaml(&result)           // Yaml stream → struct
 convert.FromJsonSchema(&result)     // Validates output against schema
 ```
 
@@ -116,21 +163,217 @@ err := flow.Run(ctx, convert.ToJson(data), convert.FromJson(&result))
 err := flow.Run(ctx, convert.ToJsonSchema(input), convert.FromJsonSchema[Output](&result))
 ```
 
+## Examples
+
+### Basic Text Processing
+
+```go
+flow := calque.NewFlow().
+    Use(text.Transform(strings.ToUpper)).
+    Use(text.Transform(func(s string) string {
+        return fmt.Sprintf("Processed: %s", s)
+    }))
+
+var result string
+flow.Run(ctx, "hello", &result)
+// Result: "Processed: HELLO"
+```
+
+### AI Chat with Memory
+
+```go
+client, _ := ollama.New("llama3.2:1b")
+convMem := memory.NewConversation()
+
+flow := calque.NewFlow().
+    Use(convMem.Input("user123")). //store input
+    Use(prompt.Template("User: {{.Input}}\nAssistant:")).
+    Use(ai.Agent(client)).
+    Use(convMem.Output("user123")) //store ai response
+
+var response string
+flow.Run(ctx, "What's the capital of France?", &response)
+```
+
+### JSON Schema Validation
+
+```go
+type TaskAnalysis struct {
+    TaskType string `json:"task_type" jsonschema:"required,description=Type of development task"`
+    Priority string `json:"priority" jsonschema:"required,description=Task priority level"`
+    Hours    int    `json:"hours" jsonschema:"description=Estimated hours to complete"`
+}
+
+flow := calque.NewFlow().
+    Use(ai.Agent(client, ai.WithSchema(&TaskAnalysis{})))
+
+var analysis TaskAnalysis
+flow.Run(ctx, "Build a chat app", convert.FromJsonSchema[TaskAnalysis](&analysis))
+```
+
+### Flow Composition
+
+```go
+// Build reusable sub-flows
+textPreprocessor := calque.NewFlow().
+    Use(text.Transform(strings.TrimSpace)).
+    Use(text.Transform(strings.ToLower))
+
+textAnalyzer := calque.NewFlow().
+    Use(text.Transform(func(s string) string {
+        wordCount := len(strings.Fields(s))
+        return fmt.Sprintf("TEXT: %s\nWORDS: %d", s, wordCount)
+    }))
+
+// Compose sub-flows into main flow
+mainFlow := calque.NewFlow().
+    Use(logger.Print("INPUT")).
+    Use(textPreprocessor).              // Use preprocessing sub-flow
+    Use(text.Branch(                    // Branch based on content length
+        func(s string) bool { return len(s) > 50 },
+        textAnalyzer,                   // Long text: use analysis sub-flow
+        text.Transform(func(s string) string {
+            return s + " [SHORT TEXT]"
+        }), // Short text: simple processing
+    )).
+    Use(logger.Print("OUTPUT"))
+
+var result string
+mainFlow.Run(ctx, "  Hello WORLD!  This is a Test  ", &result)
+```
+
+## Writing Custom Middleware
+
+Create your own middleware by implementing `calque.HandlerFunc`:
+
+```go
+package main
+
+import (
+    "fmt"
+    "strings"
+    "time"
+
+    "github.com/calque-ai/go-calque/pkg/calque"
+)
+
+// Custom middleware that adds timestamps (BUFFERED - reads all input first)
+func AddTimestamp(prefix string) calque.HandlerFunc {
+    return func(req *calque.Request, res *calque.Response) error {
+        // Read input using the Read helper
+        var input string
+        if err := calque.Read(req, &input); err != nil {
+            return err
+        }
+
+        // Transform data
+        timestamp := time.Now().Format("2006-01-02 15:04:05")
+        output := fmt.Sprintf("[%s %s] %s", prefix, timestamp, input)
+
+        // Write output using the Write helper
+        return calque.Write(res, output)
+    }
+}
+
+// Usage
+func main() {
+    flow := calque.NewFlow().
+        Use(AddTimestamp("LOG")).
+        Use(text.Transform(strings.ToUpper))
+
+    var result string
+    flow.Run(ctx, "hello world", &result)
+    // Result: "[LOG 2024-01-15 14:30:45] HELLO WORLD"
+}
+```
+
+### Streaming Middleware
+
+For processing large data streams without buffering:
+
+```go
+func StreamingProcessor() calque.HandlerFunc {
+    return func(req *calque.Request, res *calque.Response) error {
+        // Process data line by line
+        scanner := bufio.NewScanner(req.Data)
+        for scanner.Scan() {
+            line := scanner.Text()
+            processed := fmt.Sprintf("PROCESSED: %s\n", line)
+            if _, err := res.Data.Write([]byte(processed)); err != nil {
+                return err
+            }
+        }
+        return scanner.Err()
+    }
+}
+```
+
+## Advanced Topics
+
+### Error Handling & Retries
+
+```go
+flow := calque.NewFlow().
+    Use(ctrl.Retry(ai.Agent(client), 3)).
+    Use(ctrl.Fallback(
+        ai.Agent(primaryClient),
+        ai.Agent(backupClient),
+    ))
+```
+
+### Multi-Agent Routing
+
+```go
+// Create routed handlers with metadata
+mathHandler := multiagent.Route(
+    ai.Agent(mathClient),
+    "math",
+    "Solve mathematical problems, calculations, equations",
+    "calculate,solve,math,equation")
+
+codeHandler := multiagent.Route(
+    ai.Agent(codeClient),
+    "code",
+    "Programming, debugging, code review",
+    "code,program,debug,function")
+
+// Router automatically selects best handler
+flow := calque.NewFlow().
+    Use(multiagent.Router(selectionClient, mathHandler, codeHandler))
+```
+
+### Tool Calling
+
+```go
+// Create tools
+calculator := tools.Simple("calculator", "Performs basic math calculations", func(expression string) string {
+    // tool implementation
+    return "42"
+})
+
+currentTime := tools.Simple("current_time", "Gets current date and time", func(format string) string {
+    return time.Now().Format("2006-01-02 15:04:05")
+})
+
+// Agent with tools
+flow := calque.NewFlow().
+    Use(ai.Agent(client, ai.WithTools(calculator, currentTime)))
+```
+
 ## Roadmap
 
 ### Priority Middleware
 
 **Tool Calling** - ✅ Function execution for AI agents
 **Information Retrieval** - Vector search, context building, semantic filtering
-**Multi-Agent Collaboration** - Agent selection, load balancing, conditional routing  
-**Guardrails & Safety** - Input filtering, output validation, schema compliance  
+**Multi-Agent Collaboration** - Agent selection, ✅ load balancing, conditional routing  
+**Guardrails & Safety** - Input filtering, output validation, ✅ schema compliance  
 **HTTP/API Integration** - ✅ streaming responses
 
 ### Framework Improvements
 
 **Enhanced Memory** - Vector-based semantic memory retrieval  
-**Advanced Agents** - Planning, reflection, and self-evaluation capabilities  
-**Developer Experience** - Better type inference, flow helpers, function shortcuts
+**Advanced Agents** - Planning, reflection, and self-evaluation capabilities
 
 ### Essential Examples
 
@@ -143,3 +386,14 @@ err := flow.Run(ctx, convert.ToJsonSchema(input), convert.FromJsonSchema[Output]
 
 **Batch Processing** - Splitters, aggregators, parallel processors  
 **State Management** - State machines, checkpoints, conditional flows
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new middleware
+4. Submit a pull request
+
+## License
+
+Mozilla Public License 2.0 - see [LICENSE](LICENSE) file for details.

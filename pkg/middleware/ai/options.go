@@ -1,7 +1,7 @@
 package ai
 
 import (
-	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
+	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 	"github.com/invopop/jsonschema"
 )
 

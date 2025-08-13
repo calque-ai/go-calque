@@ -9,9 +9,9 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/calque-ai/calque-pipe/pkg/calque"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/logger"
-	"github.com/calque-ai/calque-pipe/pkg/middleware/text"
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
 
 func main() {
