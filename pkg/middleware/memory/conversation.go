@@ -11,7 +11,15 @@ import (
 	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
-// Message represents a single conversation message
+// Message represents a single conversation message.
+//
+// Contains role ("user", "assistant", "system") and raw content bytes.
+// Supports any content type - text, JSON, binary data.
+//
+// Example:
+//
+//	msg := Message{Role: "user", Content: []byte("Hello")}
+//	fmt.Println(msg.Text()) // "Hello"
 type Message struct {
 	Role    string // "user", "assistant", "system"
 	Content []byte // Raw content - can be text, JSON, binary, etc.
@@ -27,19 +35,50 @@ func (m Message) String() string {
 	return fmt.Sprintf("%s: %s", m.Role, m.Text())
 }
 
-// ConversationMemory provides structured conversation memory using a pluggable store
+// ConversationMemory provides structured conversation memory using a pluggable store.
+//
+// Manages conversation history with configurable storage backends.
+// Supports multiple concurrent conversations identified by keys.
+//
+// Example:
+//
+//	mem := memory.NewConversation()
+//	flow.Use(mem.Input("user123")).Use(llm).Use(mem.Output("user123"))
 type ConversationMemory struct {
 	store Store
 }
 
-// NewConversation creates a conversation memory with default in-memory store
+// NewConversation creates a conversation memory with default in-memory store.
+//
+// Input: none
+// Output: *ConversationMemory with in-memory storage
+// Behavior: Creates fresh conversation manager
+//
+// Uses built-in memory store that persists for application lifetime.
+// For persistent storage, use NewConversationWithStore.
+//
+// Example:
+//
+//	mem := memory.NewConversation()
+//	flow.Use(mem.Input("session1"))
 func NewConversation() *ConversationMemory {
 	return &ConversationMemory{
 		store: NewInMemoryStore(),
 	}
 }
 
-// NewConversationWithStore creates a conversation memory with custom store
+// NewConversationWithStore creates a conversation memory with custom store.
+//
+// Input: Store implementation
+// Output: *ConversationMemory with custom storage
+// Behavior: Creates conversation manager with provided storage
+//
+// Allows pluggable storage backends for persistence, Redis, databases, etc.
+//
+// Example:
+//
+//	redisStore := memory.NewRedisStore("localhost:6379")
+//	mem := memory.NewConversationWithStore(redisStore)
 func NewConversationWithStore(store Store) *ConversationMemory {
 	return &ConversationMemory{
 		store: store,
@@ -191,12 +230,29 @@ func (cm *ConversationMemory) Output(key string) calque.Handler {
 	})
 }
 
-// Clear removes all conversation history for a key
+// Clear removes all conversation history for a key.
+//
+// Input: conversation key string
+// Output: error if deletion fails
+// Behavior: Permanently deletes conversation data
+//
+// Example:
+//
+//	err := mem.Clear("user123")
 func (cm *ConversationMemory) Clear(key string) error {
 	return cm.store.Delete(key)
 }
 
-// Info returns information about a conversation
+// Info returns information about a conversation.
+//
+// Input: conversation key string
+// Output: message count, existence flag, error
+// Behavior: Non-destructive inspection of conversation state
+//
+// Example:
+//
+//	count, exists, err := mem.Info("user123")
+//	if exists { fmt.Printf("%d messages", count) }
 func (cm *ConversationMemory) Info(key string) (messageCount int, exists bool, err error) {
 	history, err := cm.getConversation(key)
 	if err != nil {
@@ -207,7 +263,16 @@ func (cm *ConversationMemory) Info(key string) (messageCount int, exists bool, e
 	return len(history), exists, nil
 }
 
-// ListKeys returns all active conversation keys
+// ListKeys returns all active conversation keys.
+//
+// Input: none
+// Output: slice of conversation key strings
+// Behavior: Lists all stored conversation identifiers
+//
+// Example:
+//
+//	keys := mem.ListKeys()
+//	for _, key := range keys { fmt.Println(key) }
 func (cm *ConversationMemory) ListKeys() []string {
 	return cm.store.List()
 }
@@ -220,12 +285,30 @@ const (
 	MemoryKey ContextKey = "memory_key"
 )
 
-// WithKey adds a memory key to the context
+// WithKey adds a memory key to the context.
+//
+// Input: context and key string
+// Output: context with embedded key
+// Behavior: Embeds conversation key for downstream handlers
+//
+// Example:
+//
+//	ctx := memory.WithKey(context.Background(), "user123")
+//	req := calque.NewRequest(ctx, input)
 func WithKey(ctx context.Context, key string) context.Context {
 	return context.WithValue(ctx, MemoryKey, key)
 }
 
-// GetKey extracts memory key from context
+// GetKey extracts memory key from context.
+//
+// Input: context
+// Output: key string (empty if not found)
+// Behavior: Retrieves conversation key from context
+//
+// Example:
+//
+//	key := memory.GetKey(req.Context)
+//	if key != "" { /* use key */ }
 func GetKey(ctx context.Context) string {
 	if key, ok := ctx.Value(MemoryKey).(string); ok {
 		return key
@@ -233,7 +316,18 @@ func GetKey(ctx context.Context) string {
 	return ""
 }
 
-// InputFromContext creates input middleware that uses key from context
+// InputFromContext creates input middleware that uses key from context.
+//
+// Input: user message (requires memory key in context)
+// Output: formatted conversation with history
+// Behavior: BUFFERED - loads and prepends conversation history
+//
+// Automatically extracts conversation key from request context.
+//
+// Example:
+//
+//	flow.Use(memory.WithKeyMiddleware("user123"))
+//	flow.Use(mem.InputFromContext())
 func (cm *ConversationMemory) InputFromContext() calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		key := GetKey(req.Context)
@@ -245,7 +339,17 @@ func (cm *ConversationMemory) InputFromContext() calque.Handler {
 	})
 }
 
-// OutputFromContext creates output middleware that uses key from context
+// OutputFromContext creates output middleware that uses key from context.
+//
+// Input: assistant response (requires memory key in context)
+// Output: same response (pass-through)
+// Behavior: STREAMING - captures and stores while streaming
+//
+// Automatically extracts conversation key from request context.
+//
+// Example:
+//
+//	flow.Use(llm).Use(mem.OutputFromContext())
 func (cm *ConversationMemory) OutputFromContext() calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		key := GetKey(req.Context)
@@ -257,7 +361,18 @@ func (cm *ConversationMemory) OutputFromContext() calque.Handler {
 	})
 }
 
-// WrapFromContext wraps a handler with both input and output memory using key from context
+// WrapFromContext wraps a handler with both input and output memory using key from context.
+//
+// Input: user message (requires memory key in context)
+// Output: assistant response with memory captured
+// Behavior: BUFFERED input, STREAMING output
+//
+// Convenience wrapper that applies Input → Handler → Output flow.
+//
+// Example:
+//
+//	wrapped := mem.WrapFromContext(llm.Chat(client))
+//	flow.Use(wrapped)
 func (cm *ConversationMemory) WrapFromContext(handler calque.Handler) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		key := GetKey(req.Context)

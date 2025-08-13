@@ -4,9 +4,9 @@ import "encoding/json"
 
 // ToolDefinition represents a function in OpenAI format for tool schema
 type ToolDefinition struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
 }
 
 // FormatToolsAsOpenAI formats tools into OpenAI functions schema

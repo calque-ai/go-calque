@@ -16,14 +16,32 @@ import (
 	"github.com/ollama/ollama/api"
 )
 
-// Client implements the Client interface for Ollama
+// Client implements the Client interface for Ollama.
+//
+// Provides streaming chat completions with local model support.
+// Connects to Ollama server for running models like Llama, Mistral, etc.
+//
+// Example:
+//
+//	client, _ := ollama.New("llama3.2")
+//	agent := ai.Agent(client)
 type Client struct {
 	client *api.Client
 	model  string
 	config *Config
 }
 
-// Config holds Ollama-specific configuration
+// Config holds Ollama-specific configuration.
+//
+// Configures connection, model parameters, and response format.
+// All fields are optional with sensible defaults.
+//
+// Example:
+//
+//	config := &ollama.Config{
+//		Host: "http://192.168.1.100:11434",
+//		Temperature: ai.Float32Ptr(0.8),
+//	}
 type Config struct {
 	// Optional. Ollama server host (defaults to localhost:11434 or OLLAMA_HOST env)
 	Host string
@@ -70,12 +88,32 @@ type configOption struct{ config *Config }
 
 func (o configOption) Apply(opts *Config) { *opts = *o.config }
 
-// WithConfig sets custom Ollama configuration
+// WithConfig sets custom Ollama configuration.
+//
+// Input: *Config with Ollama settings
+// Output: Option for client creation
+// Behavior: Overrides default configuration
+//
+// Example:
+//
+//	config := &ollama.Config{Host: "http://remote:11434"}
+//	client, _ := ollama.New("llama3.2", ollama.WithConfig(config))
 func WithConfig(config *Config) Option {
 	return configOption{config: config}
 }
 
-// DefaultConfig returns sensible defaults for Ollama
+// DefaultConfig returns sensible defaults for Ollama.
+//
+// Input: none
+// Output: *Config with default settings
+// Behavior: Creates config for localhost Ollama server
+//
+// Sets host to localhost:11434, 5m keep-alive, 0.7 temperature.
+//
+// Example:
+//
+//	config := ollama.DefaultConfig()
+//	config.MaxTokens = ai.IntPtr(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		Host:        "", // Will use ClientFromEnvironment() default
@@ -85,7 +123,19 @@ func DefaultConfig() *Config {
 	}
 }
 
-// New creates a new Ollama client with optional configuration
+// New creates a new Ollama client with optional configuration.
+//
+// Input: model name string, optional config Options
+// Output: *Client, error
+// Behavior: Initializes HTTP client for Ollama server
+//
+// Requires Ollama server running with specified model available.
+// Use 'ollama list' to see available models.
+//
+// Example:
+//
+//	client, err := ollama.New("llama3.2:latest")
+//	if err != nil { log.Fatal(err) }
 func New(model string, opts ...Option) (*Client, error) {
 	if model == "" {
 		model = "llama3.2" // Default model
@@ -124,7 +174,18 @@ func New(model string, opts ...Option) (*Client, error) {
 	}, nil
 }
 
-// Chat implements the Client interface
+// Chat implements the Client interface.
+//
+// Input: user prompt/query via calque.Request
+// Output: streamed AI response via calque.Response
+// Behavior: STREAMING - outputs tokens as they arrive
+//
+// Supports JSON schema responses and tool calling (model dependent).
+// Automatically handles conversation context and system messages.
+//
+// Example:
+//
+//	err := client.Chat(req, res, &ai.AgentOptions{Tools: tools})
 func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	// Extract options
 	var toolList []tools.Tool

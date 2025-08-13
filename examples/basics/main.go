@@ -23,6 +23,8 @@ func main() {
 
 	runStreamingExample() //Streaming capabilities demo
 
+	runComposedPipelineExample() //Pipeline composition demo
+
 	// Initialize AI client (using Ollama as a free, local option)
 	client, err := ollama.New("llama3.2:1b")
 	if err != nil {
@@ -199,6 +201,75 @@ Line 3: Buffered reads everything first`
 	}
 
 	fmt.Printf("COMPARISON RESULT:\n%s\n", result)
+}
+
+// runComposedPipelineExample demonstrates pipeline composition by building reusable
+// sub-pipelines and composing them into larger main pipelines.
+func runComposedPipelineExample() {
+	fmt.Println("\nRunning composed pipeline example...")
+
+	// Build reusable sub-pipeline for text preprocessing
+	// Important: Don't Run this sub-pipeline directly, it will be composed into the main pipeline
+	textPreprocessor := calque.Flow()
+	textPreprocessor.
+		Use(logger.Print("PREPROCESS_INPUT")).
+		Use(text.Transform(strings.TrimSpace)).
+		Use(text.Transform(func(s string) string {
+			// Normalize whitespace
+			return strings.Join(strings.Fields(s), " ")
+		})).
+		Use(text.Transform(strings.ToLower)).
+		Use(logger.Print("PREPROCESS_OUTPUT"))
+
+	// Build reusable sub-pipeline for text analysis
+	textAnalyzer := calque.Flow()
+	textAnalyzer.
+		Use(logger.Print("ANALYZE_INPUT")).
+		Use(text.Transform(func(s string) string {
+			wordCount := len(strings.Fields(s))
+			charCount := len(s)
+			return fmt.Sprintf("TEXT: %s\nSTATS: %d words, %d characters", s, wordCount, charCount)
+		})).
+		Use(logger.Print("ANALYZE_OUTPUT"))
+
+	// Build main pipeline that composes the sub-pipelines
+	mainPipeline := calque.Flow()
+	mainPipeline.
+		Use(logger.Print("MAIN_START")).
+		Use(textPreprocessor). // Use preprocessing sub-pipeline
+		Use(text.Branch(       // Branch based on content length
+			func(s string) bool { return len(s) > 50 },
+			ctrl.Chain( // Long text path
+				text.Transform(func(s string) string { return s + " [LONG TEXT DETECTED]" }),
+				textAnalyzer, // Use analysis sub-pipeline
+			),
+			text.Transform(func(s string) string { return s + " [SHORT TEXT - BASIC PROCESSING]" }), // Short text path
+		)).
+		Use(text.Transform(func(s string) string {
+			return fmt.Sprintf("FINAL RESULT:\n%s\n[Pipeline composition complete]", s)
+		})).
+		Use(logger.Print("MAIN_END"))
+
+	// Test with different inputs
+	inputs := []string{
+		"  Hello WORLD!  This is a    Test   ",
+		"Short text",
+		"This is a much longer piece of text that will trigger the analysis sub-pipeline because it exceeds the 50 character threshold",
+	}
+
+	for i, input := range inputs {
+		fmt.Printf("\n--- Test %d ---\n", i+1)
+		fmt.Printf("Input: %q\n\n", input)
+
+		var result string
+		err := mainPipeline.Run(context.Background(), input, &result)
+		if err != nil {
+			log.Printf("Error: %v", err)
+			continue
+		}
+
+		fmt.Printf("OUTPUT:\n%s\n", result)
+	}
 }
 
 // preprocessText cleans and normalizes input text

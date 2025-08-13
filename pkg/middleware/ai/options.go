@@ -5,14 +5,31 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
-// AgentOptions holds all configuration for an AI agent request
+// AgentOptions holds all configuration for an AI agent request.
+//
+// Configures tools, response schemas, and tool execution behavior.
+// Used to customize agent behavior for specific use cases.
+//
+// Example:
+//
+//	opts := &ai.AgentOptions{
+//		Tools: []tools.Tool{searchTool, calcTool},
+//		Schema: jsonSchema,
+//	}
 type AgentOptions struct {
 	Schema      *ResponseFormat
 	Tools       []tools.Tool
 	ToolsConfig *tools.Config
 }
 
-// AgentOption interface for functional options pattern
+// AgentOption interface for functional options pattern.
+//
+// Enables flexible configuration of agent options using the functional
+// options pattern. Allows composing multiple configuration options.
+//
+// Example:
+//
+//	agent := ai.Agent(client, ai.WithTools(tools...), ai.WithSchema(schema))
 type AgentOption interface {
 	Apply(*AgentOptions)
 }
@@ -30,7 +47,18 @@ type toolsConfigOption struct{ config *tools.Config }
 
 func (o toolsConfigOption) Apply(opts *AgentOptions) { opts.ToolsConfig = o.config }
 
-// WithTools adds tools to the agent
+// WithTools adds tools to the agent.
+//
+// Input: variadic tools.Tool arguments
+// Output: AgentOption for configuration
+// Behavior: Enables tool calling in agent conversations
+//
+// Allows the agent to call functions and execute tools during conversations.
+// Tools are executed automatically when the agent requests them.
+//
+// Example:
+//
+//	agent := ai.Agent(client, ai.WithTools(searchTool, calcTool))
 func WithTools(tools ...tools.Tool) AgentOption {
 	return toolsOption{tools: tools}
 }
@@ -79,7 +107,19 @@ func WithSchemaFor[T any]() AgentOption {
 	}}
 }
 
-// WithToolsConfig configures tool behavior
+// WithToolsConfig configures tool behavior.
+//
+// Input: tools.Config with execution settings
+// Output: AgentOption for configuration
+// Behavior: Controls tool execution concurrency and error handling
+//
+// Configures how tools are executed including concurrency limits,
+// error handling, and output formatting.
+//
+// Example:
+//
+//	config := tools.Config{MaxConcurrentTools: 3}
+//	agent := ai.Agent(client, ai.WithToolsConfig(config))
 func WithToolsConfig(config tools.Config) AgentOption {
 	return toolsConfigOption{config: &config}
 }

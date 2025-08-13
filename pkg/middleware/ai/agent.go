@@ -10,7 +10,24 @@ import (
 	"github.com/calque-ai/calque-pipe/pkg/middleware/tools"
 )
 
-// Agent creates an AI agent handler with optional configuration
+// Agent creates an AI agent handler with optional configuration.
+//
+// Input: string prompt/query  
+// Output: string AI response
+// Behavior: BUFFERED - reads entire input for processing
+//
+// Creates an intelligent agent that can chat or use tools. Without tools,
+// provides direct chat completion. With tools, enables tool calling with
+// automatic result synthesis.
+//
+// Example:
+//
+//	// Simple chat agent
+//	agent := ai.Agent(client)
+//	
+//	// Agent with tools
+//	agent := ai.Agent(client, ai.WithTools(searchTool, calcTool))
+//	pipe.Use(agent)
 func Agent(client Client, opts ...AgentOption) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		// Build options

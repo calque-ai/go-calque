@@ -13,14 +13,32 @@ import (
 	"google.golang.org/genai"
 )
 
-// Client implements the Client interface for Google Gemini
+// Client implements the Client interface for Google Gemini.
+//
+// Provides streaming chat completions with tool calling support.
+// Supports Gemini Pro, Flash, and other Google AI models.
+//
+// Example:
+//
+//	client, _ := gemini.New("gemini-1.5-pro")
+//	agent := ai.Agent(client)
 type Client struct {
 	client *genai.Client
 	model  string
 	config *Config
 }
 
-// GeminiConfig holds Gemini-specific configuration
+// Config holds Gemini-specific configuration.
+//
+// Configures model behavior, safety settings, and response format.
+// All fields are optional with sensible defaults.
+//
+// Example:
+//
+//	config := &gemini.Config{
+//		Temperature: ai.Float32Ptr(0.8),
+//		MaxTokens: ai.IntPtr(1000),
+//	}
 type Config struct {
 	// Required. API key for Google AI/Vertex AI authentication
 	APIKey string
@@ -78,12 +96,32 @@ type configOption struct{ config *Config }
 
 func (o configOption) Apply(opts *Config) { *opts = *o.config }
 
-// WithConfig sets custom Gemini configuration
+// WithConfig sets custom Gemini configuration.
+//
+// Input: *Config with Gemini settings
+// Output: Option for client creation
+// Behavior: Overrides default configuration
+//
+// Example:
+//
+//	config := &gemini.Config{Temperature: ai.Float32Ptr(0.9)}
+//	client, _ := gemini.New("gemini-pro", gemini.WithConfig(config))
 func WithConfig(config *Config) Option {
 	return configOption{config: config}
 }
 
-// DefaultConfig returns sensible defaults for Gemini
+// DefaultConfig returns sensible defaults for Gemini.
+//
+// Input: none
+// Output: *Config with default settings
+// Behavior: Creates config with GOOGLE_API_KEY from env
+//
+// Sets temperature to 0.7 and API key from environment.
+//
+// Example:
+//
+//	config := gemini.DefaultConfig()
+//	config.MaxTokens = ai.IntPtr(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		APIKey:      os.Getenv("GOOGLE_API_KEY"),
@@ -91,7 +129,19 @@ func DefaultConfig() *Config {
 	}
 }
 
-// New creates a new Gemini client with optional configuration
+// New creates a new Gemini client with optional configuration.
+//
+// Input: model name string, optional config Options
+// Output: *Client, error
+// Behavior: Initializes authenticated Gemini client
+//
+// Requires GOOGLE_API_KEY environment variable or config.APIKey.
+// Supports all Gemini models: gemini-pro, gemini-1.5-pro, etc.
+//
+// Example:
+//
+//	client, err := gemini.New("gemini-1.5-pro")
+//	if err != nil { log.Fatal(err) }
 func New(model string, opts ...Option) (*Client, error) {
 	if model == "" {
 		return nil, fmt.Errorf("model name is required")
@@ -125,7 +175,18 @@ func New(model string, opts ...Option) (*Client, error) {
 	}, nil
 }
 
-// Chat implements the Client interface with streaming support
+// Chat implements the Client interface with streaming support.
+//
+// Input: user prompt/query via calque.Request
+// Output: streamed AI response via calque.Response
+// Behavior: STREAMING - outputs tokens as they arrive
+//
+// Supports tool calling, JSON schema responses, and safety filtering.
+// Automatically formats tool calls for agent framework compatibility.
+//
+// Example:
+//
+//	err := client.Chat(req, res, &ai.AgentOptions{Tools: tools})
 func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	// Extract options
 	var tools []tools.Tool

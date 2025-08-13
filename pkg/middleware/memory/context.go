@@ -9,19 +9,50 @@ import (
 	"github.com/calque-ai/calque-pipe/pkg/calque"
 )
 
-// ContextMemory provides sliding window context memory using a pluggable store
+// ContextMemory provides sliding window context memory using a pluggable store.
+//
+// Maintains a rolling window of recent content with automatic token-based trimming.
+// Unlike conversation memory, stores raw content flow without message structure.
+//
+// Example:
+//
+//	mem := memory.NewContext()
+//	flow.Use(mem.Input("session1", 4000)) // 4k token window
 type ContextMemory struct {
 	store Store
 }
 
-// NewContext creates a context memory with default in-memory store
+// NewContext creates a context memory with default in-memory store.
+//
+// Input: none
+// Output: *ContextMemory with in-memory storage
+// Behavior: Creates fresh context manager
+//
+// Uses built-in memory store that persists for application lifetime.
+// For persistent storage, use NewContextWithStore.
+//
+// Example:
+//
+//	mem := memory.NewContext()
+//	flow.Use(mem.Input("session1", 2000))
 func NewContext() *ContextMemory {
 	return &ContextMemory{
 		store: NewInMemoryStore(),
 	}
 }
 
-// NewContextWithStore creates a context memory with custom store
+// NewContextWithStore creates a context memory with custom store.
+//
+// Input: Store implementation
+// Output: *ContextMemory with custom storage
+// Behavior: Creates context manager with provided storage
+//
+// Allows pluggable storage backends for persistence, Redis, databases, etc.
+//
+// Example:
+//
+//	redisStore := memory.NewRedisStore("localhost:6379")
+//	mem := memory.NewContextWithStore(redisStore)
 func NewContextWithStore(store Store) *ContextMemory {
 	return &ContextMemory{
 		store: store,
@@ -129,7 +160,16 @@ func (cm *ContextMemory) saveContext(key string, ctx *contextData) error {
 	return cm.store.Set(key, data)
 }
 
-// GetContext retrieves current context content for a key
+// GetContext retrieves current context content for a key.
+//
+// Input: context key string
+// Output: context content bytes, error
+// Behavior: Returns copy of stored content
+//
+// Example:
+//
+//	content, err := mem.GetContext("session1")
+//	if err == nil { fmt.Printf("Context: %s", content) }
 func (cm *ContextMemory) GetContext(key string) ([]byte, error) {
 	ctx, err := cm.getContext(key)
 	if err != nil {
@@ -146,7 +186,18 @@ func (cm *ContextMemory) GetContext(key string) ([]byte, error) {
 	return result, nil
 }
 
-// AddToContext adds content to the sliding window
+// AddToContext adds content to the sliding window.
+//
+// Input: key string, content bytes, max token limit
+// Output: error if storage fails
+// Behavior: Appends content and trims to token limit
+//
+// Automatically trims oldest content when token limit exceeded.
+// Tries to preserve sentence boundaries when trimming.
+//
+// Example:
+//
+//	err := mem.AddToContext("session1", []byte("Hello world"), 1000)
 func (cm *ContextMemory) AddToContext(key string, content []byte, maxTokens int) error {
 	// Get or create context
 	ctx, err := cm.getContext(key)
@@ -173,12 +224,29 @@ func (cm *ContextMemory) AddToContext(key string, content []byte, maxTokens int)
 	return cm.saveContext(key, ctx)
 }
 
-// Clear removes all context for a key
+// Clear removes all context for a key.
+//
+// Input: context key string
+// Output: error if deletion fails
+// Behavior: Permanently deletes context data
+//
+// Example:
+//
+//	err := mem.Clear("session1")
 func (cm *ContextMemory) Clear(key string) error {
 	return cm.store.Delete(key)
 }
 
-// Info returns information about a context window
+// Info returns information about a context window.
+//
+// Input: context key string
+// Output: current tokens, max tokens, exists flag, error
+// Behavior: Non-destructive inspection of context state
+//
+// Example:
+//
+//	tokens, max, exists, err := mem.Info("session1")
+//	if exists { fmt.Printf("%d/%d tokens", tokens, max) }
 func (cm *ContextMemory) Info(key string) (tokenCount, maxTokens int, exists bool, err error) {
 	ctx, err := cm.getContext(key)
 	if err != nil {
@@ -193,7 +261,16 @@ func (cm *ContextMemory) Info(key string) (tokenCount, maxTokens int, exists boo
 	return approximateTokenCount(ctx.Content), ctx.MaxTokens, true, nil
 }
 
-// ListKeys returns all active context keys
+// ListKeys returns all active context keys.
+//
+// Input: none
+// Output: slice of context key strings
+// Behavior: Lists all stored context identifiers
+//
+// Example:
+//
+//	keys := mem.ListKeys()
+//	for _, key := range keys { fmt.Println(key) }
 func (cm *ContextMemory) ListKeys() []string {
 	return cm.store.List()
 }
