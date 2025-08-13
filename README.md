@@ -95,7 +95,6 @@ Go-Calque includes middleware for common AI and data processing patterns:
 - **AI Agents**: `ai.Agent(client)` - Connect to Gemini, Ollama, or custom providers
 - **Prompt Templates**: `prompt.Template("Question: {{.Input}}")` - Dynamic prompt formatting
 - **Streaming Support**: Real-time response processing as tokens arrive
-- **Context Management**: Automatic conversation and context handling
 
 ### Flow Control (`ctrl/`)
 
@@ -115,11 +114,11 @@ Go-Calque includes middleware for common AI and data processing patterns:
 
 - **Conversation Memory**: Track chat history with configurable limits
 - **Context Windows**: Sliding window memory management for long conversations
-- **Storage Backends**: In-memory, Redis, or custom storage adapters
+- **Storage Backends**: In-memory, Badger, or add a custom storage adapter
 
 ### Observability (`logger/`)
 
-- **Logging**: `logger.Print(label)` - Non-intrusive request/response logging
+- **Logging**: `logger.Print(label)` - Log the whole input with a prefix label
 - **Head Logging**: `logger.Head(label, bytes)` - Log first N bytes for streaming
 - **Chunk Logging**: `logger.Chunks(label, size)` - Log streaming data in chunks
 
@@ -160,7 +159,7 @@ convert.FromJsonSchema(&result)     // Validates output against schema
 // JSON processing flow
 err := flow.Run(ctx, convert.ToJson(data), convert.FromJson(&result))
 
-// AI with schema validation
+// input and output json with schema validation. Useful for AI structured output
 err := flow.Run(ctx, convert.ToJsonSchema(input), convert.FromJsonSchema[Output](&result))
 ```
 
@@ -352,7 +351,7 @@ codeHandler := multiagent.Route(
     "Programming, debugging, code review",
     "code,program,debug,function")
 
-// Router automatically selects best handler
+// selectionClient automatically selects best handler based on flow input
 flow := calque.NewFlow().
     Use(multiagent.Router(selectionClient, mathHandler, codeHandler))
 ```
