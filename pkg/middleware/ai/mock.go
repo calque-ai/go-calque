@@ -96,8 +96,22 @@ func (m *MockClient) Chat(req *calque.Request, res *calque.Response, opts *Agent
 
 	inputStr = strings.TrimSpace(inputStr)
 
+	// Check if we have predefined responses first
+	if len(m.responses) > 0 {
+		response := m.getNextResponse(inputStr)
+		// If response contains tool_calls, it means we should return it as-is
+		if strings.Contains(response, "tool_calls") {
+			_, err := res.Data.Write([]byte(response))
+			return err
+		}
+		// Otherwise stream the response normally
+		return m.streamResponse(response, req, res)
+	}
+
 	// If tools are provided and we're configured to simulate tool calls
-	if len(toolList) > 0 && m.simulateTools && len(m.toolCalls) > 0 {
+	// Only simulate tool calls on the first call (callCount == 0)
+	if len(toolList) > 0 && m.simulateTools && len(m.toolCalls) > 0 && m.callCount == 0 {
+		m.callCount++ // Increment for next call
 		return m.simulateToolCalls(res)
 	}
 

@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,15 +44,17 @@ func ClassifyInput(r *calque.Request, opts *AgentOptions) (*ClassifiedInput, err
 		}, nil
 	}
 
-	// Try JSON multimodal
-	var jsonMultimodal MultimodalInput
-	if json.Unmarshal(inputBytes, &jsonMultimodal) == nil && len(jsonMultimodal.Parts) > 0 {
-		if hasJSONData(jsonMultimodal) {
-			return &ClassifiedInput{
-				Type:       MultimodalJSONInput,
-				RawBytes:   inputBytes,
-				Multimodal: &jsonMultimodal,
-			}, nil
+	// Try JSON multimodal with fast pre-check
+	if isMultimodalJSON(inputBytes) {
+		var jsonMultimodal MultimodalInput
+		if json.Unmarshal(inputBytes, &jsonMultimodal) == nil && len(jsonMultimodal.Parts) > 0 {
+			if hasJSONData(jsonMultimodal) {
+				return &ClassifiedInput{
+					Type:       MultimodalJSONInput,
+					RawBytes:   inputBytes,
+					Multimodal: &jsonMultimodal,
+				}, nil
+			}
 		}
 	}
 
@@ -61,6 +64,25 @@ func ClassifyInput(r *calque.Request, opts *AgentOptions) (*ClassifiedInput, err
 		RawBytes: inputBytes,
 		Text:     string(inputBytes),
 	}, nil
+}
+
+// isMultimodalJSON performs fast detection before expensive unmarshaling
+func isMultimodalJSON(data []byte) bool {
+	if !json.Valid(data) {
+		return false
+	}
+
+	// Check for MultimodalInput structure indicators
+	if !bytes.Contains(data, []byte(`"parts"`)) {
+		return false
+	}
+
+	// Check for ContentPart "type" field to reduce false positives
+	if !bytes.Contains(data, []byte(`"type"`)) {
+		return false
+	}
+
+	return true
 }
 
 // hasJSONData checks if multimodal input contains embedded data (simple approach)

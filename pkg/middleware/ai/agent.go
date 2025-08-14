@@ -52,7 +52,6 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 	// Use default tools config if none provided
 	if agentOpts.ToolsConfig == nil {
 		defaultConfig := tools.Config{
-			PassThroughOnError:    false,
 			MaxConcurrentTools:    0, // No limit
 			IncludeOriginalOutput: false,
 		}

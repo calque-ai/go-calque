@@ -19,7 +19,6 @@ This directory demonstrates how to create AI agents that can execute functions a
 - **Features Covered**:
   - Tool configuration with `tools.Config`
   - Concurrent tool execution settings (`MaxConcurrentTools`)
-  - Error passthrough behavior (`PassThroughOnError`)
   - Original output inclusion (`IncludeOriginalOutput`)
 
 ## Key Tool Calling Concepts
@@ -52,7 +51,6 @@ calculator := tools.Simple("calculator", "Performs basic math", func(jsonArgs st
 
 ```go
 config := tools.Config{
-    PassThroughOnError:    true,  // Continue on tool errors
     MaxConcurrentTools:    2,     // Parallel execution limit
     IncludeOriginalOutput: true,  // Include AI reasoning
 }
@@ -106,7 +104,6 @@ Both examples show:
 
 | Option                  | Description                            | Default |
 | ----------------------- | -------------------------------------- | ------- |
-| `PassThroughOnError`    | Continue pipeline on tool failures     | `false` |
 | `MaxConcurrentTools`    | Maximum parallel tool executions       | `1`     |
 | `IncludeOriginalOutput` | Include AI reasoning with tool results | `false` |
 

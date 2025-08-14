@@ -18,15 +18,8 @@ func createMockClientForTest(responses []string, shouldErr bool) *MockClient {
 		return NewMockClientWithError("client error")
 	}
 	mockClient := NewMockClientWithResponses(responses)
-	// For tool calling tests, we need to enable tool call simulation
-	if len(responses) > 0 && strings.Contains(responses[0], "tool_calls") {
-		// Parse the first response to create mock tool calls
-		if strings.Contains(responses[0], "error_tool") {
-			mockClient.WithToolCalls(MockToolCall{Name: "error_tool", Arguments: "test"})
-		} else if strings.Contains(responses[0], "calculator") {
-			mockClient.WithToolCalls(MockToolCall{Name: "calculator", Arguments: "2+2"})
-		}
-	}
+	// For tool calling tests, we need to handle the first response differently
+	// The first response should be the tool call JSON, subsequent responses are for synthesis
 	return mockClient
 }
 
@@ -146,28 +139,16 @@ func TestAgentWithToolsConfig(t *testing.T) {
 		contains     []string
 	}{
 		{
-			name: "pass through on error enabled",
+			name: "tool execution error",
 			toolsConfig: &tools.Config{
-				PassThroughOnError: true,
+				MaxConcurrentTools: 1,
 			},
 			tools: []tools.Tool{errorTool},
 			input: "Use error tool",
 			llmResponses: []string{
 				`{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
 			},
-			contains: []string{`{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`}, // Should pass through
-		},
-		{
-			name: "pass through on error disabled",
-			toolsConfig: &tools.Config{
-				PassThroughOnError: false,
-			},
-			tools: []tools.Tool{errorTool},
-			input: "Use error tool",
-			llmResponses: []string{
-				`{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
-			},
-			expectError: true, // Should fail due to tool error
+			expectError: true, // Should always fail on tool error now
 		},
 		{
 			name:         "basic tool execution",
@@ -181,6 +162,11 @@ func TestAgentWithToolsConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := createMockClientForTest(tt.llmResponses, tt.expectError && len(tt.llmResponses) == 0)
+			
+			// For error tool tests, we need to setup mock tool calls
+			if len(tt.tools) > 0 && tt.tools[0] == errorTool {
+				client.WithToolCalls(MockToolCall{Name: "error_tool", Arguments: "test"})
+			}
 
 			opts := []AgentOption{WithTools(tt.tools...)}
 			if tt.toolsConfig != nil {
@@ -210,7 +196,7 @@ func TestAgentWithToolsConfig(t *testing.T) {
 			output := buf.String()
 			for _, expected := range tt.contains {
 				if !strings.Contains(output, expected) {
-					t.Errorf("AgentWithConfig() output missing expected string %q", expected)
+					t.Errorf("AgentWithConfig() output missing expected string %q, got %q", expected, output)
 				}
 			}
 		})

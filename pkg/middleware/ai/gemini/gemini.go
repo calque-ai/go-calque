@@ -412,6 +412,10 @@ func (g *Client) inputToParts(input *ai.ClassifiedInput) ([]genai.Part, error) {
 
 // multimodalToParts converts multimodal input to genai.Part array
 func (g *Client) multimodalToParts(multimodal *ai.MultimodalInput) ([]genai.Part, error) {
+	if multimodal == nil {
+		return nil, fmt.Errorf("multimodal input cannot be nil")
+	}
+
 	var parts []genai.Part
 
 	for _, part := range multimodal.Parts {

@@ -70,7 +70,7 @@ func TestExecute(t *testing.T) {
 			name:    "unknown tool",
 			tools:   []Tool{calc},
 			input:   `{"tool_calls": [{"type": "function", "function": {"name": "unknown_tool", "arguments": "some args"}}]}`,
-			isError: true, // Should error because PassThroughOnError defaults to false
+			isError: true, // Should error because tool not found
 		},
 		{
 			name:    "no tools in context",
@@ -141,23 +141,13 @@ func TestExecuteWithOptions(t *testing.T) {
 		contains    []string
 	}{
 		{
-			name: "pass through on error enabled",
+			name: "tool execution error",
 			config: Config{
-				PassThroughOnError: true,
+				MaxConcurrentTools: 1,
 			},
 			tools:       []Tool{errorTool},
 			input:       `{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
-			expectError: false,
-			contains:    []string{`{"tool_calls":`}, // Should pass through original
-		},
-		{
-			name: "pass through on error disabled",
-			config: Config{
-				PassThroughOnError: false,
-			},
-			tools:       []Tool{errorTool},
-			input:       `{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
-			expectError: true,
+			expectError: true, // Should always error on tool failure now
 		},
 		{
 			name: "include original output",
@@ -344,13 +334,15 @@ func TestExecuteToolCall(t *testing.T) {
 }
 
 func TestExecuteWithIOError(t *testing.T) {
-	execute := Execute()
+	// Create a pipeline with tools to test IO error
+	calc := createMockCalculator()
+	pipeline := NewPipelineForTest([]Tool{calc})
 	errorReader := &errorReader{err: io.ErrUnexpectedEOF}
 	var buf bytes.Buffer
 
 	req := calque.NewRequest(context.Background(), errorReader)
 	res := calque.NewResponse(&buf)
-	err := execute.ServeFlow(req, res)
+	err := pipeline.ServeFlow(req, res)
 	if err != io.ErrUnexpectedEOF {
 		t.Errorf("Execute() with IO error = %v, want %v", err, io.ErrUnexpectedEOF)
 	}
@@ -361,19 +353,17 @@ func TestExecuteWithEmptyContext(t *testing.T) {
 	var buf bytes.Buffer
 	reader := strings.NewReader(`{"tool_calls": [{"type": "function", "function": {"name": "test", "arguments": "args"}}]}`)
 
-	// Empty context (no tools)
+	// Empty context (no tools) - should error now
 	req := calque.NewRequest(context.Background(), reader)
 	res := calque.NewResponse(&buf)
 	err := execute.ServeFlow(req, res)
-	if err != nil {
-		t.Errorf("Execute() with empty context error = %v", err)
+	if err == nil {
+		t.Error("Execute() with empty context should error")
 		return
 	}
 
-	// Should pass through unchanged
-	output := buf.String()
-	expected := `{"tool_calls": [{"type": "function", "function": {"name": "test", "arguments": "args"}}]}`
-	if !strings.Contains(output, expected) {
-		t.Errorf("Execute() with empty context = %q, should contain %q", output, expected)
+	// Should error with "no tools available"
+	if !strings.Contains(err.Error(), "no tools available") {
+		t.Errorf("Execute() with empty context error = %q, want error containing 'no tools available'", err.Error())
 	}
 }

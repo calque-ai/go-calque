@@ -37,8 +37,6 @@ type ToolResult struct {
 
 // Config allows configuring the Execute middleware behavior
 type Config struct {
-	// PassThroughOnError - if true, returns original LLM output when tool execution fails
-	PassThroughOnError bool
 	// MaxConcurrentTools - maximum number of tools to execute concurrently (0 = no limit)
 	MaxConcurrentTools int
 	// IncludeOriginalOutput - if true, includes original LLM output in results
@@ -62,7 +60,6 @@ type Config struct {
 //	     Use(detector)
 func Execute() calque.Handler {
 	return ExecuteWithOptions(Config{
-		PassThroughOnError:    false,
 		MaxConcurrentTools:    0, // No limit
 		IncludeOriginalOutput: false,
 	})
@@ -113,16 +110,9 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 		}
 	}
 
-	// Handle errors based on configuration
+	// Handle errors - always fail on tool execution errors
 	if hasErrors {
-		if config.PassThroughOnError {
-			// Pass through original LLM output on error
-			_, err := w.Write(inputBytes)
-			return err
-		} else {
-			// Return error when PassThroughOnError is false
-			return fmt.Errorf("tool execution failed: %s", firstError)
-		}
+		return fmt.Errorf("tool execution failed: %s", firstError)
 	}
 
 	// Format results based on configuration

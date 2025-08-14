@@ -57,6 +57,17 @@ func Float32Ptr(f float32) *float32 { return &f }
 //	config.MaxTokens = ai.IntPtr(1500)
 func IntPtr(i int) *int { return &i }
 
+// Int32Ptr creates a pointer to an int32 value.
+//
+// Input: int32 value
+// Output: *int32 pointer
+// Behavior: Helper for optional config fields
+//
+// Example:
+//
+//	config.Seed = ai.Int32Ptr(1500)
+func Int32Ptr(i int32) *int32 { return &i }
+
 // BoolPtr creates a pointer to a bool value.
 //
 // Input: bool value

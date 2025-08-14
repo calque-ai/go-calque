@@ -128,7 +128,6 @@ func runConfiguredAgent() {
 
 	// Configure agent with custom settings
 	toolConfig := tools.Config{
-		PassThroughOnError:    true, // Continue even if a tool fails
 		MaxConcurrentTools:    2,    // Run up to 2 tools concurrently
 		IncludeOriginalOutput: true, // Include LLM output with tool results
 	}
