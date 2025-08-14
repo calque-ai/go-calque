@@ -11,6 +11,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/convert"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/logger"
 	"github.com/joho/godotenv"
 )
@@ -30,11 +31,14 @@ func main() {
 
 	imagePath := os.Args[1]
 
-	fmt.Println("\n=== Simple Approach (ai.ImageData with []byte) ===")
+	fmt.Println("=== Simple Approach (ai.ImageData with []byte) ===")
 	analyzeImageSimple(imagePath)
 
-	fmt.Println("=== Streaming Approach (ai.Image with Reader) ===")
+	fmt.Println("\n=== Streaming Approach (ai.Image with Reader) ===")
 	analyzeImageStreaming(imagePath)
+
+	fmt.Println("\n=== Ollama Multimodal (LLaVA Vision Model) ===")
+	analyzeImageOllama(imagePath)
 
 }
 
@@ -120,5 +124,52 @@ func analyzeImageStreaming(imagePath string) {
 	}
 
 	fmt.Println("\nStreaming Image Analysis Result:")
+	fmt.Println(result)
+}
+
+// analyzeImageOllama processes image input with Ollama's vision models (LLaVA)
+func analyzeImageOllama(imagePath string) {
+	fmt.Printf("Processing image with Ollama: %s\n\n", imagePath)
+
+	// Read image file
+	imageData, err := os.ReadFile(imagePath)
+	if err != nil {
+		log.Fatal("Failed to read image:", err)
+	}
+
+	// Create multimodal input - works exactly the same as Gemini!
+	multimodalInput := ai.Multimodal(
+		ai.Text("Please analyze this image and describe what you see in detail. Include information about objects, people, colors, composition, and any text visible."),
+		ai.ImageData(imageData, "image/jpeg"), // Simple approach for Ollama
+	)
+
+	// Create Ollama client with vision model (LLaVA)
+	client, err := ollama.New("granite3.2-vision") // granite3.2-vision
+	if err != nil {
+		log.Printf("Failed to create Ollama client (is Ollama running with a vision model?): %v", err)
+		log.Println("To use Ollama with vision:")
+		log.Println("  1. Install Ollama: https://ollama.ai")
+		log.Println("  2. Run: ollama pull granite3.2-vision")
+		log.Println("  3. Ensure Ollama is running (ollama serve)")
+		return
+	}
+
+	// Create flow - same API as Gemini!
+	flow := calque.NewFlow()
+
+	flow.
+		Use(logger.Head("INPUT", 200)). // Show some of the JSON
+		Use(ai.Agent(client)).          // No WithMultimodalData needed for simple approach
+		Use(logger.Head("RESPONSE", 200))
+
+	// Run the flow - identical to Gemini usage
+	var result string
+	err = flow.Run(context.Background(), convert.ToJson(multimodalInput), &result)
+	if err != nil {
+		log.Printf("Ollama analysis failed: %v", err)
+		return
+	}
+
+	fmt.Println("\nOllama Image Analysis Result:")
 	fmt.Println(result)
 }

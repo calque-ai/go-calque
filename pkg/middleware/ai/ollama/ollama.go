@@ -174,6 +174,11 @@ func New(model string, opts ...Option) (*Client, error) {
 	}, nil
 }
 
+// RequestConfig holds configuration for an Ollama request
+type RequestConfig struct {
+	ChatRequest *api.ChatRequest
+}
+
 // Chat implements the Client interface.
 //
 // Input: user prompt/query via calque.Request
@@ -187,39 +192,50 @@ func New(model string, opts ...Option) (*Client, error) {
 //
 //	err := client.Chat(req, res, &ai.AgentOptions{Tools: tools})
 func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
-	// Extract options
-	var toolList []tools.Tool
-	var schema *ai.ResponseFormat
-
-	if opts != nil {
-		toolList = opts.Tools
-		schema = opts.Schema
-	}
-	// Read input
-	inputBytes, err := io.ReadAll(r.Data)
+	// Which input type are we processing?
+	input, err := ai.ClassifyInput(r, opts)
 	if err != nil {
-		return fmt.Errorf("failed to read input: %w", err)
+		return err
 	}
 
-	// Create chat request with configuration
-	req := o.buildChatRequest(string(inputBytes), schema)
-
-	// Add tools to request if provided
-	if len(toolList) > 0 {
-		req.Tools = o.convertToOllamaTools(toolList)
+	// Build request configuration based on input type
+	config, err := o.buildRequestConfig(input, ai.GetSchema(opts), ai.GetTools(opts), r.Context)
+	if err != nil {
+		return err
 	}
 
-	// Handle response streaming and processing
-	return o.handleChatResponse(r.Context, req, w, toolList, schema)
+	// Execute the request with the configured chat
+	return o.executeRequest(config, r, w)
 }
 
-// handleChatResponse manages the streaming response and post-processing
-func (o *Client) handleChatResponse(ctx context.Context, req *api.ChatRequest, w *calque.Response, toolList []tools.Tool, schema *ai.ResponseFormat) error {
+// buildRequestConfig creates configuration for the request
+func (o *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool, ctx context.Context) (*RequestConfig, error) {
+	// Create chat request based on input type
+	chatRequest, err := o.inputToChatRequest(input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply configuration
+	o.applyChatConfig(chatRequest, schema)
+
+	// Add tools if provided
+	if len(tools) > 0 {
+		chatRequest.Tools = o.convertToOllamaTools(tools)
+	}
+
+	return &RequestConfig{
+		ChatRequest: chatRequest,
+	}, nil
+}
+
+// executeRequest executes the configured request
+func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
 	var fullResponse strings.Builder
 	var toolCalls []api.ToolCall
 
 	// Determine if we need to buffer the response
-	shouldBuffer := len(toolList) > 0 || schema != nil
+	shouldBuffer := len(config.ChatRequest.Tools) > 0 || config.ChatRequest.Format != nil
 
 	responseFunc := func(resp api.ChatResponse) error {
 		// Collect tool calls
@@ -241,7 +257,7 @@ func (o *Client) handleChatResponse(ctx context.Context, req *api.ChatRequest, w
 	}
 
 	// Send chat request
-	err := o.client.Chat(ctx, req, responseFunc)
+	err := o.client.Chat(r.Context, config.ChatRequest, responseFunc)
 	if err != nil {
 		return fmt.Errorf("failed to chat with ollama: %w", err)
 	}
@@ -252,7 +268,7 @@ func (o *Client) handleChatResponse(ctx context.Context, req *api.ChatRequest, w
 	}
 
 	// Handle text-based tool calls as fallback
-	if len(toolList) > 0 && fullResponse.Len() > 0 {
+	if len(config.ChatRequest.Tools) > 0 && fullResponse.Len() > 0 {
 		responseText := fullResponse.String()
 		if strings.Contains(responseText, `"name":`) && strings.Contains(responseText, `"parameters":`) {
 			return o.convertTextToToolCalls(responseText, w)
@@ -260,7 +276,7 @@ func (o *Client) handleChatResponse(ctx context.Context, req *api.ChatRequest, w
 	}
 
 	// Process buffered response for JSON schema
-	if schema != nil && fullResponse.Len() > 0 {
+	if config.ChatRequest.Format != nil && fullResponse.Len() > 0 {
 		responseText := fullResponse.String()
 		responseText = o.cleanFullJSONResponse(responseText)
 		_, err := w.Data.Write([]byte(responseText))
@@ -268,6 +284,142 @@ func (o *Client) handleChatResponse(ctx context.Context, req *api.ChatRequest, w
 	}
 
 	return nil
+}
+
+// inputToChatRequest converts classified input to Ollama ChatRequest
+func (o *Client) inputToChatRequest(input *ai.ClassifiedInput) (*api.ChatRequest, error) {
+	req := &api.ChatRequest{
+		Model: o.model,
+		Options: make(map[string]any),
+	}
+
+	switch input.Type {
+	case ai.TextInput:
+		req.Messages = []api.Message{
+			{
+				Role:    "user", 
+				Content: input.Text,
+			},
+		}
+
+	case ai.MultimodalJSONInput, ai.MultimodalStreamingInput:
+		message, err := o.multimodalToMessage(input.Multimodal)
+		if err != nil {
+			return nil, err
+		}
+		req.Messages = []api.Message{*message}
+
+	default:
+		return nil, fmt.Errorf("unsupported input type: %d", input.Type)
+	}
+
+	return req, nil
+}
+
+// multimodalToMessage converts multimodal input to Ollama Message with images
+func (o *Client) multimodalToMessage(multimodal *ai.MultimodalInput) (*api.Message, error) {
+	message := &api.Message{Role: "user"}
+	var textParts []string
+	var images []api.ImageData
+
+	for _, part := range multimodal.Parts {
+		switch part.Type {
+		case "text":
+			if part.Text != "" {
+				textParts = append(textParts, part.Text)
+			}
+		case "image":
+			var data []byte
+			var err error
+
+			if part.Reader != nil {
+				// Read stream data (streaming approach)
+				data, err = io.ReadAll(part.Reader)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read image data: %w", err)
+				}
+			} else if part.Data != nil {
+				// Use embedded data (simple approach)
+				data = part.Data
+			}
+
+			if data != nil {
+				images = append(images, api.ImageData(data))
+			}
+		case "audio", "video":
+			// Ollama doesn't support audio/video yet, but we can prepare for it
+			return nil, fmt.Errorf("audio and video content not yet supported by Ollama")
+		default:
+			return nil, fmt.Errorf("unsupported content part type: %s", part.Type)
+		}
+	}
+
+	message.Content = strings.Join(textParts, " ")
+	message.Images = images
+
+	return message, nil
+}
+
+// applyChatConfig applies client configuration to the chat request
+func (o *Client) applyChatConfig(req *api.ChatRequest, schema *ai.ResponseFormat) {
+	// Apply client configuration
+	if o.config.Temperature != nil {
+		req.Options["temperature"] = *o.config.Temperature
+	}
+	if o.config.TopP != nil {
+		req.Options["top_p"] = *o.config.TopP
+	}
+	if o.config.MaxTokens != nil {
+		req.Options["num_predict"] = *o.config.MaxTokens
+	}
+	if len(o.config.Stop) > 0 {
+		req.Options["stop"] = o.config.Stop
+	}
+	if o.config.KeepAlive != "" {
+		req.Options["keep_alive"] = o.config.KeepAlive
+	}
+	if o.config.Stream != nil {
+		req.Stream = o.config.Stream
+	}
+	if o.config.Think != nil {
+		req.Think = &api.ThinkValue{Value: *o.config.Think}
+	}
+
+	// Apply custom options (these override individual fields above)
+	if len(o.config.Options) > 0 {
+		for key, value := range o.config.Options {
+			req.Options[key] = value
+		}
+	}
+
+	// Apply response format - request override takes priority
+	var responseFormat *ai.ResponseFormat
+	if schema != nil {
+		responseFormat = schema
+	} else {
+		responseFormat = o.config.ResponseFormat
+	}
+
+	if responseFormat != nil {
+		switch responseFormat.Type {
+		case "json_object":
+			// Ollama supports JSON format via format parameter
+			req.Format = json.RawMessage(`"json"`)
+		case "json_schema":
+			// For JSON schema, pass the actual schema object to Ollama's format field
+			if responseFormat.Schema != nil {
+				// Convert jsonschema.Schema to the format Ollama expects
+				schemaBytes, err := convertJSONSchemaToOllamaFormat(responseFormat.Schema)
+				if err == nil {
+					req.Format = schemaBytes
+				} else {
+					req.Format = json.RawMessage(`"json"`)
+				}
+			} else {
+				req.Format = json.RawMessage(`"json"`)
+			}
+		}
+	}
 }
 
 // convertToOllamaTools converts our tool interface to Ollama's tool format
@@ -359,80 +511,6 @@ func (o *Client) convertTextToToolCalls(responseText string, w *calque.Response)
 	return err
 }
 
-// buildChatRequest creates an Ollama ChatRequest from provider config and optional schema override
-func (o *Client) buildChatRequest(input string, schemaOverride *ai.ResponseFormat) *api.ChatRequest {
-	req := &api.ChatRequest{
-		Model: o.model,
-		Messages: []api.Message{
-			{
-				Role:    "user",
-				Content: input,
-			},
-		},
-		Options: make(map[string]any),
-	}
-
-	// Apply client configuration
-	if o.config.Temperature != nil {
-		req.Options["temperature"] = *o.config.Temperature
-	}
-	if o.config.TopP != nil {
-		req.Options["top_p"] = *o.config.TopP
-	}
-	if o.config.MaxTokens != nil {
-		req.Options["num_predict"] = *o.config.MaxTokens
-	}
-	if len(o.config.Stop) > 0 {
-		req.Options["stop"] = o.config.Stop
-	}
-	if o.config.KeepAlive != "" {
-		req.Options["keep_alive"] = o.config.KeepAlive
-	}
-	if o.config.Stream != nil {
-		req.Stream = o.config.Stream
-	}
-	if o.config.Think != nil {
-		req.Think = &api.ThinkValue{Value: *o.config.Think}
-	}
-
-	// Apply custom options (these override individual fields above)
-	if len(o.config.Options) > 0 {
-		for key, value := range o.config.Options {
-			req.Options[key] = value
-		}
-	}
-
-	// Apply response format - request override takes priority
-	var responseFormat *ai.ResponseFormat
-	if schemaOverride != nil {
-		responseFormat = schemaOverride
-	} else {
-		responseFormat = o.config.ResponseFormat
-	}
-
-	if responseFormat != nil {
-		switch responseFormat.Type {
-		case "json_object":
-			// Ollama supports JSON format via format parameter
-			req.Format = json.RawMessage(`"json"`)
-		case "json_schema":
-			// For JSON schema, pass the actual schema object to Ollama's format field
-			if responseFormat.Schema != nil {
-				// Convert jsonschema.Schema to the format Ollama expects
-				schemaBytes, err := convertJSONSchemaToOllamaFormat(responseFormat.Schema)
-				if err == nil {
-					req.Format = schemaBytes
-				} else {
-					req.Format = json.RawMessage(`"json"`)
-				}
-			} else {
-				req.Format = json.RawMessage(`"json"`)
-			}
-		}
-	}
-
-	return req
-}
 
 // convertJSONSchemaToOllamaFormat converts a JSON schema to Ollama's format field format
 func convertJSONSchemaToOllamaFormat(schema *jsonschema.Schema) (json.RawMessage, error) {

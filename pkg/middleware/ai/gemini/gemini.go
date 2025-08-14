@@ -175,22 +175,6 @@ func New(model string, opts ...Option) (*Client, error) {
 	}, nil
 }
 
-// InputType represents the type of input being processed
-type InputType int
-
-const (
-	TextInput InputType = iota
-	MultimodalJSONInput
-	MultimodalStreamingInput
-)
-
-// ClassifiedInput represents input after classification
-type ClassifiedInput struct {
-	Type       InputType
-	RawBytes   []byte
-	Text       string
-	Multimodal *ai.MultimodalInput
-}
 
 // RequestConfig holds configuration for a Gemini request
 type RequestConfig struct {
@@ -213,13 +197,13 @@ type RequestConfig struct {
 //	err := client.Chat(req, res, &ai.AgentOptions{Tools: tools})
 func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	// Which input type are we processing?
-	input, err := g.classifyInput(r, opts)
+	input, err := ai.ClassifyInput(r, opts)
 	if err != nil {
 		return err
 	}
 
 	// Build request configuration based on input type
-	config, err := g.buildRequestConfig(input, getSchema(opts), getTools(opts), r.Context)
+	config, err := g.buildRequestConfig(input, ai.GetSchema(opts), ai.GetTools(opts), r.Context)
 	if err != nil {
 		return err
 	}
@@ -347,45 +331,9 @@ func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclarat
 	return functions
 }
 
-// classifyInput reads and classifies the input type
-func (g *Client) classifyInput(r *calque.Request, opts *ai.AgentOptions) (*ClassifiedInput, error) {
-	// Read input once
-	inputBytes, err := io.ReadAll(r.Data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read input: %w", err)
-	}
-
-	// Check streaming multimodal first (most specific)
-	if opts != nil && opts.MultimodalData != nil {
-		return &ClassifiedInput{
-			Type:       MultimodalStreamingInput,
-			RawBytes:   inputBytes,
-			Multimodal: opts.MultimodalData,
-		}, nil
-	}
-
-	// Try JSON multimodal
-	var jsonMultimodal ai.MultimodalInput
-	if json.Unmarshal(inputBytes, &jsonMultimodal) == nil && len(jsonMultimodal.Parts) > 0 {
-		if g.hasJSONData(jsonMultimodal) {
-			return &ClassifiedInput{
-				Type:       MultimodalJSONInput,
-				RawBytes:   inputBytes,
-				Multimodal: &jsonMultimodal,
-			}, nil
-		}
-	}
-
-	// Default to text
-	return &ClassifiedInput{
-		Type:     TextInput,
-		RawBytes: inputBytes,
-		Text:     string(inputBytes),
-	}, nil
-}
 
 // buildRequestConfig creates configuration for the request
-func (g *Client) buildRequestConfig(input *ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool, ctx context.Context) (*RequestConfig, error) {
+func (g *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool, ctx context.Context) (*RequestConfig, error) {
 	// Build config once
 	genaiConfig := g.buildGenerateConfig(schema)
 
@@ -449,12 +397,12 @@ func (g *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 }
 
 // inputToParts converts classified input to genai.Part array
-func (g *Client) inputToParts(input *ClassifiedInput) ([]genai.Part, error) {
+func (g *Client) inputToParts(input *ai.ClassifiedInput) ([]genai.Part, error) {
 	switch input.Type {
-	case TextInput:
+	case ai.TextInput:
 		return []genai.Part{{Text: input.Text}}, nil
 
-	case MultimodalJSONInput, MultimodalStreamingInput:
+	case ai.MultimodalJSONInput, ai.MultimodalStreamingInput:
 		return g.multimodalToParts(input.Multimodal)
 
 	default:
@@ -507,27 +455,3 @@ func (g *Client) multimodalToParts(multimodal *ai.MultimodalInput) ([]genai.Part
 	return parts, nil
 }
 
-// hasJSONData checks if multimodal input contains embedded data
-func (g *Client) hasJSONData(multimodal ai.MultimodalInput) bool {
-	for _, part := range multimodal.Parts {
-		if part.Type != "text" && part.Data != nil && len(part.Data) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// Helper functions for extracting options
-func getSchema(opts *ai.AgentOptions) *ai.ResponseFormat {
-	if opts != nil {
-		return opts.Schema
-	}
-	return nil
-}
-
-func getTools(opts *ai.AgentOptions) []tools.Tool {
-	if opts != nil {
-		return opts.Tools
-	}
-	return nil
-}
