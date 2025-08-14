@@ -413,7 +413,7 @@ _Run the benchmarks yourself: `cd examples/anagram && go test -bench=.`_
 ### Essential Examples
 
 **Core Framework**: ✅ basics, ✅ converters, ✅ converters-jsonschema, ✅ streaming-chats  
-**Data Processing**: ✅ memory, 🔲 batch-processing, ✅ flow-composition  
+**Data Processing**: ✅ memory, ✅ batch-processing, ✅ flow-composition  
 **AI Agents**: ✅ tool-calling, 🔲 rag, 🔲 multi-agent-workflow, 🔲 guardrails-validation  
 **Advanced**: ✅ web-api-agent, 🔲 human-in-the-loop
 
