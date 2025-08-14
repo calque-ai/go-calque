@@ -2,7 +2,7 @@
 
 <img src=".github/images/go-calque.jpg" alt="Go-Calque" width="350">
 
-An idiomatic streaming **memory-efficient AI agent framework** for Go.
+An idiomatic streaming **multi-agent AI framework** for Go.
 
 ## Installation
 
@@ -84,7 +84,7 @@ Input → Middleware1 → Middleware2 → Middleware3 → Output
 3. **Immediate Processing**: No buffering - processing starts as data arrives
 4. **Backpressure Handling**: Pipes automatically handle flow control
 5. **Context Propagation**: Cancellation and timeouts flow through the entire chain
-6. **Buffered vs Streaming**: Middleware can be buffered (reads all data first) or streaming (processes data incrementally) based on their implementation needs
+6. **Buffered vs Streaming**: Middleware can be buffered (reads all data first) or streaming (processes data incrementally) based on their implementation needs.
 
 ## Middleware Packages
 

@@ -348,11 +348,7 @@ func formatPreview(data []byte) string {
 
 	// Try to detect if it's printable text
 	if isPrintable(data) {
-		preview := string(data)
-		if len(data) >= 100 {
-			preview = preview[:100] + "..."
-		}
-		return preview
+		return string(data)
 	}
 
 	// For binary data, show hex summary

@@ -1,0 +1,124 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/convert"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
+	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/joho/godotenv"
+)
+
+func main() {
+	// Load environment variables
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run main.go <image_path>")
+		fmt.Println("  go run main.go ./image.jpg")
+		os.Exit(1)
+	}
+
+	imagePath := os.Args[1]
+
+	fmt.Println("\n=== Simple Approach (ai.ImageData with []byte) ===")
+	analyzeImageSimple(imagePath)
+
+	fmt.Println("=== Streaming Approach (ai.Image with Reader) ===")
+	analyzeImageStreaming(imagePath)
+
+}
+
+// analyzeImageSimple processes image input with AI using simple multimodal approach
+func analyzeImageSimple(imagePath string) {
+	fmt.Printf("Processing image: %s\n\n", imagePath)
+
+	// Read image file
+	imageData, err := os.ReadFile(imagePath)
+	if err != nil {
+		log.Fatal("Failed to read image:", err)
+	}
+
+	// Create multimodal input with simple approach (ai.ImageData with []byte)
+	multimodalInput := ai.Multimodal(
+		ai.Text("Please analyze this image and describe what you see in detail. Include information about objects, people, colors, composition, and any text visible."),
+		ai.ImageData(imageData, "image/jpeg"), // Serialized approach - data embedded in JSON
+	)
+
+	// Create Gemini client
+	client, err := gemini.New("gemini-2.0-flash")
+	if err != nil {
+		log.Fatal("Failed to create Gemini client:", err)
+	}
+
+	flow := calque.NewFlow()
+
+	flow.
+		Use(logger.Head("INPUT", 500)). // Will show JSON with base64 data
+		Use(ai.Agent(client)).
+		Use(logger.Head("RESPONSE", 200))
+
+	// Run the flow - all data is serialized to json in the multimodal input
+	var result string
+	err = flow.Run(context.Background(), convert.ToJson(multimodalInput), &result)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("\nSimple Image Analysis Result:")
+	fmt.Println(result)
+}
+
+// analyzeImageStreaming processes image input with AI using streaming multimodal approach
+// This allows the AI to handle large binary data without loading it fully into memory
+// Note: This requires the llm client to support streaming data input.
+// If streaming is not supported the data will be buffered by the client,
+// but not serialized as in ImageData().
+func analyzeImageStreaming(imagePath string) {
+	fmt.Printf("Processing image: %s\n\n", imagePath)
+
+	// Read image file
+	imageData, err := os.ReadFile(imagePath)
+	if err != nil {
+		log.Fatal("Failed to read image:", err)
+	}
+
+	// Create multimodal input with streaming approach (ai.Image with Reader)
+	multimodalInput := ai.Multimodal(
+		ai.Text("Please analyze this image and describe what you see in detail. Include information about objects, people, colors, composition, and any text visible."),
+		ai.Image(bytes.NewReader(imageData), "image/jpeg"), // Streaming approach - Reader allows incremental reading
+	)
+
+	// Create Gemini client
+	client, err := gemini.New("gemini-2.0-flash")
+	if err != nil {
+		log.Fatal("Failed to create Gemini client:", err)
+	}
+
+	// Create flow with multimodal support
+	flow := calque.NewFlow()
+
+	flow.
+		Use(logger.Print("INPUT")).                                     // Will show JSON metadata only
+		Use(ai.Agent(client, ai.WithMultimodalData(&multimodalInput))). // Multimodal data via option
+		Use(logger.Head("RESPONSE", 200))
+
+	// Run the flow - input is JSON metadata, actual data is in WithMultimodalData
+	var result string
+	err = flow.Run(context.Background(), convert.ToJson(multimodalInput), &result)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("\nStreaming Image Analysis Result:")
+	fmt.Println(result)
+}

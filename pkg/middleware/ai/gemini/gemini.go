@@ -175,6 +175,30 @@ func New(model string, opts ...Option) (*Client, error) {
 	}, nil
 }
 
+// InputType represents the type of input being processed
+type InputType int
+
+const (
+	TextInput InputType = iota
+	MultimodalJSONInput
+	MultimodalStreamingInput
+)
+
+// ClassifiedInput represents input after classification
+type ClassifiedInput struct {
+	Type       InputType
+	RawBytes   []byte
+	Text       string
+	Multimodal *ai.MultimodalInput
+}
+
+// RequestConfig holds configuration for a Gemini request
+type RequestConfig struct {
+	GenaiConfig *genai.GenerateContentConfig
+	Chat        *genai.Chat
+	Parts       []genai.Part
+}
+
 // Chat implements the Client interface with streaming support.
 //
 // Input: user prompt/query via calque.Request
@@ -188,69 +212,20 @@ func New(model string, opts ...Option) (*Client, error) {
 //
 //	err := client.Chat(req, res, &ai.AgentOptions{Tools: tools})
 func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
-	// Extract options
-	var tools []tools.Tool
-	var schema *ai.ResponseFormat
-
-	if opts != nil {
-		tools = opts.Tools
-		schema = opts.Schema
-	}
-	// Read input
-	inputBytes, err := io.ReadAll(r.Data)
+	// Which input type are we processing?
+	input, err := g.classifyInput(r, opts)
 	if err != nil {
-		return fmt.Errorf("failed to read input: %w", err)
+		return err
 	}
 
-	// Create chat configuration
-	genaiConfig := g.buildGenerateConfig(schema)
-
-	// Convert your tools to Gemini format
-	if len(tools) > 0 {
-		geminiFunctions := convertToolsToGeminiFunctions(tools)
-		genaiConfig.Tools = []*genai.Tool{{FunctionDeclarations: geminiFunctions}}
-	}
-
-	// Create a new chat
-	chat, err := g.client.Chats.Create(r.Context, g.model, genaiConfig, nil)
+	// Build request configuration based on input type
+	config, err := g.buildRequestConfig(input, getSchema(opts), getTools(opts), r.Context)
 	if err != nil {
-		return fmt.Errorf("failed to create chat: %w", err)
+		return err
 	}
 
-	// Create message part
-	part := genai.Part{Text: string(inputBytes)}
-
-	// Send message with streaming
-	var functionCalls []*genai.FunctionCall
-	for result, err := range chat.SendMessageStream(r.Context, part) {
-		if err != nil {
-			return fmt.Errorf("failed to get response: %w", err)
-		}
-
-		// Check if this chunk contains function calls
-		for _, candidate := range result.Candidates {
-			for _, part := range candidate.Content.Parts {
-				if part.FunctionCall != nil {
-					functionCalls = append(functionCalls, part.FunctionCall)
-				}
-			}
-		}
-
-		// Stream text parts as they arrive
-		if text := result.Text(); text != "" {
-			if _, writeErr := w.Data.Write([]byte(text)); writeErr != nil {
-				return writeErr
-			}
-		}
-	}
-
-	// If we have function calls, format them as tool calls for the agent
-	if len(functionCalls) > 0 {
-		return g.writeFunctionCalls(functionCalls, w)
-	}
-
-	return nil
-
+	// Execute the request with the configured chat
+	return g.executeRequest(config, r, w)
 }
 
 // writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
@@ -372,5 +347,187 @@ func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclarat
 	return functions
 }
 
-// Note: Schema conversion functions removed since we now use raw JSON schemas
-// directly with ResponseJsonSchema and ParametersJsonSchema fields
+// classifyInput reads and classifies the input type
+func (g *Client) classifyInput(r *calque.Request, opts *ai.AgentOptions) (*ClassifiedInput, error) {
+	// Read input once
+	inputBytes, err := io.ReadAll(r.Data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read input: %w", err)
+	}
+
+	// Check streaming multimodal first (most specific)
+	if opts != nil && opts.MultimodalData != nil {
+		return &ClassifiedInput{
+			Type:       MultimodalStreamingInput,
+			RawBytes:   inputBytes,
+			Multimodal: opts.MultimodalData,
+		}, nil
+	}
+
+	// Try JSON multimodal
+	var jsonMultimodal ai.MultimodalInput
+	if json.Unmarshal(inputBytes, &jsonMultimodal) == nil && len(jsonMultimodal.Parts) > 0 {
+		if g.hasJSONData(jsonMultimodal) {
+			return &ClassifiedInput{
+				Type:       MultimodalJSONInput,
+				RawBytes:   inputBytes,
+				Multimodal: &jsonMultimodal,
+			}, nil
+		}
+	}
+
+	// Default to text
+	return &ClassifiedInput{
+		Type:     TextInput,
+		RawBytes: inputBytes,
+		Text:     string(inputBytes),
+	}, nil
+}
+
+// buildRequestConfig creates configuration for the request
+func (g *Client) buildRequestConfig(input *ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool, ctx context.Context) (*RequestConfig, error) {
+	// Build config once
+	genaiConfig := g.buildGenerateConfig(schema)
+
+	// Add tools once
+	if len(tools) > 0 {
+		geminiFunctions := convertToolsToGeminiFunctions(tools)
+		genaiConfig.Tools = []*genai.Tool{{FunctionDeclarations: geminiFunctions}}
+	}
+
+	// Create chat once
+	chat, err := g.client.Chats.Create(ctx, g.model, genaiConfig, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chat: %w", err)
+	}
+
+	// Convert to parts once
+	parts, err := g.inputToParts(input)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RequestConfig{
+		GenaiConfig: genaiConfig,
+		Chat:        chat,
+		Parts:       parts,
+	}, nil
+}
+
+// executeRequest executes the configured request
+func (g *Client) executeRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
+	// Send message with streaming
+	var functionCalls []*genai.FunctionCall
+	for result, err := range config.Chat.SendMessageStream(r.Context, config.Parts...) {
+		if err != nil {
+			return fmt.Errorf("failed to get response: %w", err)
+		}
+
+		// Check if this chunk contains function calls
+		for _, candidate := range result.Candidates {
+			for _, part := range candidate.Content.Parts {
+				if part.FunctionCall != nil {
+					functionCalls = append(functionCalls, part.FunctionCall)
+				}
+			}
+		}
+
+		// Stream text parts as they arrive
+		if text := result.Text(); text != "" {
+			if _, writeErr := w.Data.Write([]byte(text)); writeErr != nil {
+				return writeErr
+			}
+		}
+	}
+
+	// If we have function calls, format them as tool calls for the agent
+	if len(functionCalls) > 0 {
+		return g.writeFunctionCalls(functionCalls, w)
+	}
+
+	return nil
+}
+
+// inputToParts converts classified input to genai.Part array
+func (g *Client) inputToParts(input *ClassifiedInput) ([]genai.Part, error) {
+	switch input.Type {
+	case TextInput:
+		return []genai.Part{{Text: input.Text}}, nil
+
+	case MultimodalJSONInput, MultimodalStreamingInput:
+		return g.multimodalToParts(input.Multimodal)
+
+	default:
+		return nil, fmt.Errorf("unsupported input type: %d", input.Type)
+	}
+}
+
+// multimodalToParts converts multimodal input to genai.Part array
+func (g *Client) multimodalToParts(multimodal *ai.MultimodalInput) ([]genai.Part, error) {
+	var parts []genai.Part
+
+	for _, part := range multimodal.Parts {
+		switch part.Type {
+		case "text":
+			if part.Text != "" {
+				parts = append(parts, genai.Part{Text: part.Text})
+			}
+		case "image", "audio", "video":
+			var data []byte
+			var err error
+
+			if part.Reader != nil {
+				// Read stream data (streaming approach)
+				data, err = io.ReadAll(part.Reader)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read %s data: %w", part.Type, err)
+				}
+			} else if part.Data != nil {
+				// Use embedded data (simple approach)
+				data = part.Data
+			}
+
+			if data != nil {
+				parts = append(parts, genai.Part{
+					InlineData: &genai.Blob{
+						Data:     data,
+						MIMEType: part.MimeType,
+					},
+				})
+			}
+		default:
+			return nil, fmt.Errorf("unsupported content part type: %s", part.Type)
+		}
+	}
+
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("no valid content parts found in multimodal input")
+	}
+
+	return parts, nil
+}
+
+// hasJSONData checks if multimodal input contains embedded data
+func (g *Client) hasJSONData(multimodal ai.MultimodalInput) bool {
+	for _, part := range multimodal.Parts {
+		if part.Type != "text" && part.Data != nil && len(part.Data) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// Helper functions for extracting options
+func getSchema(opts *ai.AgentOptions) *ai.ResponseFormat {
+	if opts != nil {
+		return opts.Schema
+	}
+	return nil
+}
+
+func getTools(opts *ai.AgentOptions) []tools.Tool {
+	if opts != nil {
+		return opts.Tools
+	}
+	return nil
+}

@@ -7,7 +7,7 @@ import (
 
 // AgentOptions holds all configuration for an AI agent request.
 //
-// Configures tools, response schemas, and tool execution behavior.
+// Configures tools, response schemas, multimodal data, and tool execution behavior.
 // Used to customize agent behavior for specific use cases.
 //
 // Example:
@@ -15,11 +15,13 @@ import (
 //	opts := &ai.AgentOptions{
 //		Tools: []tools.Tool{searchTool, calcTool},
 //		Schema: jsonSchema,
+//		MultimodalData: &multimodalInput,
 //	}
 type AgentOptions struct {
-	Schema      *ResponseFormat
-	Tools       []tools.Tool
-	ToolsConfig *tools.Config
+	Schema         *ResponseFormat
+	Tools          []tools.Tool
+	ToolsConfig    *tools.Config
+	MultimodalData *MultimodalInput
 }
 
 // AgentOption interface for functional options pattern.
@@ -46,6 +48,10 @@ func (o schemaOption) Apply(opts *AgentOptions) { opts.Schema = o.schema }
 type toolsConfigOption struct{ config *tools.Config }
 
 func (o toolsConfigOption) Apply(opts *AgentOptions) { opts.ToolsConfig = o.config }
+
+type multimodalDataOption struct{ data *MultimodalInput }
+
+func (o multimodalDataOption) Apply(opts *AgentOptions) { opts.MultimodalData = o.data }
 
 // WithTools adds tools to the agent.
 //
@@ -122,4 +128,26 @@ func WithSchemaFor[T any]() AgentOption {
 //	agent := ai.Agent(client, ai.WithToolsConfig(config))
 func WithToolsConfig(config tools.Config) AgentOption {
 	return toolsConfigOption{config: &config}
+}
+
+// WithMultimodalData provides multimodal content to the agent.
+//
+// Input: *MultimodalInput containing text, images, audio, and/or video
+// Output: AgentOption for configuration
+// Behavior: Enables multimodal AI interactions with streaming content
+//
+// Provides the original MultimodalInput structure with io.Reader fields
+// to the AI client, enabling streaming processing of binary data.
+// Must be used in conjunction with convert.ToJson() input for metadata.
+//
+// Example:
+//
+//	input := ai.Multimodal(
+//		ai.Text("What's in this image?"),
+//		ai.Image(imageReader, "image/jpeg"),
+//	)
+//	agent := ai.Agent(client, ai.WithMultimodalData(&input))
+//	err := flow.Run(ctx, convert.ToJson(input), &result)
+func WithMultimodalData(data *MultimodalInput) AgentOption {
+	return multimodalDataOption{data: data}
 }
