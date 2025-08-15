@@ -399,7 +399,7 @@ _Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 
 **Tool Calling** - ✅ Function execution for AI agents
 **Information Retrieval** - Vector search, context building, semantic filtering
-**Multi-Agent Collaboration** - Agent selection, ✅ load balancing, conditional routing  
+**Multi-Agent Collaboration** - Agent selection, ✅ load balancing, ✅ conditional routing  
 **Guardrails & Safety** - Input filtering, output validation, ✅ schema compliance  
 **HTTP/API Integration** - ✅ streaming responses
 
@@ -417,8 +417,8 @@ _Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 
 ### Nice-to-Have
 
-**Batch Processing** - Splitters, aggregators, parallel processors  
-**State Management** - State machines, checkpoints, conditional flows
+**Batch Processing** - Splitters, aggregators, ✅ parallel processors  
+**State Management** - State machines, checkpoints, ✅ conditional flows
 
 ## Contributing
 

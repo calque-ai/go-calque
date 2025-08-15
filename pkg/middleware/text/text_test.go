@@ -379,3 +379,99 @@ func TestLineProcessor(t *testing.T) {
 		})
 	}
 }
+
+// Benchmark data
+var smallDataset = strings.Repeat("hello\nworld\ntest\ndata\n", 7) // 28 lines, similar to anagram example
+var largeDataset = strings.Repeat("this is a longer line with more content to process\n", 10000) // 10k lines
+
+// Benchmarks for LineProcessor with small datasets (like anagram example)
+func BenchmarkLineProcessor_Small(b *testing.B) {
+	processor := LineProcessor(strings.ToUpper)
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var buf bytes.Buffer
+		reader := strings.NewReader(smallDataset)
+		
+		req := calque.NewRequest(context.Background(), reader)
+		res := calque.NewResponse(&buf)
+		
+		if err := processor.ServeFlow(req, res); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark LineProcessor with large datasets (where it should excel)
+func BenchmarkLineProcessor_Large(b *testing.B) {
+	processor := LineProcessor(strings.ToUpper)
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var buf bytes.Buffer
+		reader := strings.NewReader(largeDataset)
+		
+		req := calque.NewRequest(context.Background(), reader)
+		res := calque.NewResponse(&buf)
+		
+		if err := processor.ServeFlow(req, res); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Comparison: Transform vs LineProcessor for small data
+func BenchmarkTransform_Small(b *testing.B) {
+	transformer := Transform(strings.ToUpper)
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var buf bytes.Buffer
+		reader := strings.NewReader(smallDataset)
+		
+		req := calque.NewRequest(context.Background(), reader)
+		res := calque.NewResponse(&buf)
+		
+		if err := transformer.ServeFlow(req, res); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Comparison: Transform vs LineProcessor for large data
+func BenchmarkTransform_Large(b *testing.B) {
+	transformer := Transform(strings.ToUpper)
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var buf bytes.Buffer
+		reader := strings.NewReader(largeDataset)
+		
+		req := calque.NewRequest(context.Background(), reader)
+		res := calque.NewResponse(&buf)
+		
+		if err := transformer.ServeFlow(req, res); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark LineProcessor with more complex processing
+func BenchmarkLineProcessor_ComplexProcessing(b *testing.B) {
+	processor := LineProcessor(func(line string) string {
+		return fmt.Sprintf("[%d] %s", len(line), strings.ToUpper(strings.TrimSpace(line)))
+	})
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var buf bytes.Buffer
+		reader := strings.NewReader(smallDataset)
+		
+		req := calque.NewRequest(context.Background(), reader)
+		res := calque.NewResponse(&buf)
+		
+		if err := processor.ServeFlow(req, res); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

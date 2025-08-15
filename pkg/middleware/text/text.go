@@ -2,7 +2,7 @@ package text
 
 import (
 	"bufio"
-	"fmt"
+	"io"
 	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -92,7 +92,7 @@ func Branch(condition func(string) bool, ifHandler calque.Handler, elseHandler c
 //	  func(s string) bool { return json.Valid([]byte(s)) },
 //	  jsonProcessor,
 //	)
-//	// Only valid JSON gets processed, everything else passes through
+//	// Only valid JSON gets processed, everything else passes through in this example
 func Filter(condition func(string) bool, handler calque.Handler) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var input string
@@ -132,16 +132,27 @@ func Filter(condition func(string) bool, handler calque.Handler) calque.Handler 
 //	})
 func LineProcessor(fn func(string) string) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		scanner := bufio.NewScanner(req.Data)
+		reader := bufio.NewReader(req.Data)
+		writer := bufio.NewWriter(res.Data)
+		defer writer.Flush()
 
-		for scanner.Scan() {
-			line := scanner.Text()
-			processed := fn(line)
-			if _, err := fmt.Fprintln(res.Data, processed); err != nil {
-				return err
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				if err == io.EOF && len(line) > 0 {
+					// Process final line without newline
+					processed := fn(strings.TrimRight(line, "\n"))
+					writer.WriteString(processed)
+					writer.WriteByte('\n')
+				}
+				break
 			}
+
+			processed := fn(strings.TrimRight(line, "\n"))
+			writer.WriteString(processed)
+			writer.WriteByte('\n')
 		}
 
-		return scanner.Err()
+		return nil
 	})
 }
