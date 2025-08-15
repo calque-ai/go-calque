@@ -289,7 +289,7 @@ func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 // inputToChatRequest converts classified input to Ollama ChatRequest
 func (o *Client) inputToChatRequest(input *ai.ClassifiedInput) (*api.ChatRequest, error) {
 	req := &api.ChatRequest{
-		Model: o.model,
+		Model:   o.model,
 		Options: make(map[string]any),
 	}
 
@@ -297,7 +297,7 @@ func (o *Client) inputToChatRequest(input *ai.ClassifiedInput) (*api.ChatRequest
 	case ai.TextInput:
 		req.Messages = []api.Message{
 			{
-				Role:    "user", 
+				Role:    "user",
 				Content: input.Text,
 			},
 		}
@@ -510,7 +510,6 @@ func (o *Client) convertTextToToolCalls(responseText string, w *calque.Response)
 	_, err := w.Data.Write([]byte(responseText))
 	return err
 }
-
 
 // convertJSONSchemaToOllamaFormat converts a JSON schema to Ollama's format field format
 func convertJSONSchemaToOllamaFormat(schema *jsonschema.Schema) (json.RawMessage, error) {

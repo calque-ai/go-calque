@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -569,6 +571,313 @@ func TestRetry(t *testing.T) {
 			if tt.name == "success after retries" {
 				if elapsed < 300*time.Millisecond {
 					t.Errorf("Retry() expected exponential backoff, but completed in %v", elapsed)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkPassThrough(b *testing.B) {
+	sizes := []struct {
+		name string
+		size int
+	}{
+		{"Small1KB", 1 * 1024},
+		{"Medium100KB", 100 * 1024},
+		{"Large1MB", 1024 * 1024},
+		{"XLarge10MB", 10 * 1024 * 1024},
+	}
+
+	for _, s := range sizes {
+		b.Run(s.name, func(b *testing.B) {
+			data := make([]byte, s.size)
+			for i := range data {
+				data[i] = byte(i % 256)
+			}
+
+			handler := PassThrough()
+			b.ResetTimer()
+			b.SetBytes(int64(s.size))
+
+			for i := 0; i < b.N; i++ {
+				var buf bytes.Buffer
+				reader := bytes.NewReader(data)
+				req := calque.NewRequest(context.Background(), reader)
+				res := calque.NewResponse(&buf)
+
+				err := handler.ServeFlow(req, res)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkBranch(b *testing.B) {
+	mockHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	tests := []struct {
+		name      string
+		size      int
+		condition func([]byte) bool
+	}{
+		{"Small_TrueCondition", 1024, func(b []byte) bool { return true }},
+		{"Small_FalseCondition", 1024, func(b []byte) bool { return false }},
+		{"Medium_JSONCheck", 100 * 1024, func(b []byte) bool { return bytes.HasPrefix(b, []byte("{")) }},
+		{"Large_ContainsCheck", 1024 * 1024, func(b []byte) bool { return bytes.Contains(b, []byte("search")) }},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			data := make([]byte, tt.size)
+			for i := range data {
+				data[i] = byte(i % 256)
+			}
+			if strings.Contains(tt.name, "JSON") {
+				data[0] = '{'
+			}
+			if strings.Contains(tt.name, "Contains") {
+				copy(data[tt.size/2:], []byte("search"))
+			}
+
+			handler := Branch(tt.condition, mockHandler, mockHandler)
+			b.ResetTimer()
+			b.SetBytes(int64(tt.size))
+
+			for i := 0; i < b.N; i++ {
+				var buf bytes.Buffer
+				reader := bytes.NewReader(data)
+				req := calque.NewRequest(context.Background(), reader)
+				res := calque.NewResponse(&buf)
+
+				err := handler.ServeFlow(req, res)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkTeeReader(b *testing.B) {
+	sizes := []int{1024, 100 * 1024, 1024 * 1024}
+	destinations := []int{1, 2, 5, 10}
+
+	for _, size := range sizes {
+		for _, numDest := range destinations {
+			name := fmt.Sprintf("Size%dKB_Dest%d", size/1024, numDest)
+			b.Run(name, func(b *testing.B) {
+				data := make([]byte, size)
+				for i := range data {
+					data[i] = byte(i % 256)
+				}
+
+				dests := make([]io.Writer, numDest)
+				for i := range dests {
+					dests[i] = io.Discard
+				}
+
+				handler := TeeReader(dests...)
+				b.ResetTimer()
+				b.SetBytes(int64(size))
+
+				for i := 0; i < b.N; i++ {
+					var buf bytes.Buffer
+					reader := bytes.NewReader(data)
+					req := calque.NewRequest(context.Background(), reader)
+					res := calque.NewResponse(&buf)
+
+					err := handler.ServeFlow(req, res)
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkParallel(b *testing.B) {
+	fastHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	slowHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		time.Sleep(1 * time.Millisecond)
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	sizes := []int{1024, 100 * 1024}
+	handlerCounts := []int{1, 2, 5, 10}
+
+	for _, size := range sizes {
+		for _, count := range handlerCounts {
+			b.Run(fmt.Sprintf("Fast_Size%dKB_Handlers%d", size/1024, count), func(b *testing.B) {
+				data := make([]byte, size)
+				for i := range data {
+					data[i] = byte(i % 256)
+				}
+
+				handlers := make([]calque.Handler, count)
+				for i := range handlers {
+					handlers[i] = fastHandler
+				}
+
+				handler := Parallel(handlers...)
+				b.ResetTimer()
+				b.SetBytes(int64(size))
+
+				for i := 0; i < b.N; i++ {
+					var buf bytes.Buffer
+					reader := bytes.NewReader(data)
+					req := calque.NewRequest(context.Background(), reader)
+					res := calque.NewResponse(&buf)
+
+					err := handler.ServeFlow(req, res)
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+
+			if count <= 5 {
+				b.Run(fmt.Sprintf("Slow_Size%dKB_Handlers%d", size/1024, count), func(b *testing.B) {
+					data := make([]byte, size)
+					for i := range data {
+						data[i] = byte(i % 256)
+					}
+
+					handlers := make([]calque.Handler, count)
+					for i := range handlers {
+						handlers[i] = slowHandler
+					}
+
+					handler := Parallel(handlers...)
+					b.ResetTimer()
+					b.SetBytes(int64(size))
+
+					for i := 0; i < b.N; i++ {
+						var buf bytes.Buffer
+						reader := bytes.NewReader(data)
+						req := calque.NewRequest(context.Background(), reader)
+						res := calque.NewResponse(&buf)
+
+						err := handler.ServeFlow(req, res)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func BenchmarkTimeout(b *testing.B) {
+	fastHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	mediumHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		time.Sleep(100 * time.Microsecond)
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	tests := []struct {
+		name    string
+		handler calque.Handler
+		timeout time.Duration
+		size    int
+	}{
+		{"Fast_ShortTimeout", fastHandler, 100 * time.Millisecond, 1024},
+		{"Fast_LongTimeout", fastHandler, 1 * time.Second, 1024},
+		{"Medium_ShortTimeout", mediumHandler, 10 * time.Millisecond, 1024},
+		{"Medium_LongTimeout", mediumHandler, 1 * time.Second, 1024},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			data := make([]byte, tt.size)
+			for i := range data {
+				data[i] = byte(i % 256)
+			}
+
+			handler := Timeout(tt.handler, tt.timeout)
+			b.ResetTimer()
+			b.SetBytes(int64(tt.size))
+
+			for i := 0; i < b.N; i++ {
+				var buf bytes.Buffer
+				reader := bytes.NewReader(data)
+				req := calque.NewRequest(context.Background(), reader)
+				res := calque.NewResponse(&buf)
+
+				err := handler.ServeFlow(req, res)
+				if err != nil && !strings.Contains(tt.name, "ShortTimeout") {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkRetry(b *testing.B) {
+	successHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	var failCount int
+	failOnceHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		failCount++
+		if failCount%2 == 1 {
+			return errors.New("temporary failure")
+		}
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	tests := []struct {
+		name        string
+		handler     calque.Handler
+		maxAttempts int
+		size        int
+	}{
+		{"Success_1Attempt", successHandler, 1, 1024},
+		{"Success_3Attempts", successHandler, 3, 1024},
+		{"FailOnce_2Attempts", failOnceHandler, 2, 1024},
+		{"FailOnce_3Attempts", failOnceHandler, 3, 1024},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			data := make([]byte, tt.size)
+			for i := range data {
+				data[i] = byte(i % 256)
+			}
+
+			handler := Retry(tt.handler, tt.maxAttempts)
+			b.ResetTimer()
+			b.SetBytes(int64(tt.size))
+
+			for i := 0; i < b.N; i++ {
+				failCount = 0
+				var buf bytes.Buffer
+				reader := bytes.NewReader(data)
+				req := calque.NewRequest(context.Background(), reader)
+				res := calque.NewResponse(&buf)
+
+				err := handler.ServeFlow(req, res)
+				if err != nil {
+					b.Fatal(err)
 				}
 			}
 		})

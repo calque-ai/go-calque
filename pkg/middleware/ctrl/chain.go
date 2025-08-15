@@ -43,7 +43,8 @@ func Chain(handlers ...calque.Handler) calque.Handler {
 		}
 
 		// Read all input data for buffered sequential processing
-		inputData, err := io.ReadAll(req.Data)
+		var inputData []byte
+		err := calque.Read(req, &inputData)
 		if err != nil {
 			return err
 		}

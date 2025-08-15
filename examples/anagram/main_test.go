@@ -52,7 +52,7 @@ func BenchmarkBaseline(b *testing.B) {
 
 func BenchmarkCalquePipe(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		CalquePipe(testWords)
+		GoCalque(testWords)
 	}
 }
 
@@ -65,12 +65,25 @@ func BenchmarkBaselineLarge(b *testing.B) {
 
 func BenchmarkCalquePipeLarge(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		CalquePipe(largeTestWords)
+		GoCalque(largeTestWords)
 	}
 }
 
-// CalquePipeWithConfig creates a pipeline with specific concurrency configuration
-func CalquePipeWithConfig(words []string, config calque.FlowConfig) map[string]map[string]struct{} {
+// Benchmark the new framework-heavy implementation
+func BenchmarkGoCalqueFramework(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		GoCalqueFramework(testWords)
+	}
+}
+
+func BenchmarkGoCalqueFrameworkLarge(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		GoCalqueFramework(largeTestWords)
+	}
+}
+
+// GoCalqueWithConfig creates a pipeline with specific concurrency configuration
+func GoCalqueWithConfig(words []string, config calque.FlowConfig) map[string]map[string]struct{} {
 	if len(words) == 0 {
 		return nil
 	}
@@ -97,7 +110,7 @@ func BenchmarkCalquePipeUnlimited(b *testing.B) {
 		MaxConcurrent: calque.ConcurrencyUnlimited,
 	}
 	for i := 0; i < b.N; i++ {
-		CalquePipeWithConfig(testWords, config)
+		GoCalqueWithConfig(testWords, config)
 	}
 }
 
@@ -106,7 +119,7 @@ func BenchmarkCalquePipeUnlimitedLarge(b *testing.B) {
 		MaxConcurrent: calque.ConcurrencyUnlimited,
 	}
 	for i := 0; i < b.N; i++ {
-		CalquePipeWithConfig(largeTestWords, config)
+		GoCalqueWithConfig(largeTestWords, config)
 	}
 }
 
@@ -116,7 +129,7 @@ func BenchmarkCalquePipeFixed(b *testing.B) {
 		MaxConcurrent: 10, // Fixed limit of 10 concurrent pipelines
 	}
 	for i := 0; i < b.N; i++ {
-		CalquePipeWithConfig(testWords, config)
+		GoCalqueWithConfig(testWords, config)
 	}
 }
 
@@ -125,7 +138,7 @@ func BenchmarkCalquePipeFixedLarge(b *testing.B) {
 		MaxConcurrent: 10, // Fixed limit of 10 concurrent pipelines
 	}
 	for i := 0; i < b.N; i++ {
-		CalquePipeWithConfig(largeTestWords, config)
+		GoCalqueWithConfig(largeTestWords, config)
 	}
 }
 
@@ -136,7 +149,7 @@ func BenchmarkCalquePipeAuto(b *testing.B) {
 		CPUMultiplier: 4, // 4x CPU cores
 	}
 	for i := 0; i < b.N; i++ {
-		CalquePipeWithConfig(testWords, config)
+		GoCalqueWithConfig(testWords, config)
 	}
 }
 
@@ -146,7 +159,7 @@ func BenchmarkCalquePipeAutoLarge(b *testing.B) {
 		CPUMultiplier: 4, // 4x CPU cores
 	}
 	for i := 0; i < b.N; i++ {
-		CalquePipeWithConfig(largeTestWords, config)
+		GoCalqueWithConfig(largeTestWords, config)
 	}
 }
 
@@ -157,7 +170,7 @@ func BenchmarkCalquePipeHighCPU(b *testing.B) {
 		CPUMultiplier: 8, // 8x CPU cores
 	}
 	for i := 0; i < b.N; i++ {
-		CalquePipeWithConfig(testWords, config)
+		GoCalqueWithConfig(testWords, config)
 	}
 }
 
@@ -167,7 +180,7 @@ func BenchmarkCalquePipeHighCPULarge(b *testing.B) {
 		CPUMultiplier: 8, // 8x CPU cores
 	}
 	for i := 0; i < b.N; i++ {
-		CalquePipeWithConfig(largeTestWords, config)
+		GoCalqueWithConfig(largeTestWords, config)
 	}
 }
 
@@ -204,9 +217,9 @@ func BenchmarkGoroutineUsage(b *testing.B) {
 
 				// Run the pipeline
 				if cfg.config == nil {
-					CalquePipe(testWords) // Default
+					GoCalque(testWords) // Default
 				} else {
-					CalquePipeWithConfig(testWords, *cfg.config)
+					GoCalqueWithConfig(testWords, *cfg.config)
 				}
 
 				// Measure goroutines after
@@ -263,7 +276,7 @@ func TestConcurrentPipelineExecution(t *testing.T) {
 					results <- duringGoroutines
 
 					// Run pipeline
-					CalquePipeWithConfig(testWords, cfg.config)
+					GoCalqueWithConfig(testWords, cfg.config)
 				}(i)
 			}
 

@@ -80,13 +80,13 @@ func TeeReader(destinations ...io.Writer) calque.Handler {
 
 // Parallel executes multiple handlers concurrently with the same input stream.
 //
-// Input: any data type (streaming - uses io.Pipe for efficient fan-out)
+// Input: any data type (streaming - uses TeeReader + MultiWriter for efficient fan-out)
 // Output: bytes containing all handler outputs separated by "\n---\n"
-// Behavior: STREAMING - input is fanned out to all handlers simultaneously
+// Behavior: STREAMING - input flows through TeeReader to all handlers simultaneously
 //
-// Each handler receives the same input stream via io.Pipe. All handlers start
-// processing immediately as data arrives. Results are collected and combined
-// in the order handlers complete (not necessarily input order).
+// Uses io.TeeReader with io.MultiWriter to efficiently split the input stream
+// to all handlers without complex pipe chains. Each handler processes the stream
+// as data arrives. Results are collected and combined in completion order.
 //
 // If any handler fails, the entire operation fails. Empty handler list
 // results in pass-through behavior.
@@ -94,7 +94,7 @@ func TeeReader(destinations ...io.Writer) calque.Handler {
 // Example:
 //
 //	parallel := ctrl.Parallel(handler1, handler2, handler3)
-//	// All three handlers process the same input concurrently
+//	// All three handlers process the same input concurrently via TeeReader
 func Parallel(handlers ...calque.Handler) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		if len(handlers) == 0 {
@@ -102,31 +102,28 @@ func Parallel(handlers ...calque.Handler) calque.Handler {
 			return err
 		}
 
-		// Create pipe pairs for each handler
+		// Create pipes for each handler
+		writers := make([]io.Writer, len(handlers))
 		readers := make([]*io.PipeReader, len(handlers))
-		writers := make([]*io.PipeWriter, len(handlers))
 
 		for i := range handlers {
-			readers[i], writers[i] = io.Pipe()
+			r, w := io.Pipe()
+			readers[i] = r
+			writers[i] = w
 		}
 
-		// Create a MultiWriter to fan out input to all handlers
-		multiWriter := io.MultiWriter(func() []io.Writer {
-			ws := make([]io.Writer, len(writers))
-			for i, pw := range writers {
-				ws[i] = pw
-			}
-			return ws
-		}()...)
+		// Single TeeReader with MultiWriter - much simpler than pipe chains!
+		multiWriter := io.MultiWriter(writers...)
+		teeReader := io.TeeReader(req.Data, multiWriter)
 
-		// Fan out input to all handlers in background
+		// Consume the tee'd stream and close writers when done
 		go func() {
 			defer func() {
-				for _, pw := range writers {
-					pw.Close()
+				for _, w := range writers {
+					w.(*io.PipeWriter).Close()
 				}
 			}()
-			io.Copy(multiWriter, req.Data)
+			io.Copy(io.Discard, teeReader)
 		}()
 
 		type result struct {
@@ -138,7 +135,7 @@ func Parallel(handlers ...calque.Handler) calque.Handler {
 
 		// Run handlers concurrently on their streams
 		for i, handler := range handlers {
-			go func(h calque.Handler, reader io.Reader) {
+			go func(h calque.Handler, reader *io.PipeReader) {
 				var output bytes.Buffer
 				handlerReq := &calque.Request{Context: req.Context, Data: reader}
 				handlerRes := &calque.Response{Data: &output}
@@ -162,7 +159,6 @@ func Parallel(handlers ...calque.Handler) calque.Handler {
 		}
 
 		// Combine results
-
 		combined := bytes.Join(outputs, []byte("\n---\n"))
 		err := calque.Write(res, combined)
 		return err

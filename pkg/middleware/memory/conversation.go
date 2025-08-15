@@ -134,12 +134,13 @@ func (cm *ConversationMemory) saveConversation(key string, messages []Message) e
 func (cm *ConversationMemory) Input(key string) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		// Read current input
-		inputBytes, err := io.ReadAll(r.Data)
+		var input string
+		err := calque.Read(r, &input)
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
 
-		currentInput := strings.TrimSpace(string(inputBytes))
+		currentInput := strings.TrimSpace(input)
 		if currentInput == "" {
 			return fmt.Errorf("empty input for conversation")
 		}
@@ -174,8 +175,7 @@ func (cm *ConversationMemory) Input(key string) calque.Handler {
 
 		// Write full context to output
 		fullContext := strings.Join(contextParts, "\n")
-		_, err = w.Data.Write([]byte(fullContext))
-		return err
+		return calque.Write(w, fullContext)
 	})
 }
 

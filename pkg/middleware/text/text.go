@@ -3,7 +3,6 @@ package text
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -31,7 +30,8 @@ import (
 //	})
 func Transform(fn func(string) string) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		input, err := io.ReadAll(req.Data)
+		var input string
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}

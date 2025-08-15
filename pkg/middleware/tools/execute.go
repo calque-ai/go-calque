@@ -75,7 +75,9 @@ func ExecuteWithOptions(config Config) calque.Handler {
 		}
 
 		// Read all input - we assume tools are present so no streaming needed
-		inputBytes, err := io.ReadAll(r.Data)
+		var inputBytes []byte
+		err := calque.Read(r, &inputBytes)
+
 		if err != nil {
 			return err
 		}

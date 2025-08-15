@@ -43,41 +43,70 @@ func (f *Flow) inputToReader(input any) (io.Reader, error) {
 }
 
 // readerToOutput writes the final reader data to the output pointer
+// Only buffers when necessary
 func (f *Flow) readerToOutput(reader io.Reader, output any) error {
-	// Check if output is a converter - it handles its own target
+	// Check if output is a converter
 	if conv, ok := output.(OutputConverter); ok {
 		return conv.FromReader(reader)
 	}
 
-	// Read data for built-in types
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return err
-	}
-
 	// Handle built-in types
 	switch outPtr := output.(type) {
-	case *string:
-		*outPtr = string(data)
-	case *[]byte:
-		*outPtr = data
 	case *io.Reader:
-		*outPtr = bytes.NewReader(data)
+		*outPtr = reader
+		return nil
+
+	case *[]byte:
+		var buf bytes.Buffer
+		_, err := io.Copy(&buf, reader)
+		if err != nil {
+			return err
+		}
+		*outPtr = buf.Bytes()
+		return nil
+
+	case *string:
+		var builder strings.Builder
+		_, err := io.Copy(&builder, reader)
+		if err != nil {
+			return err
+		}
+		*outPtr = builder.String()
+		return nil
+
 	default:
 		return fmt.Errorf("unsupported output type: %T (use a converter for complex types)", output)
 	}
-
-	return nil
 }
 
 // copyInputToOutput handles the case when there are no handlers
 func (f *Flow) copyInputToOutput(input any, output any) error {
-	// convert input to reader
+	// Check if input and output are the same type
+	switch in := input.(type) {
+	case string:
+		if outPtr, ok := output.(*string); ok {
+			*outPtr = in // Direct assignment, no conversion needed
+			return nil
+		}
+	case []byte:
+		if outPtr, ok := output.(*[]byte); ok {
+			// Make a copy to prevent mutation issues
+			*outPtr = make([]byte, len(in))
+			copy(*outPtr, in)
+			return nil
+		}
+	case io.Reader:
+		if outPtr, ok := output.(*io.Reader); ok {
+			*outPtr = in // Direct assignment
+			return nil
+		}
+	}
+
+	// Fall back to streaming conversion
 	reader, err := f.inputToReader(input)
 	if err != nil {
 		return err
 	}
 
-	// Then write reader to output
 	return f.readerToOutput(reader, output)
 }

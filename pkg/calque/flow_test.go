@@ -797,3 +797,352 @@ func BenchmarkFlow_Run_MultipleHandlers(b *testing.B) {
 		flow.Run(context.Background(), input, &output)
 	}
 }
+
+func BenchmarkFlow_Run_DataSizes(b *testing.B) {
+	handler := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	sizes := []struct {
+		name string
+		size int
+	}{
+		{"Small1KB", 1 * 1024},
+		{"Medium100KB", 100 * 1024},
+		{"Large1MB", 1024 * 1024},
+		{"XLarge10MB", 10 * 1024 * 1024},
+	}
+
+	for _, s := range sizes {
+		b.Run(s.name, func(b *testing.B) {
+			data := make([]byte, s.size)
+			for i := range data {
+				data[i] = byte(i % 256)
+			}
+
+			flow := NewFlow().Use(handler)
+			b.ResetTimer()
+			b.SetBytes(int64(s.size))
+
+			for b.Loop() {
+				var output []byte
+				err := flow.Run(context.Background(), data, &output)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkFlow_Run_HandlerCounts(b *testing.B) {
+	handler := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	counts := []int{1, 2, 5, 10, 20}
+	input := "benchmark test data for handler scaling"
+
+	for _, count := range counts {
+		b.Run(fmt.Sprintf("Handlers%d", count), func(b *testing.B) {
+			flow := NewFlow()
+			for i := 0; i < count; i++ {
+				flow.Use(handler)
+			}
+
+			b.ResetTimer()
+			b.SetBytes(int64(len(input)))
+
+			for b.Loop() {
+				var output string
+				err := flow.Run(context.Background(), input, &output)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkFlow_Run_ProcessingTypes(b *testing.B) {
+	passthroughHandler := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	bufferedHandler := HandlerFunc(func(req *Request, res *Response) error {
+		data, err := io.ReadAll(req.Data)
+		if err != nil {
+			return err
+		}
+		_, err = res.Data.Write(data)
+		return err
+	})
+
+	transformHandler := HandlerFunc(func(req *Request, res *Response) error {
+		data, err := io.ReadAll(req.Data)
+		if err != nil {
+			return err
+		}
+		transformed := strings.ToUpper(string(data))
+		_, err = res.Data.Write([]byte(transformed))
+		return err
+	})
+
+	tests := []struct {
+		name    string
+		handler Handler
+	}{
+		{"Passthrough", passthroughHandler},
+		{"Buffered", bufferedHandler},
+		{"Transform", transformHandler},
+	}
+
+	input := "benchmark test data for processing types"
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			flow := NewFlow().Use(tt.handler)
+			b.ResetTimer()
+			b.SetBytes(int64(len(input)))
+
+			for b.Loop() {
+				var output string
+				err := flow.Run(context.Background(), input, &output)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkFlow_Run_ConcurrencyLevels(b *testing.B) {
+	handler := HandlerFunc(func(req *Request, res *Response) error {
+		time.Sleep(1 * time.Millisecond) // Simulate some work
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	configs := []struct {
+		name   string
+		config FlowConfig
+	}{
+		{"Unlimited", FlowConfig{MaxConcurrent: ConcurrencyUnlimited}},
+		{"Auto", FlowConfig{MaxConcurrent: ConcurrencyAuto, CPUMultiplier: 50}},
+		{"Fixed50", FlowConfig{MaxConcurrent: 50}},
+		{"Fixed10", FlowConfig{MaxConcurrent: 10}},
+	}
+
+	input := "concurrency benchmark data"
+
+	for _, cfg := range configs {
+		b.Run(cfg.name, func(b *testing.B) {
+			flow := NewFlow(cfg.config).Use(handler)
+			b.ResetTimer()
+			b.SetBytes(int64(len(input)))
+
+			for b.Loop() {
+				var output string
+				err := flow.Run(context.Background(), input, &output)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkFlow_runWithStreaming(b *testing.B) {
+	handler := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	sizes := []struct {
+		name string
+		size int
+	}{
+		{"Small1KB", 1 * 1024},
+		{"Medium100KB", 100 * 1024},
+		{"Large1MB", 1024 * 1024},
+	}
+
+	for _, s := range sizes {
+		b.Run(s.name, func(b *testing.B) {
+			data := make([]byte, s.size)
+			for i := range data {
+				data[i] = byte(i % 256)
+			}
+
+			flow := NewFlow().Use(handler)
+			b.ResetTimer()
+			b.SetBytes(int64(s.size))
+
+			for b.Loop() {
+				var output bytes.Buffer
+				reader := bytes.NewReader(data)
+				err := flow.runWithStreaming(context.Background(), reader, &output)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+func BenchmarkFlow_Run_ZeroCopy(b *testing.B) {
+	input := "zero copy benchmark test data"
+
+	b.Run("StringToString_NoHandlers", func(b *testing.B) {
+		flow := NewFlow()
+		b.SetBytes(int64(len(input)))
+		for b.Loop() {
+			var output string
+			flow.Run(context.Background(), input, &output)
+		}
+	})
+
+	b.Run("StringToString_WithHandler", func(b *testing.B) {
+		handler := HandlerFunc(func(req *Request, res *Response) error {
+			_, err := io.Copy(res.Data, req.Data)
+			return err
+		})
+		flow := NewFlow().Use(handler)
+		b.SetBytes(int64(len(input)))
+		for b.Loop() {
+			var output string
+			flow.Run(context.Background(), input, &output)
+		}
+	})
+}
+func BenchmarkStringConversion(b *testing.B) {
+	data := []byte("benchmark test data for string conversion efficiency")
+
+	b.Run("StringsBuilder", func(b *testing.B) {
+		for b.Loop() {
+			reader := bytes.NewReader(data)
+			var builder strings.Builder
+			io.Copy(&builder, reader)
+			_ = builder.String()
+		}
+	})
+
+	b.Run("IoReadAll", func(b *testing.B) {
+		for b.Loop() {
+			reader := bytes.NewReader(data)
+			data, _ := io.ReadAll(reader)
+			_ = string(data)
+		}
+	})
+
+	b.Run("BytesBuffer_Copy", func(b *testing.B) {
+		for b.Loop() {
+			reader := bytes.NewReader(data)
+			var buf bytes.Buffer
+			io.Copy(&buf, reader)
+			_ = buf.String()
+		}
+	})
+}
+
+func BenchmarkStringConversion_LargeData(b *testing.B) {
+	data := make([]byte, 100000) // 100KB test data
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+
+	b.Run("StringsBuilder_100KB", func(b *testing.B) {
+		b.SetBytes(int64(len(data)))
+		for b.Loop() {
+			reader := bytes.NewReader(data)
+			var builder strings.Builder
+			io.Copy(&builder, reader)
+			_ = builder.String()
+		}
+	})
+
+	b.Run("IoReadAll_100KB", func(b *testing.B) {
+		b.SetBytes(int64(len(data)))
+		for b.Loop() {
+			reader := bytes.NewReader(data)
+			data, _ := io.ReadAll(reader)
+			_ = string(data)
+		}
+	})
+
+	b.Run("BytesBuffer_Copy_100KB", func(b *testing.B) {
+		b.SetBytes(int64(len(data)))
+		for b.Loop() {
+			reader := bytes.NewReader(data)
+			var buf bytes.Buffer
+			io.Copy(&buf, reader)
+			_ = buf.String()
+		}
+	})
+}
+func BenchmarkIOReaderVsRunWithStreaming(b *testing.B) {
+	handler := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	input := "benchmark test data for io.Reader comparison"
+
+	b.Run("Run_IoReader_Output", func(b *testing.B) {
+		flow := NewFlow().Use(handler)
+		b.SetBytes(int64(len(input)))
+		for b.Loop() {
+			var output io.Reader
+			flow.Run(context.Background(), input, &output)
+		}
+	})
+
+	b.Run("runWithStreaming_Pure", func(b *testing.B) {
+		flow := NewFlow().Use(handler)
+		b.SetBytes(int64(len(input)))
+		for b.Loop() {
+			var output bytes.Buffer
+			reader := strings.NewReader(input)
+			flow.runWithStreaming(context.Background(), reader, &output)
+		}
+	})
+}
+
+func BenchmarkByteOutput(b *testing.B) {
+	handler := HandlerFunc(func(req *Request, res *Response) error {
+		_, err := io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	sizes := []struct {
+		name string
+		size int
+	}{
+		{"Small1KB", 1 * 1024},
+		{"Medium100KB", 100 * 1024},
+		{"Large1MB", 1024 * 1024},
+	}
+
+	for _, s := range sizes {
+		b.Run(s.name, func(b *testing.B) {
+			data := make([]byte, s.size)
+			for i := range data {
+				data[i] = byte(i % 256)
+			}
+
+			flow := NewFlow().Use(handler)
+			b.ResetTimer()
+			b.SetBytes(int64(s.size))
+
+			for b.Loop() {
+				var output []byte
+				err := flow.Run(context.Background(), data, &output)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

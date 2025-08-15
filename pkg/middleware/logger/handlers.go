@@ -70,7 +70,8 @@ func (hb *HandlerBuilder) HeadTail(prefix string, headBytes, tailBytes int, attr
 		}
 
 		// Read all data to capture tail
-		allData, err := io.ReadAll(bufReader)
+		var allData []byte
+		err = calque.Read(req, &allData)
 		if err != nil {
 			return err
 		}
@@ -92,8 +93,7 @@ func (hb *HandlerBuilder) HeadTail(prefix string, headBytes, tailBytes int, attr
 		logFunc(fmt.Sprintf("[%s]", prefix), allAttrs...)
 
 		// Write data to response
-		_, err = res.Data.Write(allData)
-		return err
+		return calque.Write(res, allData)
 	})
 }
 
@@ -224,7 +224,8 @@ func (hb *HandlerBuilder) Timing(prefix string, handler calque.Handler, attrs ..
 func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int, attrs ...Attribute) calque.Handler {
 	return hb.createHandler(prefix, func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
 		// Read all data to analyze and sample
-		allData, err := io.ReadAll(req.Data)
+		var allData []byte
+		err := calque.Read(req, &allData)
 		if err != nil {
 			return err
 		}
@@ -274,8 +275,7 @@ func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int
 		logFunc(fmt.Sprintf("[%s] %d samples from %d bytes", prefix, len(samples), totalBytes), allAttrs...)
 
 		// Write all data to response
-		_, err = res.Data.Write(allData)
-		return err
+		return calque.Write(res, allData)
 	})
 }
 
@@ -296,7 +296,8 @@ func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int
 func (hb *HandlerBuilder) Print(prefix string, attrs ...Attribute) calque.Handler {
 	return hb.createHandler(prefix, func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
 		// Read all data into buffer
-		allData, err := io.ReadAll(req.Data)
+		var allData []byte
+		err := calque.Read(req, &allData)
 		if err != nil {
 			return err
 		}
@@ -309,8 +310,7 @@ func (hb *HandlerBuilder) Print(prefix string, attrs ...Attribute) calque.Handle
 		logFunc(fmt.Sprintf("[%s]", prefix), allAttrs...)
 
 		// Write all data to response
-		_, err = res.Data.Write(allData)
-		return err
+		return calque.Write(res, allData)
 	})
 }
 

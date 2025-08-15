@@ -3,7 +3,6 @@ package prompt
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"maps"
 	"text/template"
 
@@ -131,7 +130,8 @@ func Instruct(instruction string) calque.Handler {
 func FromTemplate(tmpl *template.Template, data ...map[string]any) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Read input
-		inputBytes, err := io.ReadAll(req.Data)
+		var inputBytes []byte
+		err := calque.Read(req, &inputBytes)
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}

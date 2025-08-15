@@ -1,6 +1,7 @@
 package calque
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -20,7 +21,7 @@ import (
 // Example implementation:
 //
 //	type MyHandler struct{}
-//	
+//
 //	func (h MyHandler) ServeFlow(req *calque.Request, res *calque.Response) error {
 //		var input string
 //		if err := calque.Read(req, &input); err != nil {
@@ -50,7 +51,7 @@ type Handler interface {
 //		calque.Read(req, &input)
 //		return calque.Write(res, strings.ToUpper(input))
 //	})
-//	
+//
 //	pipeline.Use(upperCase)
 type HandlerFunc func(req *Request, res *Response) error
 
@@ -74,7 +75,7 @@ func (f HandlerFunc) ServeFlow(req *Request, res *Response) error {
 //			return req.Context.Err()
 //		default:
 //		}
-//		
+//
 //		// Read streaming data
 //		var input string
 //		return calque.Read(req, &input)
@@ -157,7 +158,7 @@ func (r *Request) Done() <-chan struct{} {
 //		// Simple write
 //		_, err := res.Data.Write([]byte("processed data"))
 //		return err
-//		
+//
 //		// Or use convenience function
 //		return calque.Write(res, "processed data")
 //	}
@@ -201,21 +202,22 @@ func NewResponse(data io.Writer) *Response {
 //		if err := calque.Read(req, &input); err != nil {
 //			return err
 //		}
-//		
+//
 //		processed := strings.ToUpper(input)
 //		return calque.Write(res, processed)
 //	}
 func Read[T string | []byte](req *Request, outPtr *T) error {
-	data, err := io.ReadAll(req.Data)
+	var buf bytes.Buffer
+	_, err := io.Copy(&buf, req.Data)
 	if err != nil {
 		return err
 	}
 
 	switch ptr := any(outPtr).(type) {
 	case *string:
-		*ptr = string(data)
+		*ptr = buf.String()
 	case *[]byte:
-		*ptr = data
+		*ptr = buf.Bytes()
 	default:
 		return fmt.Errorf("unsupported type %T", outPtr)
 	}
@@ -239,7 +241,7 @@ func Read[T string | []byte](req *Request, outPtr *T) error {
 //	func myHandler(req *calque.Request, res *calque.Response) error {
 //		var input string
 //		calque.Read(req, &input)
-//		
+//
 //		processed := strings.ToUpper(input)
 //		return calque.Write(res, processed)  // Handles string -> []byte conversion
 //	}

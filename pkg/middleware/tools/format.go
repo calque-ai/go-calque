@@ -19,7 +19,7 @@ func FormatToolsAsOpenAI(tools []Tool) string {
 
 	for i, tool := range tools {
 		// Convert jsonschema.Schema to map for JSON serialization
-		var parameters map[string]interface{}
+		var parameters map[string]any
 		if schema := tool.ParametersSchema(); schema != nil {
 			// Marshal and unmarshal to convert to generic map
 			if schemaBytes, err := json.Marshal(schema); err == nil {
@@ -35,7 +35,7 @@ func FormatToolsAsOpenAI(tools []Tool) string {
 	}
 
 	// Create the OpenAI functions format
-	functionsData := map[string]interface{}{
+	functionsData := map[string]any{
 		"functions": functions,
 	}
 

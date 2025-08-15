@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -120,7 +119,8 @@ func Router(client ai.Client, handlers ...calque.Handler) calque.Handler {
 	selector := ai.Agent(client, ai.WithSchema(&RouteSelection{}))
 
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		input, err := io.ReadAll(req.Data)
+		var input []byte
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
@@ -143,7 +143,6 @@ func Router(client ai.Client, handlers ...calque.Handler) calque.Handler {
 				if selectedHandler = findHandlerByID(selection.Route, routes); selectedHandler != nil {
 					break
 				}
-				err = fmt.Errorf("invalid route selected: %s", selection.Route)
 			}
 
 			if attempt == maxRetries {

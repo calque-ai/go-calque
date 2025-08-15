@@ -87,8 +87,8 @@ func Baseline(words []string) map[string]map[string]struct{} {
 	return seed
 }
 
-// CalquePipe implementation using the calque-pipe framework
-func CalquePipe(words []string) map[string]map[string]struct{} {
+// GoCalque implementation using the go-calque framework
+func GoCalque(words []string) map[string]map[string]struct{} {
 	if len(words) == 0 {
 		return nil
 	}
@@ -96,17 +96,47 @@ func CalquePipe(words []string) map[string]map[string]struct{} {
 	// Convert words to input stream
 	input := strings.Join(words, "\n")
 
-	// Create pipeline that:
+	// Create flow that:
 	// 1. Filters words (more than one char, lowercase)
 	// 2. Maps each word to anagram format
 	// 3. Accumulates results
-	pipeline := calque.NewFlow().
+	flow := calque.NewFlow().
 		Use(filterAndLowercase()).
 		Use(mapToAnagramFormat()).
 		Use(accumulateAnagrams())
 
 	var outputStr string
-	err := pipeline.Run(context.Background(), input, &outputStr)
+	err := flow.Run(context.Background(), input, &outputStr)
+	if err != nil {
+		return nil
+	}
+
+	// Parse the accumulated result
+	return parseAnagramOutput(outputStr)
+}
+
+// GoCalqueFramework implementation using maximum framework leverage
+func GoCalqueFramework(words []string) map[string]map[string]struct{} {
+	if len(words) == 0 {
+		return nil
+	}
+
+	// Convert words to input stream
+	input := strings.Join(words, "\n")
+
+	// Create flow using optimal middleware for each task:
+	// 1. Filter out invalid words (text.Filter)
+	// 2. Convert to lowercase (text.Transform)
+	// 3. Convert each word to sorted key format (text.Transform)
+	// 4. Accumulate and group results (custom handler)
+	flow := calque.NewFlow().
+		Use(filterValidWords()).
+		Use(lowercaseTransform()).
+		Use(wordsToSortedKeys()).
+		Use(accumulateAnagrams())
+
+	var outputStr string
+	err := flow.Run(context.Background(), input, &outputStr)
 	if err != nil {
 		return nil
 	}
@@ -217,6 +247,66 @@ func parseAnagramOutput(output string) map[string]map[string]struct{} {
 	return result
 }
 
+// Optimized framework middleware functions
+
+// filterValidWords filters out empty lines and single characters using text.Filter
+func filterValidWords() calque.Handler {
+	return text.Filter(
+		func(s string) bool {
+			// Check if input contains any valid words (>1 char, non-empty)
+			lines := strings.Split(s, "\n")
+			for _, line := range lines {
+				word := strings.TrimSpace(line)
+				if len(word) > 1 {
+					return true
+				}
+			}
+			return false
+		},
+		text.Transform(func(s string) string {
+			// Filter and clean lines
+			lines := strings.Split(s, "\n")
+			var validLines []string
+			for _, line := range lines {
+				word := strings.TrimSpace(line)
+				if len(word) > 1 {
+					validLines = append(validLines, word)
+				}
+			}
+			return strings.Join(validLines, "\n")
+		}),
+	)
+}
+
+// lowercaseTransform converts entire input to lowercase using text.Transform
+func lowercaseTransform() calque.Handler {
+	return text.Transform(strings.ToLower)
+}
+
+// wordsToSortedKeys converts words to "sortedkey:word" format using text.Transform
+func wordsToSortedKeys() calque.Handler {
+	return text.Transform(func(s string) string {
+		lines := strings.Split(s, "\n")
+		var keyValuePairs []string
+		
+		for _, line := range lines {
+			word := strings.TrimSpace(line)
+			if word == "" {
+				continue
+			}
+			
+			// Sort characters to create anagram key
+			chars := []rune(word)
+			slices.Sort(chars)
+			key := string(chars)
+			
+			keyValuePairs = append(keyValuePairs, fmt.Sprintf("%s:%s", key, word))
+		}
+		
+		return strings.Join(keyValuePairs, "\n")
+	})
+}
+
 func main() {
 	// Sample words for testing
 	words := []string{
@@ -233,13 +323,21 @@ func main() {
 	baseline := Baseline(words)
 	printAnagrams(baseline)
 
-	// Test calque-pipe implementation
-	fmt.Println("\n2. Calque-Pipe Implementation:")
-	calquePipe := CalquePipe(words)
-	printAnagrams(calquePipe)
+	// Test go-calque implementation
+	fmt.Println("\n2. GoCalque Implementation:")
+	goCalque := GoCalque(words)
+	printAnagrams(goCalque)
 
-	// Verify both produce same results
-	fmt.Println("\n3. Results Match:", compareAnagrams(baseline, calquePipe))
+	// Test framework-heavy implementation
+	fmt.Println("\n3. GoCalque Framework Implementation:")
+	goCalqueFramework := GoCalqueFramework(words)
+	printAnagrams(goCalqueFramework)
+
+	// Verify all produce same results
+	fmt.Println("\n4. Results Match:")
+	fmt.Printf("  Baseline vs GoCalque: %v\n", compareAnagrams(baseline, goCalque))
+	fmt.Printf("  Baseline vs Framework: %v\n", compareAnagrams(baseline, goCalqueFramework))
+	fmt.Printf("  GoCalque vs Framework: %v\n", compareAnagrams(goCalque, goCalqueFramework))
 }
 
 func printAnagrams(anagrams map[string]map[string]struct{}) {

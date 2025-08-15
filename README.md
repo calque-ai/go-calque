@@ -376,24 +376,22 @@ flow := calque.NewFlow().
 
 ## Performance
 
-Go-Calque's streaming architecture provides significant memory efficiency benefits. Benchmarks from our [anagram processing example](examples/anagram/) show:
+Go-Calque's optimized middleware composition delivers both performance and memory efficiency. Benchmarks from our [anagram processing example](examples/anagram/) show:
 
-### Memory Usage (Large Dataset - 1000 words)
+### Benchmark Results vs Hand-Coded Algorithm
+
+_VirtualApple @ 2.50GHz, darwin/amd64_
 
 ```
-Baseline:        4,011,708 B/op    33,990 allocs/op
-Go-Calque:         248,295 B/op     9,574 allocs/op
-Memory Reduction:  94% less memory,  72% fewer allocations
+                    Small Dataset (29 words)    Large Dataset (1000 words)
+Baseline:          69,377 ns/op  76,736 B/op   4,232,972 ns/op  4,011,708 B/op
+Go-Calque:         51,964 ns/op  32,343 B/op     523,240 ns/op    469,156 B/op
+Improvement:       25% faster    58% less       88% faster      88% less
 ```
 
-### Processing Characteristics
+**Performance Principle**: Well-designed middleware composition outperforms hand-coded algorithms while remaining maintainable and composable.
 
-- **Constant Memory**: Memory usage remains stable regardless of input size
-- **Streaming Processing**: Data flows through pipelines without full buffering
-- **Concurrent Execution**: Each middleware stage runs in its own goroutine
-- **Backpressure Handling**: Automatic flow control prevents memory overflow
-
-_Run the benchmarks yourself: `cd examples/anagram && go test -bench=.`_
+_Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 
 ## Roadmap
 

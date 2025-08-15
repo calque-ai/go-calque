@@ -292,12 +292,13 @@ func (cm *ContextMemory) ListKeys() []string {
 func (cm *ContextMemory) Input(key string, maxTokens int) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Read current input
-		inputBytes, err := io.ReadAll(req.Data)
+		var input string
+		err := calque.Read(req, &input)
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
 
-		currentInput := strings.TrimSpace(string(inputBytes))
+		currentInput := strings.TrimSpace(input)
 		if currentInput == "" {
 			return fmt.Errorf("empty input for context")
 		}
@@ -326,8 +327,7 @@ func (cm *ContextMemory) Input(key string, maxTokens int) calque.Handler {
 		}
 
 		// Write full context to output
-		_, err = res.Data.Write([]byte(fullContext.String()))
-		return err
+		return calque.Write(res, fullContext.String())
 	})
 }
 

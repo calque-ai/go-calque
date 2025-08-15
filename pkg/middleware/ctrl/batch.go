@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -52,7 +51,8 @@ func Batch(handler calque.Handler, maxSize int, maxWait time.Duration) calque.Ha
 	go batcher.processBatches()
 
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		input, err := io.ReadAll(req.Data)
+		var input []byte
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
@@ -70,8 +70,8 @@ func Batch(handler calque.Handler, maxSize int, maxWait time.Duration) calque.Ha
 				if resp.err != nil {
 					return resp.err
 				}
-				_, err := res.Data.Write(resp.data)
-				return err
+				// Write the processed batch response
+				return calque.Write(res, resp.data)
 			case <-req.Context.Done():
 				return req.Context.Err()
 			}

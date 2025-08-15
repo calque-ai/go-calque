@@ -51,27 +51,27 @@ func DetectWithBufferSize(ifHandler, elseHandler calque.Handler, bufferSize int)
 
 		if !hasToolCalls(initialChunk) {
 			// No tools detected - stream to elseHandler
-			return streamToHandler(elseHandler, r.Context, initialChunk, r.Data, w.Data)
+			return streamToHandler(elseHandler, r.Context, initialChunk, r, w)
 		}
 
 		// Tools detected - buffer full input and pass to ifHandler
-		return bufferToHandler(ifHandler, r.Context, initialChunk, r.Data, w.Data)
+		return bufferToHandler(ifHandler, r.Context, initialChunk, r, w)
 	})
 }
 
 // streamToHandler streams the initial chunk and remaining data to the given handler
-func streamToHandler(handler calque.Handler, ctx context.Context, initialChunk []byte, r io.Reader, w io.Writer) error {
+func streamToHandler(handler calque.Handler, ctx context.Context, initialChunk []byte, r *calque.Request, w *calque.Response) error {
 	// Create a reader that provides the initial chunk followed by remaining data
-	combinedReader := io.MultiReader(bytes.NewReader(initialChunk), r)
+	combinedReader := io.MultiReader(bytes.NewReader(initialChunk), r.Data)
 	req := calque.NewRequest(ctx, combinedReader)
-	res := calque.NewResponse(w)
-	return handler.ServeFlow(req, res)
+	return handler.ServeFlow(req, w)
 }
 
 // bufferToHandler buffers all input and passes it to the given handler
-func bufferToHandler(handler calque.Handler, ctx context.Context, initialChunk []byte, r io.Reader, w io.Writer) error {
+func bufferToHandler(handler calque.Handler, ctx context.Context, initialChunk []byte, r *calque.Request, w *calque.Response) error {
 	// Read remaining data and combine with initial chunk
-	remainingData, err := io.ReadAll(r)
+	var remainingData []byte
+	err := calque.Read(r, &remainingData)
 	if err != nil {
 		return err
 	}
@@ -83,6 +83,5 @@ func bufferToHandler(handler calque.Handler, ctx context.Context, initialChunk [
 
 	// Pass combined input to handler
 	req := calque.NewRequest(ctx, &fullInput)
-	res := calque.NewResponse(w)
-	return handler.ServeFlow(req, res)
+	return handler.ServeFlow(req, w)
 }

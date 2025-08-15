@@ -2,7 +2,6 @@ package ai
 
 import (
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -58,7 +57,8 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 		agentOpts.ToolsConfig = &defaultConfig
 	}
 
-	input, err := io.ReadAll(r.Data)
+	var input []byte
+	err := calque.Read(r, &input)
 	if err != nil {
 		return err
 	}
@@ -88,8 +88,7 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 	}
 
 	// Write final result
-	_, err = w.Data.Write(output)
-	return err
+	return calque.Write(w, output)
 }
 
 // clientChatHandler creates a handler that calls client.Chat directly
@@ -103,7 +102,8 @@ func clientChatHandler(client Client, agentOpts *AgentOptions) calque.Handler {
 func addToolInformation() calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		// Read input
-		input, err := io.ReadAll(r.Data)
+		var input []byte
+		err := calque.Read(r, &input)
 		if err != nil {
 			return err
 		}
@@ -112,8 +112,7 @@ func addToolInformation() calque.Handler {
 		toolList := tools.GetTools(r.Context)
 		if len(toolList) == 0 {
 			// No tools - pass through unchanged
-			_, err := w.Data.Write(input)
-			return err
+			return calque.Write(w, input)
 		}
 
 		// Add tool schema using OpenAI format
@@ -122,8 +121,7 @@ func addToolInformation() calque.Handler {
 		copy(result, input)
 		copy(result[len(input):], []byte(toolSchema))
 
-		_, err = w.Data.Write(result)
-		return err
+		return calque.Write(w, result)
 	})
 }
 
@@ -131,7 +129,8 @@ func addToolInformation() calque.Handler {
 // from the original question and tool execution results
 func synthesizeFinalAnswer(client Client, originalInput []byte) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
-		toolResults, err := io.ReadAll(r.Data)
+		var toolResults []byte
+		err := calque.Read(r, &toolResults)
 		if err != nil {
 			return err
 		}

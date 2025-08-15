@@ -3,7 +3,6 @@ package ctrl
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
@@ -54,7 +53,8 @@ func Fallback(handlers ...calque.Handler) calque.Handler {
 	}
 
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		input, err := io.ReadAll(req.Data)
+		var input []byte
+		err := calque.Read(req, &input)
 		if err != nil {
 			return err
 		}
@@ -72,8 +72,7 @@ func Fallback(handlers ...calque.Handler) calque.Handler {
 
 			if err == nil {
 				breakers[i].RecordSuccess()
-				_, writeErr := res.Data.Write(output.Bytes())
-				return writeErr
+				return calque.Write(res, output.Bytes())
 			}
 
 			breakers[i].RecordFailure()
