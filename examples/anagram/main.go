@@ -14,108 +14,35 @@ import (
 // Anagrams represents a map of sorted characters to words that contain them
 type Anagrams map[string]map[string]struct{}
 
-// MoreThanOneChar checks if a word has more than one character
-func MoreThanOneChar(word string) bool {
-	return len(word) > 1
-}
-
-// SingleWordToMap converts a single word to its anagram representation
-func SingleWordToMap(word string) Anagrams {
-	// Sort the characters in the word to create the key
-	chars := []rune(word)
-	sort.Slice(chars, func(i, j int) bool {
-		return chars[i] < chars[j]
-	})
-	key := string(chars)
-
-	// Create the anagram map
-	result := make(Anagrams)
-	result[key] = make(map[string]struct{})
-	result[key][word] = struct{}{}
-
-	return result
-}
-
-// Accumulate merges two anagram maps
-func Accumulate(a, b Anagrams) Anagrams {
-	if a == nil {
-		return b
-	}
-	if b == nil {
-		return a
+func main() {
+	// Sample words for testing
+	words := []string{
+		"listen", "silent", "hello", "world", "act", "cat", "tac",
+		"race", "care", "acre", "programming", "go", "og", "a", "b",
+		"stressed", "desserts", "evil", "live", "vile",
 	}
 
-	result := make(Anagrams)
+	fmt.Println("Anagram Processing Example")
+	fmt.Println("==========================")
 
-	// Copy from a
-	for key, words := range a {
-		result[key] = make(map[string]struct{})
-		for word := range words {
-			result[key][word] = struct{}{}
-		}
-	}
+	// Test baseline implementation
+	fmt.Println("\n1. Baseline Implementation:")
+	baseline := Baseline(words)
+	printAnagrams(baseline)
 
-	// Merge from b
-	for key, words := range b {
-		if result[key] == nil {
-			result[key] = make(map[string]struct{})
-		}
-		for word := range words {
-			result[key][word] = struct{}{}
-		}
-	}
+	// Test framework-heavy implementation
+	fmt.Println("\n3. GoCalque Framework Implementation:")
+	goCalqueFramework := GoCalqueFramework(words)
+	printAnagrams(goCalqueFramework)
 
-	return result
-}
-
-// Baseline implementation (from benchmark)
-func Baseline(words []string) map[string]map[string]struct{} {
-	var swa []Anagrams
-	for _, w := range words {
-		if !MoreThanOneChar(w) {
-			continue
-		}
-		swa = append(swa, SingleWordToMap(strings.ToLower(w)))
-	}
-	if len(swa) == 0 {
-		return nil
-	}
-	seed := swa[0]
-	for i := range swa[1:] {
-		seed = Accumulate(seed, swa[i])
-	}
-	return seed
-}
-
-// GoCalque implementation using the go-calque framework
-func GoCalque(words []string) map[string]map[string]struct{} {
-	if len(words) == 0 {
-		return nil
-	}
-
-	// Convert words to input stream
-	input := strings.Join(words, "\n")
-
-	// Create flow that:
-	// 1. Filters words (more than one char, lowercase)
-	// 2. Maps each word to anagram format
-	// 3. Accumulates results
-	flow := calque.NewFlow().
-		Use(filterAndLowercase()).
-		Use(mapToAnagramFormat()).
-		Use(accumulateAnagrams())
-
-	var outputStr string
-	err := flow.Run(context.Background(), input, &outputStr)
-	if err != nil {
-		return nil
-	}
-
-	// Parse the accumulated result
-	return parseAnagramOutput(outputStr)
+	// Verify all produce same results
+	fmt.Println("\n4. Results Match:")
+	fmt.Printf("  Baseline vs Framework: %v\n", compareAnagrams(baseline, goCalqueFramework))
 }
 
 // GoCalqueFramework implementation using maximum framework leverage
+// This version uses the calque framework to process words into anagrams
+// using a series of middleware handlers for filtering, transforming, and accumulating results.
 func GoCalqueFramework(words []string) map[string]map[string]struct{} {
 	if len(words) == 0 {
 		return nil
@@ -145,32 +72,78 @@ func GoCalqueFramework(words []string) map[string]map[string]struct{} {
 	return parseAnagramOutput(outputStr)
 }
 
-// filterAndLowercase filters words with more than one character and converts to lowercase
-func filterAndLowercase() calque.Handler {
-	return text.LineProcessor(func(line string) string {
-		word := strings.TrimSpace(line)
-		if MoreThanOneChar(word) {
-			return strings.ToLower(word)
+// Baseline implementation (from benchmark)
+// This is a simple implementation that processes words into anagrams
+func Baseline(words []string) map[string]map[string]struct{} {
+	var swa []Anagrams
+	for _, w := range words {
+		if !moreThanOneChar(w) {
+			continue
 		}
-		return "" // Empty lines will be filtered out
-	})
+		swa = append(swa, singleWordToMap(strings.ToLower(w)))
+	}
+	if len(swa) == 0 {
+		return nil
+	}
+	seed := swa[0]
+	for i := range swa[1:] {
+		seed = accumulate(seed, swa[i])
+	}
+	return seed
 }
 
-// mapToAnagramFormat converts each word line to "sortedkey:word" format
-func mapToAnagramFormat() calque.Handler {
-	return text.LineProcessor(func(line string) string {
-		word := strings.TrimSpace(line)
-		if word == "" {
-			return ""
-		}
+// MoreThanOneChar checks if a word has more than one character
+func moreThanOneChar(word string) bool {
+	return len(word) > 1
+}
 
-		// Sort characters to create anagram key
-		chars := []rune(word)
-		slices.Sort(chars)
-		key := string(chars)
-
-		return fmt.Sprintf("%s:%s", key, word)
+// SingleWordToMap converts a single word to its anagram representation
+func singleWordToMap(word string) Anagrams {
+	// Sort the characters in the word to create the key
+	chars := []rune(word)
+	sort.Slice(chars, func(i, j int) bool {
+		return chars[i] < chars[j]
 	})
+	key := string(chars)
+
+	// Create the anagram map
+	result := make(Anagrams)
+	result[key] = make(map[string]struct{})
+	result[key][word] = struct{}{}
+
+	return result
+}
+
+// Accumulate merges two anagram maps
+func accumulate(a, b Anagrams) Anagrams {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+
+	result := make(Anagrams)
+
+	// Copy from a
+	for key, words := range a {
+		result[key] = make(map[string]struct{})
+		for word := range words {
+			result[key][word] = struct{}{}
+		}
+	}
+
+	// Merge from b
+	for key, words := range b {
+		if result[key] == nil {
+			result[key] = make(map[string]struct{})
+		}
+		for word := range words {
+			result[key][word] = struct{}{}
+		}
+	}
+
+	return result
 }
 
 // accumulateAnagrams collects all anagram mappings
@@ -288,56 +261,23 @@ func wordsToSortedKeys() calque.Handler {
 	return text.Transform(func(s string) string {
 		lines := strings.Split(s, "\n")
 		var keyValuePairs []string
-		
+
 		for _, line := range lines {
 			word := strings.TrimSpace(line)
 			if word == "" {
 				continue
 			}
-			
+
 			// Sort characters to create anagram key
 			chars := []rune(word)
 			slices.Sort(chars)
 			key := string(chars)
-			
+
 			keyValuePairs = append(keyValuePairs, fmt.Sprintf("%s:%s", key, word))
 		}
-		
+
 		return strings.Join(keyValuePairs, "\n")
 	})
-}
-
-func main() {
-	// Sample words for testing
-	words := []string{
-		"listen", "silent", "hello", "world", "act", "cat", "tac",
-		"race", "care", "acre", "programming", "go", "og", "a", "b",
-		"stressed", "desserts", "evil", "live", "vile",
-	}
-
-	fmt.Println("Anagram Processing Example")
-	fmt.Println("==========================")
-
-	// Test baseline implementation
-	fmt.Println("\n1. Baseline Implementation:")
-	baseline := Baseline(words)
-	printAnagrams(baseline)
-
-	// Test go-calque implementation
-	fmt.Println("\n2. GoCalque Implementation:")
-	goCalque := GoCalque(words)
-	printAnagrams(goCalque)
-
-	// Test framework-heavy implementation
-	fmt.Println("\n3. GoCalque Framework Implementation:")
-	goCalqueFramework := GoCalqueFramework(words)
-	printAnagrams(goCalqueFramework)
-
-	// Verify all produce same results
-	fmt.Println("\n4. Results Match:")
-	fmt.Printf("  Baseline vs GoCalque: %v\n", compareAnagrams(baseline, goCalque))
-	fmt.Printf("  Baseline vs Framework: %v\n", compareAnagrams(baseline, goCalqueFramework))
-	fmt.Printf("  GoCalque vs Framework: %v\n", compareAnagrams(goCalque, goCalqueFramework))
 }
 
 func printAnagrams(anagrams map[string]map[string]struct{}) {

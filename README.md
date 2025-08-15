@@ -383,10 +383,10 @@ Go-Calque's optimized middleware composition delivers both performance and memor
 _VirtualApple @ 2.50GHz, darwin/amd64_
 
 ```
-                    Small Dataset (29 words)    Large Dataset (1000 words)
+                   Small Dataset (29 words)    Large Dataset (1000 words)
 Baseline:          69,377 ns/op  76,736 B/op   4,232,972 ns/op  4,011,708 B/op
 Go-Calque:         51,964 ns/op  32,343 B/op     523,240 ns/op    469,156 B/op
-Improvement:       25% faster    58% less       88% faster      88% less
+Improvement:       25% faster    58% less      88% faster       88% less
 ```
 
 **Performance Principle**: Well-designed middleware composition outperforms hand-coded algorithms while remaining maintainable and composable.
