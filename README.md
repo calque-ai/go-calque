@@ -1,8 +1,10 @@
 # Go-Calque
 
-<img src=".github/images/go-calque.jpg" alt="Go-Calque" width="350">
+<img src=".github/images/go-calque.webp" alt="Go-Calque" width="350">
 
 An idiomatic streaming **multi-agent AI framework** for Go.
+
+_Developed by [Calque AI](https://calque.ai)_
 
 ## Installation
 
