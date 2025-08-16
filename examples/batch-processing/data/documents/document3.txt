@@ -1,0 +1,15 @@
+Artificial Intelligence (AI) is a branch of computer science that aims to create intelligent machines that work and react like humans. Some of the activities computers with artificial intelligence are designed for include speech recognition, learning, planning, and problem solving.
+
+Machine Learning is a subset of AI that enables computers to learn and improve from experience without being explicitly programmed. Deep Learning is a subset of machine learning that uses neural networks with multiple layers to model and understand complex patterns.
+
+Applications of AI include:
+- Natural language processing
+- Computer vision
+- Robotics
+- Expert systems
+- Game playing
+- Autonomous vehicles
+- Medical diagnosis
+- Financial trading
+
+The future of AI holds promise for solving complex problems and improving human lives across various domains.
