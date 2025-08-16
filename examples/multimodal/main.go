@@ -37,7 +37,7 @@ func main() {
 	fmt.Println("\n=== Streaming Approach (ai.Image with Reader) ===")
 	analyzeImageStreaming(imagePath)
 
-	fmt.Println("\n=== Ollama Multimodal (LLaVA Vision Model) ===")
+	fmt.Println("\n=== Ollama Multimodal (granite3.2 Vision Model) ===")
 	analyzeImageOllama(imagePath)
 
 }
@@ -143,7 +143,7 @@ func analyzeImageOllama(imagePath string) {
 		ai.ImageData(imageData, "image/jpeg"), // Simple approach for Ollama
 	)
 
-	// Create Ollama client with vision model (LLaVA)
+	// Create Ollama client with vision model (granite3.2-vision)
 	client, err := ollama.New("granite3.2-vision") // granite3.2-vision
 	if err != nil {
 		log.Printf("Failed to create Ollama client (is Ollama running with a vision model?): %v", err)
