@@ -402,3 +402,67 @@ func TestBatchTimerBehavior(t *testing.T) {
 		t.Errorf("Got %q, want %q", got, expected)
 	}
 }
+
+// Benchmark tests for memory allocation optimization
+func BenchmarkBatchMemoryAllocation(b *testing.B) {
+	// Test different payload sizes to see memory allocation impact
+	payloadSizes := []int{100, 1000, 10000} // bytes per request
+	batchSizes := []int{5, 20, 100}         // requests per batch
+
+	for _, payloadSize := range payloadSizes {
+		for _, batchSize := range batchSizes {
+			b.Run(fmt.Sprintf("payload_%db_batch_%d", payloadSize, batchSize), func(b *testing.B) {
+				benchmarkBatchWithPayload(b, payloadSize, batchSize)
+			})
+		}
+	}
+}
+
+func benchmarkBatchWithPayload(b *testing.B, payloadSize, batchSize int) {
+	// Create handler that processes batched data
+	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		var input string
+		if err := calque.Read(req, &input); err != nil {
+			return err
+		}
+
+		// Split the batched input and process each part
+		parts := strings.Split(input, DefaultBatchSeparator)
+		var processedParts []string
+		for _, part := range parts {
+			if part != "" {
+				processedParts = append(processedParts, "processed:"+part)
+			}
+		}
+
+		result := strings.Join(processedParts, DefaultBatchSeparator)
+		return calque.Write(res, result)
+	})
+
+	batchHandler := Batch(handler, batchSize, 100*time.Millisecond)
+
+	// Create test payload of specified size
+	payload := strings.Repeat("x", payloadSize)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		// Launch concurrent requests to fill the batch
+		var wg sync.WaitGroup
+		for j := 0; j < batchSize; j++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				var buf bytes.Buffer
+				reader := strings.NewReader(payload)
+
+				req := calque.NewRequest(context.Background(), reader)
+				res := calque.NewResponse(&buf)
+				batchHandler.ServeFlow(req, res)
+			}()
+		}
+		wg.Wait()
+	}
+}

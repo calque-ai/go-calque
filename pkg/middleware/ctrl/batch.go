@@ -9,11 +9,22 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
+// DefaultBatchSeparator is the default separator used to combine and split
+// batch items. It's designed to be unlikely to appear in normal data content.
+const DefaultBatchSeparator = "\n---BATCH_SEPARATOR---\n"
+
+type BatchConfig struct {
+	MaxSize   int
+	MaxWait   time.Duration
+	Separator string
+}
+
 type requestBatcher struct {
-	handler  calque.Handler
-	maxSize  int
-	maxWait  time.Duration
-	requests chan *batchRequest
+	handler   calque.Handler
+	maxSize   int
+	maxWait   time.Duration
+	separator string
+	requests  chan *batchRequest
 }
 
 type batchRequest struct {
@@ -41,11 +52,38 @@ type batchResponse struct {
 //
 //	batch := ctrl.Batch(handler, 10, 5*time.Second) // 10 items or 5s
 func Batch(handler calque.Handler, maxSize int, maxWait time.Duration) calque.Handler {
+	return BatchWithConfig(handler, &BatchConfig{
+		MaxSize:   maxSize,
+		MaxWait:   maxWait,
+		Separator: DefaultBatchSeparator,
+	})
+}
+
+// BatchWithConfig accumulates multiple requests and processes them together with custom configuration
+//
+// Input: any data type (buffered - accumulates inputs)
+// Output: combined results from batch processing
+// Behavior: BUFFERED - accumulates until size/time threshold met
+//
+// Collects inputs until either config.MaxSize items accumulated or config.MaxWait time
+// elapsed, then processes the batch through the handler. Results are distributed back
+// to waiting requests in order using the specified separator.
+//
+// Example:
+//
+//	config := &ctrl.BatchConfig{
+//		MaxSize:   10,
+//		MaxWait:   5*time.Second,
+//		Separator: " ||| ",
+//	}
+//	batch := ctrl.BatchWithConfig(handler, config)
+func BatchWithConfig(handler calque.Handler, config *BatchConfig) calque.Handler {
 	batcher := &requestBatcher{
-		handler:  handler,
-		maxSize:  maxSize,
-		maxWait:  maxWait,
-		requests: make(chan *batchRequest, maxSize*2),
+		handler:   handler,
+		maxSize:   config.MaxSize,
+		maxWait:   config.MaxWait,
+		separator: config.Separator,
+		requests:  make(chan *batchRequest, config.MaxSize*2),
 	}
 
 	go batcher.processBatches()
@@ -125,18 +163,25 @@ func (rb *requestBatcher) processBatch(batch []*batchRequest) {
 	}
 
 	// Combine all inputs with separators
-	var combinedInput bytes.Buffer
+	// Calculate total size to avoid buffer growth
+	totalSize := (len(batch) - 1) * len(rb.separator)
+	for _, req := range batch {
+		totalSize += len(req.input)
+	}
+
+	// Pre-allocate buffer with exact capacity
+	combinedInput := make([]byte, 0, totalSize)
 	for i, req := range batch {
 		if i > 0 {
-			combinedInput.WriteString("\n---BATCH_SEPARATOR---\n")
+			combinedInput = append(combinedInput, rb.separator...)
 		}
-		combinedInput.Write(req.input)
+		combinedInput = append(combinedInput, req.input...)
 	}
 
 	// Process the combined batch
 	var output bytes.Buffer
 	ctx := batch[0].ctx // Use context from first request
-	req := calque.NewRequest(ctx, &combinedInput)
+	req := calque.NewRequest(ctx, bytes.NewReader(combinedInput))
 	res := calque.NewResponse(&output)
 	err := rb.handler.ServeFlow(req, res)
 
@@ -152,7 +197,7 @@ func (rb *requestBatcher) processBatch(batch []*batchRequest) {
 	}
 
 	// Split the output back to individual responses
-	responses := bytes.Split(output.Bytes(), []byte("\n---BATCH_SEPARATOR---\n"))
+	responses := bytes.Split(output.Bytes(), []byte(rb.separator))
 
 	// Ensure we have the right number of responses
 	if len(responses) != len(batch) {

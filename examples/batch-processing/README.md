@@ -50,6 +50,15 @@ This directory demonstrates how to use Go-Calque's batch processing capabilities
   - Performance impact of different configurations
   - Optimal batch size selection
 
+### 6. Custom Separator Example (`customSeparatorExample`)
+
+- **Custom Separators**: Use application-specific separators for batching
+- **Features Covered**:
+  - Configuring custom batch separators
+  - Processing structured data (CSV-like format)
+  - Using `BatchWithConfig` for advanced configuration
+  - Separator consistency between input joining and processing
+
 ## Key Batch Processing Concepts
 
 ### What is Batch Processing?
@@ -72,6 +81,7 @@ batchProcessor := ctrl.Batch(handler, maxSize, maxWait)
 ```
 
 The batch processor:
+
 1. **Accumulates** requests until either `maxSize` is reached or `maxWait` time elapses
 2. **Processes** the entire batch through your handler
 3. **Distributes** results back to waiting requests in order
@@ -79,13 +89,13 @@ The batch processor:
 
 ### Batch vs Individual Processing
 
-| Aspect | Individual Processing | Batch Processing |
-|--------|---------------------|------------------|
-| **Memory Usage** | Higher (per-request overhead) | Lower (shared overhead) |
-| **Processing Time** | Slower (sequential) | Faster (parallel within batch) |
-| **Error Handling** | Isolated failures | Batch-level failures |
-| **Resource Utilization** | Lower efficiency | Higher efficiency |
-| **Latency** | Lower (immediate) | Higher (waiting for batch) |
+| Aspect                   | Individual Processing         | Batch Processing               |
+| ------------------------ | ----------------------------- | ------------------------------ |
+| **Memory Usage**         | Higher (per-request overhead) | Lower (shared overhead)        |
+| **Processing Time**      | Slower (sequential)           | Faster (parallel within batch) |
+| **Error Handling**       | Isolated failures             | Batch-level failures           |
+| **Resource Utilization** | Lower efficiency              | Higher efficiency              |
+| **Latency**              | Lower (immediate)             | Higher (waiting for batch)     |
 
 ## Running the Examples
 
@@ -104,6 +114,7 @@ go run main.go
 The examples demonstrate various batch processing scenarios:
 
 ### Document Processing
+
 ```
 Processing 3 documents in batches of 3...
 INPUT: [document content]
@@ -115,6 +126,7 @@ Most common words: [pangram, used, testing]
 ```
 
 ### API Batching
+
 ```
 Sending 8 API requests in batches of 5...
 API Response 1: Processed 'Get user profile for user123' at 14:30:45.123
@@ -122,6 +134,7 @@ API Response 2: Processed 'Update user settings for user456' at 14:30:45.124
 ```
 
 ### Performance Comparison
+
 ```
 Comparing individual vs batch processing for 8 items...
 Individual processing time: 400ms
@@ -133,30 +146,38 @@ Performance improvement: 4.0x faster
 
 ### Choosing Batch Size
 
-| Use Case | Recommended Size | Reasoning |
-|----------|------------------|-----------|
-| **API Calls** | 5-20 | Balance between efficiency and API limits |
-| **File Processing** | 10-50 | Larger batches for I/O bound operations |
-| **Database Operations** | 100-1000 | Very large batches for bulk operations |
-| **Real-time Processing** | 1-5 | Smaller batches for low latency |
+| Use Case                 | Recommended Size | Reasoning                                 |
+| ------------------------ | ---------------- | ----------------------------------------- |
+| **API Calls**            | 5-20             | Balance between efficiency and API limits |
+| **File Processing**      | 10-50            | Larger batches for I/O bound operations   |
+| **Database Operations**  | 100-1000         | Very large batches for bulk operations    |
+| **Real-time Processing** | 1-5              | Smaller batches for low latency           |
 
 ### Choosing Wait Time
 
-| Scenario | Recommended Wait | Reasoning |
-|----------|------------------|-----------|
-| **High Throughput** | Short (50-200ms) | Process quickly to maintain flow |
-| **Low Volume** | Medium (500ms-2s) | Allow time for batch accumulation |
-| **Real-time** | Very Short (10-50ms) | Minimize latency |
-| **Batch Jobs** | Long (5-30s) | Maximize batch efficiency |
+| Scenario            | Recommended Wait     | Reasoning                         |
+| ------------------- | -------------------- | --------------------------------- |
+| **High Throughput** | Short (50-200ms)     | Process quickly to maintain flow  |
+| **Low Volume**      | Medium (500ms-2s)    | Allow time for batch accumulation |
+| **Real-time**       | Very Short (10-50ms) | Minimize latency                  |
+| **Batch Jobs**      | Long (5-30s)         | Maximize batch efficiency         |
 
 ## Advanced Usage Patterns
 
 ### Custom Batch Separators
 
+By default, Go-Calque uses `"\n---BATCH_SEPARATOR---\n"` to separate batched items. You can customize this separator for different data types or to avoid conflicts with your data content.
+
 ```go
-// Use custom separators for different data types
+// Default batch processor (uses DefaultBatchSeparator)
 batchProcessor := ctrl.Batch(handler, 10, 1*time.Second)
-// Default separator: "\n---BATCH_SEPARATOR---\n"
+
+// Custom separator for different data formats
+customBatch := ctrl.BatchWithConfig(handler, &ctrl.BatchConfig{
+    MaxSize:   10,
+    MaxWait:   1 * time.Second,
+    Separator: " ||| ", // Custom separator
+})
 ```
 
 ### Error Handling Strategies

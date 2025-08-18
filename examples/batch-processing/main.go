@@ -31,6 +31,9 @@ func main() {
 
 	fmt.Println("\n5. Different Batch Configurations:")
 	batchConfigurationExample()
+
+	fmt.Println("\n6. Custom Separator Example:")
+	customSeparatorExample()
 }
 
 // documentProcessingExample demonstrates batch processing of multiple text files
@@ -72,8 +75,8 @@ func documentProcessingExample() {
 			"Words: %d\n"+
 			"Characters: %d\n"+
 			"Lines: %d\n"+
-			"Most common words: %v\n"+
-			"---BATCH_SEPARATOR---\n", wordCount, charCount, lineCount, topWords)
+			"Most common words: %v"+
+			ctrl.DefaultBatchSeparator, wordCount, charCount, lineCount, topWords)
 
 		return calque.Write(res, analysis)
 	})
@@ -97,7 +100,7 @@ func documentProcessingExample() {
 		Use(logger.Print("OUTPUT"))
 
 	var result string
-	err = flow.Run(context.Background(), strings.Join(documents, "\n---BATCH_SEPARATOR---\n"), &result)
+	err = flow.Run(context.Background(), strings.Join(documents, ctrl.DefaultBatchSeparator), &result)
 	if err != nil {
 		fmt.Printf("   Error: %v\n", err)
 		return
@@ -119,7 +122,7 @@ func apiBatchingExample() {
 		time.Sleep(100 * time.Millisecond)
 
 		// Process each request in the batch
-		requestList := strings.Split(requests, "\n---BATCH_SEPARATOR---\n")
+		requestList := strings.Split(requests, ctrl.DefaultBatchSeparator)
 		var responses []string
 
 		for i, request := range requestList {
@@ -134,7 +137,7 @@ func apiBatchingExample() {
 			responses = append(responses, response)
 		}
 
-		result := strings.Join(responses, "\n---BATCH_SEPARATOR---\n")
+		result := strings.Join(responses, ctrl.DefaultBatchSeparator)
 		return calque.Write(res, result)
 	})
 
@@ -161,7 +164,7 @@ func apiBatchingExample() {
 		Use(logger.Print("API RESPONSES"))
 
 	var result string
-	err := flow.Run(context.Background(), strings.Join(apiRequests, "\n---BATCH_SEPARATOR---\n"), &result)
+	err := flow.Run(context.Background(), strings.Join(apiRequests, ctrl.DefaultBatchSeparator), &result)
 	if err != nil {
 		fmt.Printf("   Error: %v\n", err)
 		return
@@ -207,7 +210,7 @@ func performanceComparisonExample() {
 	start = time.Now()
 	flow := calque.NewFlow().Use(batchProcessor)
 	var batchResult string
-	flow.Run(context.Background(), strings.Join(testItems, "\n---BATCH_SEPARATOR---\n"), &batchResult)
+	flow.Run(context.Background(), strings.Join(testItems, ctrl.DefaultBatchSeparator), &batchResult)
 	batchTime := time.Since(start)
 
 	fmt.Printf("   Individual processing time: %v\n", individualTime)
@@ -253,7 +256,7 @@ func errorHandlingExample() {
 		Use(logger.Print("OUTPUT"))
 
 	var result string
-	err := flow.Run(context.Background(), strings.Join(testItems, "\n---BATCH_SEPARATOR---\n"), &result)
+	err := flow.Run(context.Background(), strings.Join(testItems, ctrl.DefaultBatchSeparator), &result)
 	if err != nil {
 		fmt.Printf("   Batch processing failed: %v\n", err)
 	} else {
@@ -279,26 +282,46 @@ func batchConfigurationExample() {
 	testItems := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}
 
 	configurations := []struct {
-		name    string
-		maxSize int
-		maxWait time.Duration
-		desc    string
+		name   string
+		config ctrl.BatchConfig
+		desc   string
 	}{
-		{"Small batches", 2, 100 * time.Millisecond, "Process 2 items or wait 100ms"},
-		{"Medium batches", 5, 200 * time.Millisecond, "Process 5 items or wait 200ms"},
-		{"Large batches", 10, 500 * time.Millisecond, "Process 10 items or wait 500ms"},
-		{"Time-based", 100, 50 * time.Millisecond, "Wait 50ms regardless of size"},
+		{
+			name:   "Small batches",
+			config: ctrl.BatchConfig{MaxSize: 2, MaxWait: 100 * time.Millisecond, Separator: ctrl.DefaultBatchSeparator},
+			desc:   "Process 2 items or wait 100ms",
+		},
+		{
+			name:   "Medium batches", 
+			config: ctrl.BatchConfig{MaxSize: 5, MaxWait: 200 * time.Millisecond, Separator: ctrl.DefaultBatchSeparator},
+			desc:   "Process 5 items or wait 200ms",
+		},
+		{
+			name:   "Large batches",
+			config: ctrl.BatchConfig{MaxSize: 10, MaxWait: 500 * time.Millisecond, Separator: ctrl.DefaultBatchSeparator},
+			desc:   "Process 10 items or wait 500ms",
+		},
+		{
+			name:   "Time-based",
+			config: ctrl.BatchConfig{MaxSize: 100, MaxWait: 50 * time.Millisecond, Separator: ctrl.DefaultBatchSeparator},
+			desc:   "Wait 50ms regardless of size",
+		},
+		{
+			name:   "Custom separator",
+			config: ctrl.BatchConfig{MaxSize: 3, MaxWait: 150 * time.Millisecond, Separator: " >>> "},
+			desc:   "Custom separator with 3 items or 150ms",
+		},
 	}
 
-	for _, config := range configurations {
-		fmt.Printf("   Testing %s (%s)...\n", config.name, config.desc)
+	for _, cfg := range configurations {
+		fmt.Printf("   Testing %s (%s)...\n", cfg.name, cfg.desc)
 
-		batchProcessor := ctrl.Batch(processor, config.maxSize, config.maxWait)
+		batchProcessor := ctrl.BatchWithConfig(processor, &cfg.config)
 
 		start := time.Now()
 		flow := calque.NewFlow().Use(batchProcessor)
 		var result string
-		err := flow.Run(context.Background(), strings.Join(testItems, "\n---BATCH_SEPARATOR---\n"), &result)
+		err := flow.Run(context.Background(), strings.Join(testItems, cfg.config.Separator), &result)
 		processingTime := time.Since(start)
 
 		if err != nil {
@@ -307,6 +330,66 @@ func batchConfigurationExample() {
 			fmt.Printf("     Completed in %v\n", processingTime)
 		}
 	}
+}
+
+// customSeparatorExample demonstrates using a custom batch separator
+func customSeparatorExample() {
+	customSeparator := " ||| "
+
+	// Create a data processor that handles CSV-like data
+	csvProcessor := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		var input string
+		if err := calque.Read(req, &input); err != nil {
+			return err
+		}
+
+		// Process CSV-like data
+		fields := strings.Split(strings.TrimSpace(input), ",")
+		if len(fields) < 3 {
+			return fmt.Errorf("invalid CSV format: %s", input)
+		}
+
+		// Clean and process the fields
+		name := strings.TrimSpace(fields[0])
+		age := strings.TrimSpace(fields[1])
+		city := strings.TrimSpace(fields[2])
+
+		// Create formatted output
+		result := fmt.Sprintf("Person{Name: %s, Age: %s, City: %s}", name, age, city)
+		return calque.Write(res, result)
+	})
+
+	// Create batch processor with custom separator
+	batchProcessor := ctrl.BatchWithConfig(csvProcessor, &ctrl.BatchConfig{
+		MaxSize:   3,
+		MaxWait:   1 * time.Second,
+		Separator: customSeparator,
+	})
+
+	// Sample CSV data
+	csvData := []string{
+		"John Doe, 30, New York",
+		"Jane Smith, 25, Los Angeles",
+		"Bob Wilson, 35, Chicago",
+		"Alice Brown, 28, Houston",
+		"Charlie Davis, 42, Phoenix",
+	}
+
+	fmt.Printf("   Processing %d CSV records with custom separator '%s'...\n", len(csvData), customSeparator)
+
+	flow := calque.NewFlow().
+		Use(logger.Print("CSV INPUT")).
+		Use(batchProcessor).
+		Use(logger.Print("PROCESSED OUTPUT"))
+
+	var result string
+	err := flow.Run(context.Background(), strings.Join(csvData, customSeparator), &result)
+	if err != nil {
+		fmt.Printf("   Error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("   Custom separator batch processing completed successfully!\n")
 }
 
 // loadDocuments reads all text files from a directory
