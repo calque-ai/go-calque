@@ -1,0 +1,9 @@
+The quick brown fox jumps over the lazy dog. This pangram contains every letter of the English alphabet at least once. Pangrams are often used to display font samples and test keyboards.
+
+In typography, a pangram is a sentence that contains every letter of the alphabet at least once. The most famous English pangram is "The quick brown fox jumps over the lazy dog." This sentence has been used since the late 19th century and is commonly used to display font samples and test keyboards.
+
+Pangrams are useful for:
+- Testing fonts and typography
+- Keyboard testing and calibration
+- Displaying character sets
+- Educational purposes in language learning
