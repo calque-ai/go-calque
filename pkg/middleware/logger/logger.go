@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"log"
 )
@@ -28,9 +29,9 @@ func Attr(key string, value any) Attribute {
 
 // LoggerInterface defines the contract for logging backends (zerolog, slog, standard log, etc.)
 type LoggerInterface interface {
-	Log(level LogLevel, msg string, attrs ...Attribute) // Structured logging with level
-	IsLevelEnabled(level LogLevel) bool                 // Performance check - skip work if disabled
-	Printf(format string, v ...any)                     // Simple printf-style logging
+	Log(ctx context.Context, level LogLevel, msg string, attrs ...Attribute) // Structured logging with level
+	IsLevelEnabled(ctx context.Context, level LogLevel) bool                 // Performance check - skip work if disabled
+	Printf(format string, v ...any)                                          // Simple printf-style logging
 }
 
 // ============================================================================
@@ -101,11 +102,21 @@ func (l *Logger) Print() *HandlerBuilder {
 type HandlerBuilder struct {
 	logger  *Logger
 	printer Printer
+	ctx     context.Context // Optional explicit context for tracing/observability
+}
+
+// WithContext returns a new HandlerBuilder with the specified context for tracing/observability
+func (hb *HandlerBuilder) WithContext(ctx context.Context) *HandlerBuilder {
+	return &HandlerBuilder{
+		logger:  hb.logger,
+		printer: hb.printer,
+		ctx:     ctx,
+	}
 }
 
 // Printer interface abstracts different printing strategies (leveled vs simple)
 type Printer interface {
-	Print(msg string, attrs ...Attribute)
+	Print(ctx context.Context, msg string, attrs ...Attribute)
 }
 
 // SimplePrinter uses Printf() - no levels, simple formatting
@@ -113,7 +124,7 @@ type SimplePrinter struct {
 	backend LoggerInterface
 }
 
-func (sp *SimplePrinter) Print(msg string, attrs ...Attribute) {
+func (sp *SimplePrinter) Print(ctx context.Context, msg string, attrs ...Attribute) {
 	if len(attrs) == 0 {
 		sp.backend.Printf("%s", msg)
 		return
@@ -133,8 +144,8 @@ type LeveledPrinter struct {
 	level   LogLevel
 }
 
-func (lp *LeveledPrinter) Print(msg string, attrs ...Attribute) {
-	if lp.backend.IsLevelEnabled(lp.level) {
-		lp.backend.Log(lp.level, msg, attrs...)
+func (lp *LeveledPrinter) Print(ctx context.Context, msg string, attrs ...Attribute) {
+	if lp.backend.IsLevelEnabled(ctx, lp.level) {
+		lp.backend.Log(ctx, lp.level, msg, attrs...)
 	}
 }

@@ -3,9 +3,12 @@ package logger
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
@@ -25,7 +28,7 @@ import (
 //	handler := log.Info().Head("INPUT_PREVIEW", 50)
 //	pipe.Use(handler) // Logs: [INPUT_PREVIEW]: Hello, world!...
 func (hb *HandlerBuilder) Head(prefix string, headBytes int, attrs ...Attribute) calque.Handler {
-	return hb.createHandler(prefix, func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
+	return hb.createHandler(func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
 		bufReader := bufio.NewReader(req.Data)
 
 		// Peek at first N bytes for logging without consuming
@@ -45,58 +48,6 @@ func (hb *HandlerBuilder) Head(prefix string, headBytes int, attrs ...Attribute)
 	})
 }
 
-// HeadTail logs the first N bytes and last M bytes of the stream.
-//
-// Input: any data type (buffered - reads entire input into memory)
-// Output: same as input (pass-through)
-// Behavior: BUFFERED - must read entire input to capture both head and tail
-//
-// Logs both the beginning and end of the data stream in a single log entry.
-// This provides a complete overview of the data without logging everything.
-// Useful for understanding data transformations and verifying pipeline outputs.
-//
-// Example:
-//
-//	handler := log.Info().HeadTail("TRANSFORM_RESULT", 30, 20)
-//	pipe.Use(handler) // Logs head=first 30 bytes, tail=last 20 bytes
-func (hb *HandlerBuilder) HeadTail(prefix string, headBytes, tailBytes int, attrs ...Attribute) calque.Handler {
-	return hb.createHandler(prefix, func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
-		bufReader := bufio.NewReader(req.Data)
-
-		// Peek at head
-		headData, err := bufReader.Peek(headBytes)
-		if err != nil && err != io.EOF {
-			return err
-		}
-
-		// Read all data to capture tail
-		var allData []byte
-		err = calque.Read(req, &allData)
-		if err != nil {
-			return err
-		}
-
-		// Extract tail
-		var tailData []byte
-		if len(allData) > tailBytes {
-			tailData = allData[len(allData)-tailBytes:]
-		} else {
-			tailData = allData
-		}
-
-		// Log with head and tail
-		allAttrs := append(attrs,
-			Attribute{"head", formatPreview(headData)},
-			Attribute{"tail", formatPreview(tailData)},
-			Attribute{"total_bytes", len(allData)},
-		)
-		logFunc(fmt.Sprintf("[%s]", prefix), allAttrs...)
-
-		// Write data to response
-		return calque.Write(res, allData)
-	})
-}
-
 // Chunks logs data in fixed-size chunks as it flows through the stream.
 //
 // Input: any data type (streaming - uses io.TeeReader for non-intrusive monitoring)
@@ -113,7 +64,7 @@ func (hb *HandlerBuilder) HeadTail(prefix string, headBytes, tailBytes int, attr
 //	handler := log.Debug().Chunks("STREAM_MONITOR", 1024)
 //	pipe.Use(handler) // Logs: [STREAM_MONITOR] Chunk 1, Chunk 2, etc.
 func (hb *HandlerBuilder) Chunks(prefix string, chunkSize int, attrs ...Attribute) calque.Handler {
-	return hb.createHandler(prefix, func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
+	return hb.createHandler(func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
 		// Use TeeReader to capture chunks as they flow through
 		var chunkBuffer bytes.Buffer
 		teeReader := io.TeeReader(req.Data, &chunkBuffer)
@@ -170,7 +121,7 @@ func (hb *HandlerBuilder) Chunks(prefix string, chunkSize int, attrs ...Attribut
 //	timedHandler := log.Info().Timing("AI_PROCESSING", ai.Agent(client))
 //	pipe.Use(timedHandler) // Logs: [AI_PROCESSING] completed duration_ms=150 bytes=1024
 func (hb *HandlerBuilder) Timing(prefix string, handler calque.Handler, attrs ...Attribute) calque.Handler {
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	return hb.createHandler(func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
 		start := time.Now()
 
 		// Use TeeReader to capture bytes as they flow through the handler
@@ -187,7 +138,7 @@ func (hb *HandlerBuilder) Timing(prefix string, handler calque.Handler, attrs ..
 		duration := time.Since(start)
 		bytesRead := int64(bytesBuffer.Len())
 
-		// Log timing with smart duration formatting and throughput
+		// Log timing with duration formatting and throughput
 		durationField, durationValue := formatDuration(duration)
 		allAttrs := append(attrs,
 			Attribute{durationField, durationValue},
@@ -199,8 +150,8 @@ func (hb *HandlerBuilder) Timing(prefix string, handler calque.Handler, attrs ..
 			allAttrs = append(allAttrs, Attribute{"bytes_per_sec", float64(bytesRead) / duration.Seconds()})
 		}
 
-		// Use the printer to log (respects level settings)
-		hb.printer.Print(fmt.Sprintf("[%s] completed", prefix), allAttrs...)
+		// Log the completion message
+		logFunc(fmt.Sprintf("[%s] completed", prefix), allAttrs...)
 
 		return err
 	})
@@ -222,7 +173,7 @@ func (hb *HandlerBuilder) Timing(prefix string, handler calque.Handler, attrs ..
 //	handler := log.Info().Sampling("DATA_OVERVIEW", 5, 30)
 //	pipe.Use(handler) // Logs: 5 samples from 1024 bytes with positions and previews
 func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int, attrs ...Attribute) calque.Handler {
-	return hb.createHandler(prefix, func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
+	return hb.createHandler(func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
 		// Read all data to analyze and sample
 		var allData []byte
 		err := calque.Read(req, &allData)
@@ -248,7 +199,7 @@ func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int
 			samplePositions = append(samplePositions, 0)
 		} else {
 			// Distribute samples evenly throughout the data
-			for i := 0; i < numSamples; i++ {
+			for i := range numSamples {
 				// Calculate position for this sample
 				position := (i * totalBytes) / numSamples
 				if position+sampleSize > totalBytes {
@@ -294,7 +245,7 @@ func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int
 //	handler := log.Debug().Print("FULL_INPUT")
 //	pipe.Use(handler) // Logs: [FULL_INPUT] content="Hello world" total_bytes=11
 func (hb *HandlerBuilder) Print(prefix string, attrs ...Attribute) calque.Handler {
-	return hb.createHandler(prefix, func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
+	return hb.createHandler(func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
 		// Read all data into buffer
 		var allData []byte
 		err := calque.Read(req, &allData)
@@ -311,6 +262,82 @@ func (hb *HandlerBuilder) Print(prefix string, attrs ...Attribute) calque.Handle
 
 		// Write all data to response
 		return calque.Write(res, allData)
+	})
+}
+
+// headTailCapture captures head and tail data during streaming
+type headTailCapture struct {
+	headBuf    []byte
+	tailBuf    []byte
+	totalBytes int
+	headSize   int
+	tailSize   int
+}
+
+func newHeadTailCapture(headSize, tailSize int) *headTailCapture {
+	return &headTailCapture{
+		headBuf:  make([]byte, 0, headSize),
+		tailBuf:  make([]byte, tailSize),
+		headSize: headSize,
+		tailSize: tailSize,
+	}
+}
+
+func (h *headTailCapture) Write(p []byte) (n int, err error) {
+	// Head: append until full
+	if len(h.headBuf) < h.headSize {
+		needed := min(h.headSize-len(h.headBuf), len(p))
+		h.headBuf = append(h.headBuf, p[:needed]...)
+	}
+
+	// Tail: overwrite until end of data stream
+	if len(p) >= h.tailSize {
+		// Large write - just take the end
+		copy(h.tailBuf, p[len(p)-h.tailSize:])
+	} else {
+		// Small write
+		copy(h.tailBuf, h.tailBuf[len(p):])    // shift existing data left
+		copy(h.tailBuf[h.tailSize-len(p):], p) // append new data at end
+	}
+
+	h.totalBytes += len(p)
+	return len(p), nil
+}
+
+// HeadTail logs the first N bytes and last M bytes of the stream.
+//
+// Input: any data type (streaming - uses io.TeeReader for efficient monitoring)
+// Output: same as input (pass-through)
+// Behavior: STREAMING - captures head and tail while data flows, constant memory usage
+//
+// Logs both the beginning and end of the data stream in a single log entry.
+// Uses optimized streaming approach with fixed-size buffers for constant memory usage.
+// Perfect for large data streams where memory efficiency is important.
+//
+// Example:
+//
+//	handler := log.Info().HeadTail("TRANSFORM_RESULT", 30, 20)
+//	pipe.Use(handler) // Logs head=first 30 bytes, tail=last 20 bytes
+func (hb *HandlerBuilder) HeadTail(prefix string, headBytes, tailBytes int, attrs ...Attribute) calque.Handler {
+	return hb.createHandler(func(req *calque.Request, res *calque.Response, logFunc func(string, ...Attribute)) error {
+		capture := newHeadTailCapture(headBytes, tailBytes)
+
+		// TeeReader streams to both response and capture
+		teeReader := io.TeeReader(req.Data, capture)
+		_, err := io.Copy(res.Data, teeReader)
+		if err != nil {
+			return err
+		}
+
+		// Log head and tail
+		allAttrs := append(attrs,
+			Attribute{"head", formatPreview(capture.headBuf)},
+			Attribute{"tail", formatPreview(capture.tailBuf)},
+			Attribute{"total_bytes", capture.totalBytes},
+		)
+		logFunc(fmt.Sprintf("[%s]", prefix), allAttrs...)
+
+		return nil
 	})
 }
 
@@ -331,10 +358,21 @@ func formatDuration(d time.Duration) (string, float64) {
 }
 
 // createHandler is a helper that creates a handler with the appropriate logging function
-func (hb *HandlerBuilder) createHandler(prefix string, handlerFunc func(*calque.Request, *calque.Response, func(string, ...Attribute)) error) calque.Handler {
+func (hb *HandlerBuilder) createHandler(handlerFunc func(*calque.Request, *calque.Response, func(string, ...Attribute)) error) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		logFunc := func(msg string, attrs ...Attribute) {
-			hb.printer.Print(msg, attrs...)
+
+			// context handling: prefer explicit context, then request context, then background
+			var finalCtx context.Context
+			if hb.ctx != nil {
+				finalCtx = hb.ctx // 1. Use explicit context (highest priority)
+			} else if req.Context != nil {
+				finalCtx = req.Context // 2. Use request context (fallback)
+			} else {
+				finalCtx = context.Background() // 3. Use background context (last resort)
+			}
+
+			hb.printer.Print(finalCtx, msg, attrs...)
 		}
 		return handlerFunc(req, res, logFunc)
 	})
@@ -346,7 +384,7 @@ func formatPreview(data []byte) string {
 		return "<empty>"
 	}
 
-	// Try to detect if it's printable text
+	// Try to detect if printable text
 	if isPrintable(data) {
 		return string(data)
 	}
@@ -358,15 +396,21 @@ func formatPreview(data []byte) string {
 	return fmt.Sprintf("binary data: %x", data)
 }
 
-// isPrintable checks if all bytes are printable ASCII characters
+// isPrintable checks if all bytes are printable unicode characters
 func isPrintable(data []byte) bool {
-	for _, b := range data {
-		if b < 32 || b > 126 {
-			// Allow common whitespace characters
-			if b != '\t' && b != '\n' && b != '\r' {
-				return false
-			}
+	for len(data) > 0 {
+		r, size := utf8.DecodeRune(data)
+		if r == utf8.RuneError {
+			return false // Invalid UTF-8
 		}
+		if !unicode.IsPrint(r) && !isWhitespace(r) {
+			return false
+		}
+		data = data[size:]
 	}
 	return true
+}
+
+func isWhitespace(r rune) bool {
+	return r == '\t' || r == '\n' || r == '\r' || r == ' '
 }

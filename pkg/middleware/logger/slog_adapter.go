@@ -16,7 +16,7 @@ func NewSlogAdapter(logger *slog.Logger) *SlogAdapter {
 }
 
 // Log implements LoggerInterface for structured logging with slog
-func (s *SlogAdapter) Log(level LogLevel, msg string, attrs ...Attribute) {
+func (s *SlogAdapter) Log(ctx context.Context, level LogLevel, msg string, attrs ...Attribute) {
 	slogLevel := logLevelToSlog(level)
 	
 	// Convert our Attributes to slog.Attr
@@ -25,13 +25,14 @@ func (s *SlogAdapter) Log(level LogLevel, msg string, attrs ...Attribute) {
 		slogAttrs[i] = slog.Any(attr.Key, attr.Value)
 	}
 	
-	s.logger.LogAttrs(context.TODO(), slogLevel, msg, slogAttrs...)
+	// Use provided context for tracing/observability
+	s.logger.LogAttrs(ctx, slogLevel, msg, slogAttrs...)
 }
 
 // IsLevelEnabled checks if the given level is enabled in slog
-func (s *SlogAdapter) IsLevelEnabled(level LogLevel) bool {
+func (s *SlogAdapter) IsLevelEnabled(ctx context.Context, level LogLevel) bool {
 	slogLevel := logLevelToSlog(level)
-	return s.logger.Enabled(context.TODO(), slogLevel)
+	return s.logger.Enabled(ctx, slogLevel)
 }
 
 // Printf implements backward compatibility (though not idiomatic for slog)

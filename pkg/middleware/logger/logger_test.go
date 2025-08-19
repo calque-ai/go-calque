@@ -3,6 +3,7 @@ package logger
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -121,7 +122,7 @@ type MockLogger struct {
 	enabledLevel LogLevel
 }
 
-func (m *MockLogger) Log(level LogLevel, msg string, attrs ...Attribute) {
+func (m *MockLogger) Log(ctx context.Context, level LogLevel, msg string, attrs ...Attribute) {
 	levelStr := map[LogLevel]string{
 		DebugLevel: "[DEBUG]",
 		InfoLevel:  "[INFO]",
@@ -132,12 +133,12 @@ func (m *MockLogger) Log(level LogLevel, msg string, attrs ...Attribute) {
 	m.buffer.WriteString(levelStr + " " + msg)
 
 	for _, attr := range attrs {
-		m.buffer.WriteString(" " + attr.Key + "=" + attr.Value.(string))
+		m.buffer.WriteString(fmt.Sprintf(" %s=%v", attr.Key, attr.Value))
 	}
 	m.buffer.WriteString("\n")
 }
 
-func (m *MockLogger) IsLevelEnabled(level LogLevel) bool {
+func (m *MockLogger) IsLevelEnabled(ctx context.Context, level LogLevel) bool {
 	return level >= m.enabledLevel
 }
 

@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -16,8 +17,8 @@ func NewStandardAdapter(logger *log.Logger) *StandardAdapter {
 	return &StandardAdapter{logger: logger}
 }
 
-// Log implements LoggerInterface - ignores level for standard log
-func (s *StandardAdapter) Log(level LogLevel, msg string, attrs ...Attribute) {
+// Log implements LoggerInterface - ignores level and context for standard log
+func (s *StandardAdapter) Log(ctx context.Context, level LogLevel, msg string, attrs ...Attribute) {
 	if len(attrs) == 0 {
 		s.logger.Printf("%s", msg)
 		return
@@ -33,7 +34,7 @@ func (s *StandardAdapter) Log(level LogLevel, msg string, attrs ...Attribute) {
 }
 
 // IsLevelEnabled always returns true for standard log (no level filtering)
-func (s *StandardAdapter) IsLevelEnabled(level LogLevel) bool {
+func (s *StandardAdapter) IsLevelEnabled(ctx context.Context, level LogLevel) bool {
 	return true // Standard log doesn't have level filtering
 }
 

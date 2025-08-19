@@ -1,6 +1,8 @@
 package logger
 
 import (
+	"context"
+
 	"github.com/rs/zerolog"
 )
 
@@ -15,7 +17,7 @@ func NewZerologAdapter(logger zerolog.Logger) *ZerologAdapter {
 }
 
 // Log implements LoggerInterface for structured logging with zerolog
-func (z *ZerologAdapter) Log(level LogLevel, msg string, attrs ...Attribute) {
+func (z *ZerologAdapter) Log(ctx context.Context, level LogLevel, msg string, attrs ...Attribute) {
 	var evt *zerolog.Event
 
 	switch level {
@@ -31,6 +33,9 @@ func (z *ZerologAdapter) Log(level LogLevel, msg string, attrs ...Attribute) {
 		evt = z.logger.Info()
 	}
 
+	// Add context for tracing/observability (zerolog's pattern)
+	evt = evt.Ctx(ctx)
+
 	// Add structured attributes
 	for _, attr := range attrs {
 		evt = evt.Interface(attr.Key, attr.Value)
@@ -40,7 +45,7 @@ func (z *ZerologAdapter) Log(level LogLevel, msg string, attrs ...Attribute) {
 }
 
 // IsLevelEnabled checks if the given level is enabled in zerolog
-func (z *ZerologAdapter) IsLevelEnabled(level LogLevel) bool {
+func (z *ZerologAdapter) IsLevelEnabled(ctx context.Context, level LogLevel) bool {
 	zerologLevel := logLevelToZerolog(level)
 	return z.logger.GetLevel() <= zerologLevel
 }
