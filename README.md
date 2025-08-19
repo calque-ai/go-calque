@@ -382,14 +382,16 @@ Go-Calque's optimized middleware composition delivers both performance and memor
 
 ### Benchmark Results vs Hand-Coded Algorithm
 
-_VirtualApple @ 2.50GHz, darwin/amd64_
-
-```
-                   Small Dataset (29 words)    Large Dataset (1000 words)
-Baseline:          69,377 ns/op  76,736 B/op   4,232,972 ns/op  4,011,708 B/op
-Go-Calque:         51,964 ns/op  32,343 B/op     523,240 ns/op    469,156 B/op
-Improvement:       25% faster    58% less      88% faster       88% less
-```
+| Configuration | Dataset | Algorithm | Time (ns/op) | Memory (B/op) | Allocations | Time Improvement | Memory Improvement |
+|---------------|---------|-----------|--------------|---------------|-------------|------------------|--------------------|
+| **VirtualApple @ 2.50GHz, darwin/amd64** | Small (29 words) | Baseline | 69,377 | 76,736 | 685 | - | - |
+| | | Go-Calque | 51,964 | 32,343 | 479 | **25% faster** | **58% less** |
+| | Large (1000 words) | Baseline | 4,232,972 | 4,011,708 | 33,990 | - | - |
+| | | Go-Calque | 523,240 | 469,156 | 9,574 | **88% faster** | **88% less** |
+| **linux/amd64 x86_64** | Small (29 words) | Baseline | 51,617 | 76,736 | 685 | - | - |
+| | | Go-Calque | 59,473 | 32,361 | 430 | 15% slower | **58% less** |
+| | Large (1000 words) | Baseline | 3,105,624 | 4,011,673 | 33,990 | - | - |
+| | | Go-Calque | 537,898 | 469,359 | 5,489 | **83% faster** | **88% less** |
 
 **Performance Principle**: Well-designed middleware composition outperforms hand-coded algorithms while remaining maintainable and composable.
 
