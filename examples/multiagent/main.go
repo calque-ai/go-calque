@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
@@ -27,8 +29,14 @@ func main() {
 	fmt.Println("\n4. Complex Pipeline Example:")
 	complexPipeline()
 
-	fmt.Println("\n4. Combined Routing Example:")
+	fmt.Println("\n5. Combined Routing Example:")
 	combinedRouting()
+
+	fmt.Println("\n6. JSON Consensus Example:")
+	jsonConsensusExample()
+
+	fmt.Println("\n7. Text Consensus Example:")
+	textConsensusExample()
 }
 
 // smartRouter demonstrates intelligent agent selection using schema-based routing
@@ -208,4 +216,138 @@ func combinedRouting() {
 	}
 
 	fmt.Printf("   Combined routing result: %s\n", result)
+}
+
+// jsonConsensusExample demonstrates consensus with structured JSON data using numeric scoring
+func jsonConsensusExample() {
+	// Create mock agents that return JSON with scores
+	agent1 := ai.Agent(ai.NewMockClient(`{"answer": "positive", "confidence": 0.85, "reasoning": "Strong positive indicators"}`))
+	agent2 := ai.Agent(ai.NewMockClient(`{"answer": "positive", "confidence": 0.90, "reasoning": "Clear positive sentiment"}`))
+	agent3 := ai.Agent(ai.NewMockClient(`{"answer": "negative", "confidence": 0.60, "reasoning": "Some negative elements"}`))
+
+	// Custom voting function that extracts JSON data and uses confidence scoring
+	confidenceVote := func(responses []string) (string, error) {
+		type SentimentResponse struct {
+			Answer     string  `json:"answer"`
+			Confidence float64 `json:"confidence"`
+			Reasoning  string  `json:"reasoning"`
+		}
+
+		var weightedVotes = make(map[string]float64)
+		var responseMap = make(map[string]string)
+
+		for _, resp := range responses {
+			var sentiment SentimentResponse
+			if err := json.Unmarshal([]byte(resp), &sentiment); err != nil {
+				continue // Skip malformed responses
+			}
+
+			// Weight votes by confidence score
+			weightedVotes[sentiment.Answer] += sentiment.Confidence
+			responseMap[sentiment.Answer] = resp
+		}
+
+		// Find answer with highest weighted confidence
+		var maxWeight float64
+		var winner string
+		for answer, weight := range weightedVotes {
+			if weight > maxWeight {
+				maxWeight = weight
+				winner = answer
+			}
+		}
+
+		if winner == "" {
+			return "", fmt.Errorf("no valid responses found")
+		}
+
+		return responseMap[winner], nil
+	}
+
+	// Create consensus with confidence-weighted voting
+	consensus := multiagent.SimpleConsensus([]calque.Handler{agent1, agent2, agent3}, confidenceVote, 2)
+
+	pipeline := calque.NewFlow().Use(consensus)
+
+	var result string
+	err := pipeline.Run(context.Background(), "Analyze sentiment: 'I love this product!'", &result)
+	if err != nil {
+		fmt.Printf("   Error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("   Input: Analyze sentiment: 'I love this product!'\n")
+	fmt.Printf("   Consensus Result: %s\n", result)
+	fmt.Printf("   Strategy: Confidence-weighted voting (positive: 1.75, negative: 0.60)\n")
+}
+
+// textConsensusExample demonstrates simple voting consensus for text responses
+func textConsensusExample() {
+	// Create mock agents with different viewpoints
+	agent1 := ai.Agent(ai.NewMockClient("The answer is A because it has strong evidence and data support."))
+	agent2 := ai.Agent(ai.NewMockClient("I believe the answer is B based on historical patterns and research."))
+	agent3 := ai.Agent(ai.NewMockClient("The evidence points to A, with multiple studies confirming this conclusion."))
+	agent4 := ai.Agent(ai.NewMockClient("Answer is B, as it aligns with recent findings and expert opinions."))
+
+	// Createa a voting function that extracts A or B answers and counts votes
+	simpleVote := func(responses []string) (string, error) {
+		if len(responses) == 0 {
+			return "", fmt.Errorf("no responses available")
+		}
+
+		// Count votes for each answer
+		votes := make(map[string]int)
+		responseMap := make(map[string]string)
+
+		for _, resp := range responses {
+			text := strings.ToLower(resp)
+
+			// Extract the answer (A or B)
+			var answer string
+			if strings.Contains(text, "answer is a") {
+				answer = "A"
+			} else if strings.Contains(text, "answer is b") {
+				answer = "B"
+			} else {
+				answer = "unknown"
+			}
+
+			votes[answer]++
+			responseMap[answer] = resp // Keep one response for each answer
+			fmt.Printf("   Agent voted for: %s\n", answer)
+		}
+
+		// Find answer with most votes
+		var winner string
+		var maxVotes int
+		for answer, count := range votes {
+			fmt.Printf("   '%s' received %d votes\n", answer, count)
+			if count > maxVotes {
+				maxVotes = count
+				winner = answer
+			}
+		}
+
+		if winner == "" || winner == "unknown" {
+			return "", fmt.Errorf("no valid answers found")
+		}
+
+		return responseMap[winner], nil
+	}
+
+	// Create consensus with simple voting strategy
+	consensus := multiagent.SimpleConsensus([]calque.Handler{agent1, agent2, agent3, agent4}, simpleVote, 2)
+
+	pipeline := calque.NewFlow().Use(consensus)
+
+	var result string
+	err := pipeline.Run(context.Background(), "What is the correct answer and why?", &result)
+	if err != nil {
+		fmt.Printf("   Error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("   Input: What is the correct answer and why?\n")
+	fmt.Printf("   Winning Response: %s\n", result)
+	fmt.Printf("   Strategy: Simple majority voting (extracts A or B answers and counts votes)\n")
 }
