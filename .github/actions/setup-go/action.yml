@@ -1,0 +1,29 @@
+name: 'Setup Go Environment'
+description: 'Sets up Go environment'
+
+inputs:
+  go-version:
+    description: 'Go version to set up'
+    required: false
+    default: '1.24.2'
+  cache-dependency-path:
+    description: 'Path to go.sum for cache key generation'
+    required: false
+    default: '**/go.sum'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Download dependencies
+      shell: bash
+      run: go mod download
+
+    - name: Verify dependencies
+      shell: bash
+      run: go mod verify

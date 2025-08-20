@@ -1,0 +1,33 @@
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - gofmt
+    - goimports
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
+    - typecheck
+    - revive
+    - gocyclo
+    - nestif
+    - misspell
+    - unparam
+    - nilerr
+    - prealloc
+
+issues:
+  exclude-use-default: false
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+    - path: examples/
+      linters:
+        - errcheck
+  max-issues-per-linter: 0
+  max-same-issues: 0
