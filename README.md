@@ -2,11 +2,6 @@
 
 <img src=".github/images/go-calque.webp" alt="Go-Calque" width="350">
 
-[![CI](https://github.com/calque-ai/go-calque/actions/workflows/ci.yml/badge.svg)](https://github.com/calque-ai/go-calque/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/calque-ai/go-calque/branch/main/graph/badge.svg)](https://codecov.io/gh/calque-ai/go-calque)
-[![Go Report Card](https://goreportcard.com/badge/github.com/calque-ai/go-calque)](https://goreportcard.com/report/github.com/calque-ai/go-calque)
-[![Go Reference](https://pkg.go.dev/badge/github.com/calque-ai/go-calque.svg)](https://pkg.go.dev/github.com/calque-ai/go-calque)
-
 An idiomatic streaming **multi-agent AI framework** for Go.
 
 _Developed by [Calque AI](https://calque.ai)_

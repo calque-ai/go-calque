@@ -127,6 +127,7 @@ func Parallel(handlers ...calque.Handler) calque.Handler {
 		}()
 
 		type result struct {
+			index  int
 			output []byte
 			err    error
 		}
@@ -135,17 +136,18 @@ func Parallel(handlers ...calque.Handler) calque.Handler {
 
 		// Run handlers concurrently on their streams
 		for i, handler := range handlers {
-			go func(h calque.Handler, reader *io.PipeReader) {
+			go func(idx int, h calque.Handler, reader *io.PipeReader) {
 				var output bytes.Buffer
 				handlerReq := &calque.Request{Context: req.Context, Data: reader}
 				handlerRes := &calque.Response{Data: &output}
 
 				err := h.ServeFlow(handlerReq, handlerRes)
-				results <- result{output.Bytes(), err}
-			}(handler, readers[i])
+				results <- result{idx, output.Bytes(), err}
+			}(i, handler, readers[i])
 		}
 
-		var outputs [][]byte
+		// Collect results preserving original order
+		outputs := make([][]byte, len(handlers))
 		for range handlers {
 			select {
 			case <-req.Context.Done():
@@ -154,7 +156,7 @@ func Parallel(handlers ...calque.Handler) calque.Handler {
 				if res.err != nil {
 					return res.err
 				}
-				outputs = append(outputs, res.output)
+				outputs[res.index] = res.output
 			}
 		}
 

@@ -23,6 +23,7 @@ jobs:
       with:
         go-version: ${{ env.GO_VERSION }}
 
+    # TODO: Uncomment this once we have a fix golang lint config and fix all the issues
     # - name: Run golangci-lint
     #   uses: golangci/golangci-lint-action@v6
     #   with:

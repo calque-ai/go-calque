@@ -1,17 +1,15 @@
 run:
   timeout: 5m
 
+version: 2
+
 linters:
   enable:
-    - gofmt
-    - goimports
     - govet
     - errcheck
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
-    - typecheck
     - revive
     - gocyclo
     - nestif
@@ -19,6 +17,8 @@ linters:
     - unparam
     - nilerr
     - prealloc
+    - goconst
+    - gocritic
 
 issues:
   exclude-use-default: false
