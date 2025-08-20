@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
@@ -365,5 +366,153 @@ func TestExecuteWithEmptyContext(t *testing.T) {
 	// Should error with "no tools available"
 	if !strings.Contains(err.Error(), "no tools available") {
 		t.Errorf("Execute() with empty context error = %q, want error containing 'no tools available'", err.Error())
+	}
+}
+
+func TestExecuteToolCallsConcurrency(t *testing.T) {
+	// Create tools with varying execution times to test concurrency
+	fastTool := Simple("fast", "Fast tool", func(args string) string {
+		return "fast_result"
+	})
+	
+	slowTool := Simple("slow", "Slow tool", func(args string) string {
+		time.Sleep(50 * time.Millisecond)
+		return "slow_result"
+	})
+
+	tools := []Tool{fastTool, slowTool}
+
+	tests := []struct {
+		name         string
+		config       Config
+		numToolCalls int
+		expectError  bool
+	}{
+		{
+			name: "no concurrency limit - all tools run concurrently",
+			config: Config{
+				MaxConcurrentTools: 0, // No limit
+			},
+			numToolCalls: 4,
+			expectError:  false,
+		},
+		{
+			name: "concurrency limited to 2 workers",
+			config: Config{
+				MaxConcurrentTools: 2,
+			},
+			numToolCalls: 5, // More tools than workers
+			expectError:  false,
+		},
+		{
+			name: "concurrency limited to 1 worker",
+			config: Config{
+				MaxConcurrentTools: 1,
+			},
+			numToolCalls: 3,
+			expectError:  false,
+		},
+		{
+			name: "single tool call optimization",
+			config: Config{
+				MaxConcurrentTools: 5,
+			},
+			numToolCalls: 1, // Should use single tool optimization
+			expectError:  false,
+		},
+		{
+			name: "more workers than tools",
+			config: Config{
+				MaxConcurrentTools: 10,
+			},
+			numToolCalls: 3, // Fewer tools than max workers
+			expectError:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create tool calls alternating between fast and slow
+			toolCalls := make([]ToolCall, tt.numToolCalls)
+			for i := 0; i < tt.numToolCalls; i++ {
+				toolName := "fast"
+				if i%2 == 1 {
+					toolName = "slow"
+				}
+				toolCalls[i] = ToolCall{
+					Name:      toolName,
+					Arguments: "test",
+					ID:        fmt.Sprintf("call_%d", i),
+				}
+			}
+
+			ctx := context.Background()
+			start := time.Now()
+
+			// Execute with timeout to catch any deadlocks/hangs
+			done := make(chan []ToolResult, 1)
+			errChan := make(chan error, 1)
+			
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						errChan <- fmt.Errorf("panic: %v", r)
+					}
+				}()
+				results := executeToolCallsWithConfig(ctx, tools, toolCalls, tt.config)
+				done <- results
+			}()
+
+			// Set reasonable timeout based on test
+			timeout := 500 * time.Millisecond
+			if tt.config.MaxConcurrentTools == 1 && tt.numToolCalls > 2 {
+				timeout = 1 * time.Second // Sequential execution needs more time
+			}
+
+			timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+
+			select {
+			case results := <-done:
+				elapsed := time.Since(start)
+				
+				if tt.expectError {
+					t.Error("Expected error but function completed successfully")
+					return
+				}
+
+				// Verify we got the expected number of results
+				if len(results) != tt.numToolCalls {
+					t.Errorf("Expected %d results, got %d", tt.numToolCalls, len(results))
+				}
+
+				// Verify all results are present and correct
+				for i, result := range results {
+					if result.Error != "" {
+						t.Errorf("Tool call %d failed: %s", i, result.Error)
+					}
+					
+					expectedResult := "fast_result"
+					if toolCalls[i].Name == "slow" {
+						expectedResult = "slow_result"
+					}
+					
+					if string(result.Result) != expectedResult {
+						t.Errorf("Tool call %d result = %q, want %q", i, string(result.Result), expectedResult)
+					}
+				}
+
+				t.Logf("Completed %d tool calls in %v with max_concurrent=%d", 
+					tt.numToolCalls, elapsed, tt.config.MaxConcurrentTools)
+
+			case err := <-errChan:
+				if !tt.expectError {
+					t.Errorf("Unexpected panic/error: %v", err)
+				}
+
+			case <-timeoutCtx.Done():
+				t.Errorf("Function timed out after %v - possible deadlock or hang", timeout)
+			}
+		})
 	}
 }

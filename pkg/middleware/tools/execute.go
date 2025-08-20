@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
@@ -87,7 +88,7 @@ func ExecuteWithOptions(config Config) calque.Handler {
 	})
 }
 
-// executeFromBytes executes tools directly from input bytes (simplified version for Execute)
+// executeFromBytes executes tools directly from input bytes
 func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools []Tool, config Config) error {
 	// Parse tool calls from input
 	toolCalls := parseToolCalls(inputBytes)
@@ -112,7 +113,7 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 		}
 	}
 
-	// Handle errors - always fail on tool execution errors
+	// Handle errors always fail on tool execution errors
 	if hasErrors {
 		return fmt.Errorf("tool execution failed: %s", firstError)
 	}
@@ -181,32 +182,39 @@ func parseJSONToolCalls(output []byte) []ToolCall {
 
 // executeToolCallsWithConfig executes multiple tool calls with configuration
 func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []ToolCall, config Config) []ToolResult {
-	if config.MaxConcurrentTools <= 0 || config.MaxConcurrentTools >= len(toolCalls) {
-		// Execute all concurrently or sequentially if no limit
-		results := make([]ToolResult, len(toolCalls))
-		for i, toolCall := range toolCalls {
-			results[i] = executeToolCall(ctx, tools, toolCall)
-		}
-		return results
+	if len(toolCalls) == 1 { // Single tool call execute directly
+		return []ToolResult{executeToolCall(ctx, tools, toolCalls[0])}
 	}
 
-	// Execute with concurrency limit
 	results := make([]ToolResult, len(toolCalls))
-	semaphore := make(chan struct{}, config.MaxConcurrentTools)
 
-	for i, toolCall := range toolCalls {
-		semaphore <- struct{}{} // Acquire
-		go func(index int, call ToolCall) {
-			defer func() { <-semaphore }() // Release
-			results[index] = executeToolCall(ctx, tools, call)
-		}(i, toolCall)
+	// Determine worker count
+	workers := len(toolCalls) // unlimited max concurrency
+	if config.MaxConcurrentTools > 0 && config.MaxConcurrentTools < workers {
+		workers = config.MaxConcurrentTools
 	}
 
-	// Wait for all to complete
-	for i := 0; i < config.MaxConcurrentTools; i++ {
-		semaphore <- struct{}{}
+	jobs := make(chan int, len(toolCalls))
+	var wg sync.WaitGroup
+
+	// Start workers
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				results[i] = executeToolCall(ctx, tools, toolCalls[i])
+			}
+		}()
 	}
 
+	// Send jobs
+	for i := range toolCalls {
+		jobs <- i
+	}
+	close(jobs)
+
+	wg.Wait()
 	return results
 }
 
