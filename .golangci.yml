@@ -1,33 +1,35 @@
-run:
-  timeout: 5m
-
-version: 2
-
+version: "2"
 linters:
   enable:
-    - govet
-    - errcheck
-    - staticcheck
-    - unused
-    - ineffassign
-    - revive
-    - gocyclo
-    - nestif
-    - misspell
-    - unparam
-    - nilerr
-    - prealloc
     - goconst
     - gocritic
-
+    - gocyclo
+    - misspell
+    - nestif
+    - nilerr
+    - prealloc
+    - revive
+    - unparam
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - errcheck
+        path: _test\.go
+      - linters:
+          - errcheck
+        path: examples/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-use-default: false
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-    - path: examples/
-      linters:
-        - errcheck
   max-issues-per-linter: 0
   max-same-issues: 0
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
