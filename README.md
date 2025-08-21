@@ -94,8 +94,9 @@ flowchart TB
         N(["Buffered<br>Read all data first<br>for complex processing"])
     end
     subgraph subGraph3["LLM Providers"]
-        O["Ollama"]
-        P["Gemini"]
+        O["OpenAI"]
+        P["Ollama"]
+        Q["Gemini"]
     end
     A["User Application"] --> B["Calque Flow"]
     B --> C
@@ -103,7 +104,7 @@ flowchart TB
     D -- "io.Pipe" --> E
     E -- "io.Pipe" --> F
     F --> G
-    E --> H & O & P
+    E --> H & O & P & Q
     H -- Yes --> I
     H -- No --> J
     I --> K
@@ -129,6 +130,7 @@ flowchart TB
     N:::modes
     O:::llmProvider
     P:::llmProvider
+    Q:::llmProvider
 
 %% Dark Mode Styles
     classDef inputOutput fill:#1e293b,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
@@ -154,8 +156,8 @@ flowchart TB
 
 🤖 **AI Agent Processing**: Intelligent decision-making for tool calling vs direct chat, with response synthesis
 
-🌐 **LLM Provider Layer**:
-
+🌐 **LLM Provider Layer**: 
+- **OpenAI** ⚡ Leading AI API (GPT-4, GPT-3.5, advanced capabilities)
 - **Ollama** 🏠 Local server (privacy, no API costs)
 - **Gemini** ☁️ Google Cloud API (advanced capabilities)
 
@@ -167,7 +169,7 @@ Go-Calque includes middleware for common AI and data processing patterns:
 
 ### AI & LLM (`ai/`, `prompt/`)
 
-- **AI Agents**: `ai.Agent(client)` - Connect to Gemini, Ollama, or custom providers
+- **AI Agents**: `ai.Agent(client)` - Connect to OpenAI, Gemini, Ollama, or custom providers
 - **Prompt Templates**: `prompt.Template("Question: {{.Input}}")` - Dynamic prompt formatting
 - **Streaming Support**: Real-time response processing as tokens arrive
 
@@ -257,6 +259,7 @@ flow.Run(ctx, "hello", &result)
 ### AI Chat with Memory
 
 ```go
+// with ollama
 client, _ := ollama.New("llama3.2:1b")
 convMem := memory.NewConversation()
 
@@ -265,6 +268,20 @@ flow := calque.NewFlow().
     Use(prompt.Template("User: {{.Input}}\nAssistant:")).
     Use(ai.Agent(client)).
     Use(convMem.Output("user123")) //store ai response
+
+var response string
+flow.Run(ctx, "What's the capital of France?", &response)
+```
+
+```go
+// With OpenAI
+client, _ := openai.New("gpt-5")
+convMem := memory.NewConversation()
+
+flow := calque.NewFlow().
+    Use(convMem.Input("user123")).
+    Use(ai.Agent(client)).
+    Use(convMem.Output("user123"))
 
 var response string
 flow.Run(ctx, "What's the capital of France?", &response)

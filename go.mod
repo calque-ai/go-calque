@@ -9,6 +9,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/ollama/ollama v0.11.4
 	github.com/rs/zerolog v1.34.0
+	github.com/sashabaranov/go-openai v1.41.1
 	github.com/wk8/go-ordered-map/v2 v2.1.8
 	google.golang.org/genai v1.19.0
 )
