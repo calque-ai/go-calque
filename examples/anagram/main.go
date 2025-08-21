@@ -72,7 +72,7 @@ func GoCalqueFramework(words []string) map[string]map[string]struct{} {
 	return parseAnagramOutput(outputStr)
 }
 
-// Baseline implementation (from benchmark)
+// Baseline implementation
 // This is a simple implementation that processes words into anagrams
 func Baseline(words []string) map[string]map[string]struct{} {
 	var swa []Anagrams
@@ -190,7 +190,7 @@ func accumulateAnagrams() calque.Handler {
 	})
 }
 
-// parseAnagramOutput converts the pipeline output back to Anagrams
+// parseAnagramOutput converts the flow output back to Anagrams
 func parseAnagramOutput(output string) map[string]map[string]struct{} {
 	result := make(Anagrams)
 	lines := strings.SplitSeq(output, "\n")
@@ -219,8 +219,6 @@ func parseAnagramOutput(output string) map[string]map[string]struct{} {
 
 	return result
 }
-
-// Optimized framework middleware functions
 
 // filterValidWords filters out empty lines and single characters using text.Filter
 func filterValidWords() calque.Handler {

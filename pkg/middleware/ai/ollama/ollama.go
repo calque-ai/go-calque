@@ -1,7 +1,6 @@
 package ollama
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -199,7 +198,7 @@ func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Build request configuration based on input type
-	config, err := o.buildRequestConfig(input, ai.GetSchema(opts), ai.GetTools(opts), r.Context)
+	config, err := o.buildRequestConfig(input, ai.GetSchema(opts), ai.GetTools(opts))
 	if err != nil {
 		return err
 	}
@@ -209,7 +208,7 @@ func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 }
 
 // buildRequestConfig creates configuration for the request
-func (o *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool, ctx context.Context) (*RequestConfig, error) {
+func (o *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool) (*RequestConfig, error) {
 	// Create chat request based on input type
 	chatRequest, err := o.inputToChatRequest(input)
 	if err != nil {

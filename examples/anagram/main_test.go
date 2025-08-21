@@ -32,32 +32,35 @@ var largeTestWords = func() []string {
 	return words
 }()
 
-//   BenchmarkBaseline-10              189362             63148 ns/op           76736 B/op        685 allocs/op
-//   BenchmarkCalquePipe-10            130064             90928 ns/op           28586 B/op        479 allocs/op
-//   BenchmarkBaselineLarge-10           2991           3979004 ns/op         4011708 B/op      33990 allocs/op
-//   BenchmarkCalquePipeLarge-10         5352           2213417 ns/op          248295 B/op       9574 allocs/op
+//cpu: VirtualApple @ 2.50GHz
 
-// Benchmark tests
+//   BenchmarkBaseline-10    	   		  18306	     63639 ns/op	   76736 B/op	     685 allocs/op
+//   BenchmarkGoCalqueFramework-10    	  23707	     48668 ns/op	   32340 B/op	     430 allocs/op
+//   BenchmarkBaselineLarge-10    	        296	   3956434 ns/op	 4011701 B/op	   33990 allocs/op
+//   BenchmarkGoCalqueFrameworkLarge-10    2193	    499308 ns/op	  469170 B/op	    5489 allocs/op
+
+// Baseline small dataset benchmarks
 func BenchmarkBaseline(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		Baseline(testWords)
 	}
 }
 
-// Large dataset benchmarks
+// Baseline large dataset benchmarks
 func BenchmarkBaselineLarge(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		Baseline(largeTestWords)
 	}
 }
 
-// Benchmark the new framework-heavy implementation
+// GoCalque small dataset benchmarks
 func BenchmarkGoCalqueFramework(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		GoCalqueFramework(testWords)
 	}
 }
 
+// GoCalque large dataset benchmarks
 func BenchmarkGoCalqueFrameworkLarge(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		GoCalqueFramework(largeTestWords)

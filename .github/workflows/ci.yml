@@ -2,61 +2,63 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
 
 env:
-  GO_VERSION: '1.24.2'
+  GO_VERSION: "1.24.2"
 
 jobs:
   ci:
     name: CI Pipeline
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Setup Go Environment
-      uses: ./.github/actions/setup-go
-      with:
-        go-version: ${{ env.GO_VERSION }}
+      - name: Setup Go Environment
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
-    # TODO: Uncomment this once we have a fix golang lint config and fix all the issues
-    # - name: Run golangci-lint
-    #   uses: golangci/golangci-lint-action@v6
-    #   with:
-    #     version: latest
-    #     args: --timeout=5m
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
 
-    - name: Run vet
-      run: go vet ./...
+      - name: Run vet
+        run: go vet ./...
 
-    - name: Run tests
-      run: go test -v -race -coverprofile=coverage.out ./...
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
 
-    - name: Generate coverage report
-      run: go tool cover -html=coverage.out -o coverage.html
+      - name: Generate coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
 
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.out
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
 
-    - name: Build main packages
-      run: go build -v ./...
+      - name: Build main packages
+        run: go build -v ./...
 
-    - name: Build examples
-      run: |
-        for example in examples/*/; do
-          if [ -f "$example/main.go" ]; then
-            echo "Building $example"
-            cd "$example"
-            go build -v .
-            cd - > /dev/null
-          fi
-        done
+      - name: Build examples
+        run: |
+          for example in examples/*/; do
+            if [ -f "$example/main.go" ]; then
+              echo "Building $example"
+              cd "$example"
+              go build -v .
+              cd - > /dev/null
+            fi
+          done
