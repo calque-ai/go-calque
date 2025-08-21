@@ -71,22 +71,93 @@ flow := calque.NewFlow().
 err := flow.Run(ctx, input, &output)
 ```
 
-**The Architecture**: Each middleware runs concurrently, connected by `io.Pipe`:
+## Architecture Overview
 
+```mermaid
+flowchart TB
+    subgraph subGraph0["Streaming Pipeline<br>io.Pipe<br>Goroutines"]
+        D["Middleware 1<br>goroutine"]
+        C["Input"]
+        E["Middleware 2<br>AI Agent<br>goroutine"]
+        F["Middleware 3<br>goroutine"]
+        G["Output"]
+    end
+    subgraph subGraph1["AI Agent Processing"]
+        H{"Tool Calling<br>Required?"}
+        I["Tools Execute"]
+        J["Direct Response"]
+        K["Response Synthesis"]
+        L["Stream Output"]
+    end
+    subgraph subGraph2["Middleware Processing Modes"]
+        M(["Streaming<br>Real-time processing<br>as data arrives"])
+        N(["Buffered<br>Read all data first<br>for complex processing"])
+    end
+    subgraph subGraph3["LLM Providers"]
+        O["Ollama"]
+        P["Gemini"]
+    end
+    A["User Application"] --> B["Calque Flow"]
+    B --> C
+    C --> D
+    D -- "io.Pipe" --> E
+    E -- "io.Pipe" --> F
+    F --> G
+    E --> H & O & P
+    H -- Yes --> I
+    H -- No --> J
+    I --> K
+    J --> L
+    K --> L
+    D -.-> M
+    E -.-> N
+    F -.-> M
+
+    A:::inputOutput
+    B:::inputOutput
+    C:::inputOutput
+    D:::middleware
+    E:::aiCore
+    F:::middleware
+    G:::inputOutput
+    H:::decision
+    I:::decision
+    J:::decision
+    K:::decision
+    L:::decision
+    M:::modes
+    N:::modes
+    O:::llmProvider
+    P:::llmProvider
+
+%% Dark Mode Styles
+    classDef inputOutput fill:#1e293b,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
+    classDef middleware fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#e0f2fe
+    classDef aiCore fill:#14532d,stroke:#22c55e,stroke-width:2px,color:#bbf7d0
+    classDef llmProvider fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#ffedd5
+    classDef modes fill:#312e81,stroke:#8b5cf6,stroke-width:2px,color:#ede9fe
+    classDef decision fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#ffe4e6
 ```
-Input → Middleware1 → Middleware2 → Middleware3 → Output
-         ↓ (pipe)     ↓ (pipe)     ↓ (pipe)
-      goroutine    goroutine    goroutine
-```
 
-**Key Patterns:**
+**Key Architecture Patterns:**
 
-1. **Streaming Processing**: Uses `io.Reader`/`io.Writer` under the hood via `Request`/`Response` wrappers
-2. **Concurrent Execution**: Each middleware runs in its own goroutine
-3. **Immediate Processing**: No buffering - processing starts as data arrives
-4. **Backpressure Handling**: Pipes automatically handle flow control
-5. **Context Propagation**: Cancellation and timeouts flow through the entire chain
-6. **Buffered vs Streaming**: Middleware can be buffered (reads all data first) or streaming (processes data incrementally) based on their implementation needs.
+🔄 **Streaming Pipeline**: `Input → Middleware1 → Middleware2 → Middleware3 → Output` connected by **io.Pipe** with each middleware running in its own **goroutine**
+
+⚡ **Concurrent Execution**: Each middleware runs in its own goroutine with automatic backpressure handling
+
+📊 **Middleware Processing Modes**: 
+- **Streaming**: Real-time processing as data arrives (no buffering)
+- **Buffered**: Reads all data first for complex processing when needed
+
+🔗 **Context Propagation**: Cancellation and timeouts flow through the entire chain
+
+🤖 **AI Agent Processing**: Intelligent decision-making for tool calling vs direct chat, with response synthesis
+
+🌐 **LLM Provider Layer**: 
+- **Ollama** 🏠 Local server (privacy, no API costs)
+- **Gemini** ☁️ Google Cloud API (advanced capabilities)
+
+🧩 **Available Middleware**: Memory (Context/Conversation), Prompt Templates, Ctrl (Chain/Batch/Fallback), Tools (Registry/Detect/Execute), Cache, MultiAgent (Routing/Consensus)
 
 ## Middleware Packages
 
