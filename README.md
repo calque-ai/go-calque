@@ -74,29 +74,33 @@ err := flow.Run(ctx, input, &output)
 ## Architecture Overview
 
 ```mermaid
+---
+config:
+  layout: elk
+---
 flowchart TB
-    subgraph subGraph0["Streaming Pipeline<br>io.Pipe<br>Goroutines"]
+ subgraph subGraph0["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Streaming Pipeline<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;with io.Pipe &<br>&nbsp;&nbsp;&nbsp;Goroutines"]
         D["Middleware 1<br>goroutine"]
         C["Input"]
         E["Middleware 2<br>AI Agent<br>goroutine"]
         F["Middleware 3<br>goroutine"]
         G["Output"]
-    end
-    subgraph subGraph1["AI Agent Processing"]
+  end
+ subgraph subGraph1["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;AI Agent Processing"]
         H{"Tool Calling<br>Required?"}
         I["Tools Execute"]
         J["Direct Response"]
         K["Response Synthesis"]
         L["Stream Output"]
-    end
-    subgraph subGraph2["Middleware Processing Modes"]
+  end
+ subgraph subGraph2["Middleware Processing Modes"]
         M(["Streaming<br>Real-time processing<br>as data arrives"])
         N(["Buffered<br>Read all data first<br>for complex processing"])
-    end
-    subgraph subGraph3["LLM Providers"]
+  end
+ subgraph subGraph3["LLM Providers"]
         O["Ollama"]
         P["Gemini"]
-    end
+  end
     A["User Application"] --> B["Calque Flow"]
     B --> C
     C --> D
@@ -112,25 +116,22 @@ flowchart TB
     D -.-> M
     E -.-> N
     F -.-> M
-
-    A:::inputOutput
-    B:::inputOutput
-    C:::inputOutput
-    D:::middleware
-    E:::aiCore
-    F:::middleware
-    G:::inputOutput
-    H:::decision
-    I:::decision
-    J:::decision
-    K:::decision
-    L:::decision
-    M:::modes
-    N:::modes
-    O:::llmProvider
-    P:::llmProvider
-
-%% Dark Mode Styles
+     D:::middleware
+     C:::inputOutput
+     E:::aiCore
+     F:::middleware
+     G:::inputOutput
+     H:::decision
+     I:::decision
+     J:::decision
+     K:::decision
+     L:::decision
+     M:::modes
+     N:::modes
+     O:::llmProvider
+     P:::llmProvider
+     A:::inputOutput
+     B:::inputOutput
     classDef inputOutput fill:#1e293b,stroke:#93c5fd,stroke-width:2px,color:#f9fafb
     classDef middleware fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#e0f2fe
     classDef aiCore fill:#14532d,stroke:#22c55e,stroke-width:2px,color:#bbf7d0
