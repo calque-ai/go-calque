@@ -145,7 +145,8 @@ flowchart TB
 
 ⚡ **Concurrent Execution**: Each middleware runs in its own goroutine with automatic backpressure handling
 
-📊 **Middleware Processing Modes**: 
+📊 **Middleware Processing Modes**:
+
 - **Streaming**: Real-time processing as data arrives (no buffering)
 - **Buffered**: Reads all data first for complex processing when needed
 
@@ -153,7 +154,8 @@ flowchart TB
 
 🤖 **AI Agent Processing**: Intelligent decision-making for tool calling vs direct chat, with response synthesis
 
-🌐 **LLM Provider Layer**: 
+🌐 **LLM Provider Layer**:
+
 - **Ollama** 🏠 Local server (privacy, no API costs)
 - **Gemini** ☁️ Google Cloud API (advanced capabilities)
 
@@ -453,16 +455,16 @@ Go-Calque's optimized middleware composition delivers both performance and memor
 
 ### Benchmark Results vs Hand-Coded Algorithm
 
-| Configuration | Dataset | Algorithm | Time (ns/op) | Memory (B/op) | Allocations | Time Improvement | Memory Improvement |
-|---------------|---------|-----------|--------------|---------------|-------------|------------------|--------------------|
-| **VirtualApple @ 2.50GHz, darwin/amd64** | Small (29 words) | Baseline | 69,377 | 76,736 | 685 | - | - |
-| | | Go-Calque | 51,964 | 32,343 | 479 | **25% faster** | **58% less** |
-| | Large (1000 words) | Baseline | 4,232,972 | 4,011,708 | 33,990 | - | - |
-| | | Go-Calque | 523,240 | 469,156 | 9,574 | **88% faster** | **88% less** |
-| **linux/amd64 x86_64** | Small (29 words) | Baseline | 51,617 | 76,736 | 685 | - | - |
-| | | Go-Calque | 59,473 | 32,361 | 430 | 15% slower | **58% less** |
-| | Large (1000 words) | Baseline | 3,105,624 | 4,011,673 | 33,990 | - | - |
-| | | Go-Calque | 537,898 | 469,359 | 5,489 | **83% faster** | **88% less** |
+| Configuration                            | Dataset            | Algorithm | Time (ns/op) | Memory (B/op) | Allocations | Time Improvement | Memory Improvement |
+| ---------------------------------------- | ------------------ | --------- | ------------ | ------------- | ----------- | ---------------- | ------------------ |
+| **VirtualApple @ 2.50GHz, darwin/amd64** | Small (29 words)   | Baseline  | 69,377       | 76,736        | 685         | -                | -                  |
+|                                          |                    | Go-Calque | 51,964       | 32,343        | 479         | **25% faster**   | **58% less**       |
+|                                          | Large (1000 words) | Baseline  | 4,232,972    | 4,011,708     | 33,990      | -                | -                  |
+|                                          |                    | Go-Calque | 523,240      | 469,156       | 9,574       | **88% faster**   | **88% less**       |
+| **linux/amd64 x86_64**                   | Small (29 words)   | Baseline  | 51,617       | 76,736        | 685         | -                | -                  |
+|                                          |                    | Go-Calque | 59,473       | 32,361        | 430         | 15% slower       | **58% less**       |
+|                                          | Large (1000 words) | Baseline  | 3,105,624    | 4,011,673     | 33,990      | -                | -                  |
+|                                          |                    | Go-Calque | 537,898      | 469,359       | 5,489       | **83% faster**   | **88% less**       |
 
 **Performance Principle**: Well-designed middleware composition outperforms hand-coded algorithms while remaining maintainable and composable.
 
@@ -473,15 +475,16 @@ _Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 ### Priority Middleware
 
 **Tool Calling** - ✅ Function execution for AI agents
-**Information Retrieval** - Vector search, context building, semantic filtering
-**Multi-Agent Collaboration** - Agent selection, ✅ load balancing, ✅ conditional routing  
-**Guardrails & Safety** - Input filtering, output validation, ✅ schema compliance  
+**Information Retrieval** - 🔲 Vector search, context building, semantic filtering
+**Multi-Agent Collaboration** - 🔲 Agent selection, ✅ load balancing, ✅ conditional routing  
+**Guardrails & Safety** - 🔲 Input filtering, 🔲 output validation, ✅ schema compliance  
 **HTTP/API Integration** - ✅ streaming responses
+**Model Context Protocol** - 🔲 MCP client
 
 ### Framework Improvements
 
-**Enhanced Memory** - Vector-based semantic memory retrieval  
-**Advanced Agents** - Planning, reflection, and self-evaluation capabilities
+**Enhanced Memory** - 🔲 Vector-based semantic memory retrieval  
+**Advanced Agents** - 🔲 Planning, 🔲 reflection, 🔲 self-evaluation capabilities
 
 ### Essential Examples
 
@@ -492,8 +495,9 @@ _Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 
 ### Nice-to-Have
 
-**Batch Processing** - Splitters, aggregators, ✅ parallel processors  
-**State Management** - State machines, checkpoints, ✅ conditional flows
+**Batch Processing** - 🔲 Splitters, 🔲 aggregators, ✅ parallel processors  
+**State Management** - 🔲 State machines, 🔲 checkpoints, ✅ conditional flows
+**Agent2Agent Protocol** - 🔲 A2A server, 🔲 examples
 
 ## Contributing
 
