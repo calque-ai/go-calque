@@ -1,3 +1,5 @@
+// Package convert provides utilities for converting structured data to and from JSON streams.
+// It includes converters for both input (structured data to JSON) and output (JSON streams to structured data).
 package convert
 
 import (
@@ -11,17 +13,17 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
-// Input converter for JSON data -> JSON bytes
-type jsonInputConverter struct {
+// JSONInputConverter for structured data -> JSON streams
+type JSONInputConverter struct {
 	data any
 }
 
-// Output converter for JSON bytes -> any type
-type jsonOutputConverter struct {
+// JSONOutputConverter for JSON streams -> structured data
+type JSONOutputConverter struct {
 	target any
 }
 
-// ToJson creates an input converter for transforming structured data to JSON streams.
+// ToJSON creates an input converter for transforming structured data to JSON streams.
 //
 // Input: any data type (structs, maps, slices, JSON strings, JSON bytes)
 // Output: calque.InputConverter for pipeline input position
@@ -42,11 +44,11 @@ type jsonOutputConverter struct {
 //
 //	user := User{Name: "Alice", Age: 30}
 //	err := pipeline.Run(ctx, convert.ToJson(user), &result)
-func ToJson(data any) calque.InputConverter {
-	return &jsonInputConverter{data: data}
+func ToJSON(data any) calque.InputConverter {
+	return &JSONInputConverter{data: data}
 }
 
-// FromJson creates an output converter for parsing JSON streams to structured data.
+// FromJSON creates an output converter for parsing JSON streams to structured data.
 //
 // Input: pointer to target variable for unmarshaling
 // Output: calque.OutputConverter for pipeline output position
@@ -64,20 +66,26 @@ func ToJson(data any) calque.InputConverter {
 //	}
 //
 //	var user User
-//	err := pipeline.Run(ctx, input, convert.FromJson(&user))
+//	err := pipeline.Run(ctx, input, convert.FromJSON(&user))
 //	fmt.Printf("User: %s, Age: %d\n", user.Name, user.Age)
-func FromJson(target any) calque.OutputConverter {
-	return &jsonOutputConverter{target: target}
+func FromJSON(target any) calque.OutputConverter {
+	return &JSONOutputConverter{target: target}
 }
 
-// InputConverter interface
-func (j *jsonInputConverter) ToReader() (io.Reader, error) {
+// ToReader converts the input data to an io.Reader for streaming JSON processing.
+func (j *JSONInputConverter) ToReader() (io.Reader, error) {
 	switch v := j.data.(type) {
 	case map[string]any, []any:
 		// Use json.Encoder for streaming marshal of structured data
 		pr, pw := io.Pipe()
 		go func() {
-			defer pw.Close()
+			defer func() {
+				if err := pw.Close(); err != nil {
+					// Pipe writer close errors here are expected if we already called CloseWithError
+					// for encoding failures, so we can safely ignore them
+					_ = err
+				}
+			}()
 			encoder := json.NewEncoder(pw)
 			if err := encoder.Encode(v); err != nil {
 				pw.CloseWithError(fmt.Errorf("failed to encode JSON: %w", err))
@@ -105,7 +113,13 @@ func (j *jsonInputConverter) ToReader() (io.Reader, error) {
 		// Use json.Encoder for streaming marshal of any other type
 		pr, pw := io.Pipe()
 		go func() {
-			defer pw.Close()
+			defer func() {
+				if err := pw.Close(); err != nil {
+					// Pipe writer close errors here are expected if we already called CloseWithError
+					// for encoding failures, so we can safely ignore them
+					_ = err
+				}
+			}()
 			encoder := json.NewEncoder(pw)
 			if err := encoder.Encode(j.data); err != nil {
 				pw.CloseWithError(fmt.Errorf("failed to encode JSON for type %T: %w", j.data, err))
@@ -116,86 +130,133 @@ func (j *jsonInputConverter) ToReader() (io.Reader, error) {
 }
 
 // createStreamingValidatingReader creates a streaming reader with chunked validation for io.Reader inputs
-func (j *jsonInputConverter) createStreamingValidatingReader(reader io.Reader, errorPrefix string) (io.Reader, error) {
+func (j *JSONInputConverter) createStreamingValidatingReader(reader io.Reader, errorPrefix string) (io.Reader, error) {
 	pr, pw := io.Pipe()
 	go func() {
-		defer pw.Close()
-
-		// Use buffered writer to control output flow
-		bufWriter := bufio.NewWriterSize(pw, 4096) // 4KB buffer
-		var validationBuf bytes.Buffer
-
-		// TeeReader splits input: to validation buffer AND to a temp buffer for later output
-		var tempBuf bytes.Buffer
-		teeReader := io.TeeReader(reader, io.MultiWriter(&validationBuf, &tempBuf))
-
-		// Read in small chunks to allow early validation
-		buf := make([]byte, 1024) // 1KB chunks
-		totalRead := 0
-
-		for {
-			n, err := teeReader.Read(buf)
-			if n > 0 {
-				totalRead += n
-
-				// Try validating what we have so far (every 2KB or so)
-				if totalRead >= 2048 || err == io.EOF {
-					decoder := json.NewDecoder(bytes.NewReader(validationBuf.Bytes()))
-					var temp any
-					validateErr := decoder.Decode(&temp)
-
-					if validateErr == nil {
-						// Valid complete JSON - flush everything and switch to direct streaming
-						if _, writeErr := io.Copy(bufWriter, &tempBuf); writeErr != nil {
-							pw.CloseWithError(writeErr)
-							return
-						}
-						bufWriter.Flush()
-
-						// Continue streaming rest directly (validation passed)
-						if err != io.EOF {
-							if _, copyErr := io.Copy(bufWriter, reader); copyErr != nil {
-								pw.CloseWithError(copyErr)
-								return
-							}
-						}
-						bufWriter.Flush()
-						return
-					} else if validateErr != io.EOF && validateErr != io.ErrUnexpectedEOF {
-						// Definite validation error (not incomplete JSON)
-						pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
-						return
-					}
-					// Otherwise continue reading (JSON might be incomplete)
-				}
+		defer func() {
+			if err := pw.Close(); err != nil {
+				// Pipe writer close errors here are expected if we already called CloseWithError
+				// for encoding failures, so we can safely ignore them
+				_ = err
 			}
+		}()
 
-			if err == io.EOF {
-				// Final validation check
-				decoder := json.NewDecoder(&validationBuf)
-				var temp any
-				if finalErr := decoder.Decode(&temp); finalErr != nil {
-					pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, finalErr))
-					return
-				}
-
-				// Stream final buffered data
-				if _, writeErr := io.Copy(bufWriter, &tempBuf); writeErr != nil {
-					pw.CloseWithError(writeErr)
-					return
-				}
-				bufWriter.Flush()
-				break
-			} else if err != nil {
-				pw.CloseWithError(err)
-				return
-			}
-		}
+		j.processStreamingValidation(reader, pw, errorPrefix)
 	}()
 	return pr, nil
 }
 
-func (j *jsonOutputConverter) FromReader(reader io.Reader) error {
+// processStreamingValidation handles the complex streaming validation logic
+func (j *JSONInputConverter) processStreamingValidation(reader io.Reader, pw *io.PipeWriter, errorPrefix string) {
+	// Use buffered writer to control output flow
+	bufWriter := bufio.NewWriterSize(pw, 4096) // 4KB buffer
+	var validationBuf bytes.Buffer
+
+	// TeeReader splits input: to validation buffer AND to a temp buffer for later output
+	var tempBuf bytes.Buffer
+	teeReader := io.TeeReader(reader, io.MultiWriter(&validationBuf, &tempBuf))
+
+	// Read in small chunks to allow early validation
+	buf := make([]byte, 1024) // 1KB chunks
+	totalRead := 0
+	validationPassed := false
+
+	for {
+		n, err := teeReader.Read(buf)
+		if n > 0 {
+			totalRead += n
+
+			// Try validating what we have so far (every 2KB or so)
+			if totalRead >= 2048 || err == io.EOF {
+				if j.handleValidationCheck(&validationBuf, &tempBuf, bufWriter, pw, errorPrefix) {
+					validationPassed = true
+					break
+				}
+			}
+		}
+
+		if err == io.EOF {
+			if j.handleFinalValidation(&validationBuf, &tempBuf, bufWriter, pw, errorPrefix) {
+				return
+			}
+			break
+		} else if err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+	}
+
+	// If validation passed early, continue reading the rest of the data
+	if validationPassed {
+		// Continue reading from the teeReader to get all remaining data
+		if _, err := io.Copy(bufWriter, teeReader); err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+		if err := bufWriter.Flush(); err != nil {
+			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			return
+		}
+	}
+}
+
+// handleValidationCheck processes validation during streaming
+func (j *JSONInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
+	decoder := json.NewDecoder(bytes.NewReader(validationBuf.Bytes()))
+	var temp any
+	validateErr := decoder.Decode(&temp)
+
+	if validateErr == nil {
+		// Valid complete JSON - flush everything and switch to direct streaming
+		if j.flushBufferedData(tempBuf, bufWriter, pw) {
+			return true
+		}
+
+		// Continue streaming rest directly (validation passed)
+		// Note: We can't continue streaming from the original reader here
+		// as it's already been consumed by the teeReader
+		if err := bufWriter.Flush(); err != nil {
+			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			return true
+		}
+		return true
+	} else if validateErr != io.EOF && validateErr != io.ErrUnexpectedEOF {
+		// Definite validation error (not incomplete JSON)
+		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
+		return true
+	}
+	// Otherwise continue reading (JSON might be incomplete)
+	return false
+}
+
+// handleFinalValidation processes final validation at EOF
+func (j *JSONInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
+	decoder := json.NewDecoder(validationBuf)
+	var temp any
+	if finalErr := decoder.Decode(&temp); finalErr != nil {
+		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, finalErr))
+		return true
+	}
+
+	// Stream final buffered data
+	return j.flushBufferedData(tempBuf, bufWriter, pw)
+}
+
+// flushBufferedData flushes buffered data to the writer
+func (j *JSONInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter) bool {
+	if _, writeErr := io.Copy(bufWriter, tempBuf); writeErr != nil {
+		pw.CloseWithError(writeErr)
+		return true
+	}
+	if err := bufWriter.Flush(); err != nil {
+		pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+		return true
+	}
+	return false
+}
+
+// FromReader implements the OutputConverter interface for JSON streams -> structured data.
+func (j *JSONOutputConverter) FromReader(reader io.Reader) error {
 	// Use json.Decoder for streaming decode
 	decoder := json.NewDecoder(reader)
 	if err := decoder.Decode(j.target); err != nil {

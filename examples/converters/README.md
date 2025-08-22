@@ -8,7 +8,7 @@ This directory demonstrates converter functionality in the Calque-Pipe AI Agent 
 
 - **Core Concepts**: Input/output converters for structured data
 - **Features Covered**:
-  - Creating JSON converters with `convert.ToJson()` and `convert.FromJson()`
+  - Creating JSON converters with `convert.ToJSON()` and `convert.FromJSON()`
   - Pipeline data transformation (uppercase conversion)
   - Structured data parsing from strings to structs
   - Error handling for conversion failures
@@ -18,7 +18,7 @@ This directory demonstrates converter functionality in the Calque-Pipe AI Agent 
 
 - **AI Integration**: Using converters with AI processing
 - **Features Covered**:
-  - Converting structs to YAML with `convert.ToYaml()`
+  - Converting structs to YAML with `convert.ToYAML()`
   - AI prompt templates with structured data
   - Pipeline processing: struct → YAML → AI → result
 

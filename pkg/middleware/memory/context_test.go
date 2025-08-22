@@ -13,11 +13,11 @@ import (
 func TestNewContext(t *testing.T) {
 	ctx := NewContext()
 
-	if ctx == nil {
+	if ctx == nil { //nolint:staticcheck
 		t.Error("NewContext() returned nil")
 	}
 
-	if ctx.store == nil {
+	if ctx.store == nil { //nolint:staticcheck
 		t.Error("NewContext() store is nil")
 	}
 }
@@ -26,11 +26,11 @@ func TestNewContextWithStore(t *testing.T) {
 	store := NewInMemoryStore()
 	ctx := NewContextWithStore(store)
 
-	if ctx == nil {
+	if ctx == nil { //nolint:staticcheck
 		t.Error("NewContextWithStore() returned nil")
 	}
 
-	if ctx.store != store {
+	if ctx.store != store { //nolint:staticcheck
 		t.Error("NewContextWithStore() did not use provided store")
 	}
 }
@@ -112,7 +112,7 @@ func TestTrimToTokenLimit(t *testing.T) {
 			name:      "empty content",
 			content:   []byte(""),
 			maxTokens: 10,
-			expectLen: func(got, original int) bool {
+			expectLen: func(got, _ int) bool {
 				return got == 0 // Should remain empty
 			},
 		},

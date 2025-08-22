@@ -1,3 +1,7 @@
+// Package tools provides tool calling and function execution middleware for the calque framework.
+//
+// This package includes middleware for AI tool detection, execution, registry management,
+// and structured function calling with automatic schema generation.
 package tools
 
 import (

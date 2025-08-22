@@ -1,3 +1,6 @@
+// Package gemini provides Google Gemini AI model integration for the calque framework.
+// It implements the AI client interface to enable chat completions, tool calling,
+// and streaming responses using Google's Gemini models including Pro and Flash variants.
 package gemini
 
 import (
@@ -7,11 +10,14 @@ import (
 	"io"
 	"os"
 
+	"google.golang.org/genai"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"google.golang.org/genai"
 )
+
+const applicationJSON = "application/json"
 
 // Client implements the Client interface for Google Gemini.
 //
@@ -303,9 +309,9 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 	if responseFormat != nil {
 		switch responseFormat.Type {
 		case "json_object":
-			config.ResponseMIMEType = "application/json"
+			config.ResponseMIMEType = applicationJSON
 		case "json_schema":
-			config.ResponseMIMEType = "application/json"
+			config.ResponseMIMEType = applicationJSON
 			if responseFormat.Schema != nil {
 				config.ResponseJsonSchema = responseFormat.Schema
 			}

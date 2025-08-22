@@ -81,7 +81,7 @@ func Route(handler calque.Handler, name, description, keywords string) calque.Ha
 //	    mathHandler, codeHandler, searchHandler)
 func Router(client ai.Client, handlers ...calque.Handler) calque.Handler {
 	if len(handlers) == 0 {
-		return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		return calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 			return fmt.Errorf("no handlers provided to router")
 		})
 	}
@@ -164,7 +164,7 @@ func callSelectorWithSchema(ctx context.Context, selector calque.Handler, router
 	flow := calque.NewFlow().Use(selector)
 
 	var selection RouteSelection
-	err := flow.Run(ctx, convert.ToJsonSchema(routerInput), convert.FromJson(&selection))
+	err := flow.Run(ctx, convert.ToJSONSchema(routerInput), convert.FromJSON(&selection))
 	if err != nil {
 		return nil, fmt.Errorf("selector flow failed: %w", err)
 	}

@@ -14,7 +14,7 @@ import (
 
 // createMockHandler creates a simple test handler
 func createMockHandler(name, response string) calque.Handler {
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	return calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
 		_, err := res.Data.Write([]byte(name + ": " + response))
 		return err
 	})

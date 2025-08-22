@@ -67,15 +67,15 @@ func runConverterBasics() {
 	// Pipeline: Json String -> Json -> Uppercase -> Struct
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("JSON_INPUT")).                                          // Log original JSON
-		Use(text.Transform(func(s string) string { return strings.ToUpper(s) })). // Convert to uppercase for processing
-		Use(logger.Print("UPPERCASE_JSON"))                                       // Log transformed JSON
+		Use(logger.Print("JSON_INPUT")).      // Log original JSON
+		Use(text.Transform(strings.ToUpper)). // Convert to uppercase for processing
+		Use(logger.Print("UPPERCASE_JSON"))   // Log transformed JSON
 
 	// Execute with json string input
-	// convert.ToJson parses the string to make sure its valid json
-	// convert.FromJson converts the uppercase json string back to a ProductInfo struct
+	// convert.ToJSON parses the string to make sure its valid json
+	// convert.FromJSON converts the uppercase json string back to a ProductInfo struct
 	var jsonResult ProductInfo
-	err := pipe.Run(context.Background(), convert.ToJson(jsonString), convert.FromJson(&jsonResult))
+	err := pipe.Run(context.Background(), convert.ToJSON(jsonString), convert.FromJSON(&jsonResult))
 	if err != nil {
 		log.Printf("JSON conversion error: %v", err)
 		return
@@ -110,7 +110,7 @@ func runAIConverterExample(client ai.Client) {
 	// Execute with struct input, get string result
 	// Run handles input or output of strings, bytes and readers/writers automatically without converters
 	var result string
-	err := pipe.Run(context.Background(), convert.ToYaml(product), &result)
+	err := pipe.Run(context.Background(), convert.ToYAML(product), &result)
 	if err != nil {
 		log.Printf("Pipeline error: %v", err)
 		return

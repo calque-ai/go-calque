@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+const jsonSchemaTestConstant = "test"
+
 // Test structs for JSON Schema scenarios
 type JSONSchemaTestStruct struct {
 	Name        string `json:"name" jsonschema:"title=Name,description=The name field"`
@@ -25,43 +27,43 @@ type NestedStruct struct {
 	Count  int                  `json:"count" jsonschema:"minimum=1"`
 }
 
-func TestToJsonSchema(t *testing.T) {
+func TestToJSONSchema(t *testing.T) {
 	data := JSONSchemaTestStruct{Name: "test", Value: 42, Active: true}
-	converter := ToJsonSchema(data)
+	converter := ToJSONSchema(data)
 
 	if converter == nil {
-		t.Fatal("ToJsonSchema() returned nil")
+		t.Fatal("ToJSONSchema() returned nil")
 	}
 
-	converterInput, ok := converter.(*jsonSchemaInputConverter)
+	converterInput, ok := converter.(*SchemaInputConverter)
 	if !ok {
-		t.Fatal("ToJsonSchema() did not return *jsonSchemaInputConverter")
+		t.Fatal("ToJSONSchema() did not return *SchemaInputConverter")
 	}
 
 	if converterInput.data == nil {
-		t.Error("ToJsonSchema() did not set data")
+			t.Error("ToJSONSchema() did not set data")
 	}
 }
 
-func TestFromJsonSchema(t *testing.T) {
+func TestFromJSONSchema(t *testing.T) {
 	var target JSONSchemaTestStruct
-	converter := FromJsonSchema[JSONSchemaTestStruct](&target)
+	converter := FromJSONSchema[JSONSchemaTestStruct](&target)
 
 	if converter == nil {
-		t.Fatal("FromJsonSchema() returned nil")
+		t.Fatal("FromJSONSchema() returned nil")
 	}
 
-	converterOutput, ok := converter.(*jsonSchemaOutputConverter[JSONSchemaTestStruct])
+	converterOutput, ok := converter.(*SchemaOutputConverter[JSONSchemaTestStruct])
 	if !ok {
-		t.Fatal("FromJsonSchema() did not return *jsonSchemaOutputConverter")
+		t.Fatal("FromJSONSchema() did not return *SchemaOutputConverter")
 	}
 
 	if converterOutput.target != &target {
-		t.Error("FromJsonSchema() target not set correctly")
+		t.Error("FromJSONSchema() target not set correctly")
 	}
 }
 
-func TestJSONSchemaInputConverter_ToReader(t *testing.T) {
+func TestSchemaInputConverter_ToReader(t *testing.T) {
 	tests := []struct {
 		name        string
 		data        any
@@ -145,7 +147,7 @@ func TestJSONSchemaInputConverter_ToReader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			converter := &jsonSchemaInputConverter{data: tt.data}
+			converter := &SchemaInputConverter{data: tt.data}
 			reader, err := converter.ToReader()
 
 			if tt.expectError {
@@ -218,7 +220,7 @@ func TestJSONSchemaOutputConverter_FromReader(t *testing.T) {
 			target: &JSONSchemaTestStruct{},
 			validate: func(t *testing.T, target any) {
 				result := target.(*JSONSchemaTestStruct)
-				if result.Name != "test" {
+				if result.Name != jsonSchemaTestConstant {
 					t.Errorf("Name = %s, want test", result.Name)
 				}
 				if result.Value != 42 {
@@ -275,7 +277,7 @@ func TestJSONSchemaOutputConverter_FromReader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			switch target := tt.target.(type) {
 			case *JSONSchemaTestStruct:
-				converter := FromJsonSchema[JSONSchemaTestStruct](target)
+				converter := FromJSONSchema[JSONSchemaTestStruct](target)
 				reader := strings.NewReader(tt.input)
 				err := converter.FromReader(reader)
 
@@ -296,7 +298,7 @@ func TestJSONSchemaOutputConverter_FromReader(t *testing.T) {
 				}
 
 			case *SimpleStruct:
-				converter := FromJsonSchema[SimpleStruct](target)
+				converter := FromJSONSchema[SimpleStruct](target)
 				reader := strings.NewReader(tt.input)
 				err := converter.FromReader(reader)
 
@@ -326,7 +328,7 @@ func TestJSONSchemaConverter_EdgeCases(t *testing.T) {
 			Field string `json:"field" jsonschema:"title=Field"`
 		}{Field: "value"}
 
-		converter := &jsonSchemaInputConverter{data: data}
+		converter := &SchemaInputConverter{data: data}
 		reader, err := converter.ToReader()
 		if err != nil {
 			t.Errorf("ToReader() error = %v", err)
@@ -361,7 +363,7 @@ func TestJSONSchemaConverter_EdgeCases(t *testing.T) {
 			Tags:  []string{"tag1", "tag2"},
 		}
 
-		converter := &jsonSchemaInputConverter{data: data}
+		converter := &SchemaInputConverter{data: data}
 		reader, err := converter.ToReader()
 		if err != nil {
 			t.Errorf("ToReader() error = %v", err)
@@ -395,7 +397,7 @@ func TestJSONSchemaConverter_EdgeCases(t *testing.T) {
 func TestJSONSchemaConverter_SchemaGeneration(t *testing.T) {
 	t.Run("schema contains required fields", func(t *testing.T) {
 		data := JSONSchemaTestStruct{Name: "test", Value: 42, Active: true}
-		converter := &jsonSchemaInputConverter{data: data}
+		converter := &SchemaInputConverter{data: data}
 
 		reader, err := converter.ToReader()
 		if err != nil {
@@ -497,7 +499,7 @@ func TestJSONSchemaConverter_ErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			converter := FromJsonSchema[SimpleStruct](tt.target)
+			converter := FromJSONSchema[SimpleStruct](tt.target)
 			err := converter.FromReader(tt.reader)
 
 			if err == nil {
@@ -517,7 +519,7 @@ func TestJSONSchemaConverter_Integration(t *testing.T) {
 		}
 
 		// Convert to reader
-		inputConverter := ToJsonSchema(original)
+		inputConverter := ToJSONSchema(original)
 		reader, err := inputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)
@@ -525,7 +527,7 @@ func TestJSONSchemaConverter_Integration(t *testing.T) {
 
 		// Convert back from reader
 		var result JSONSchemaTestStruct
-		outputConverter := FromJsonSchema[JSONSchemaTestStruct](&result)
+		outputConverter := FromJSONSchema[JSONSchemaTestStruct](&result)
 		err = outputConverter.FromReader(reader)
 		if err != nil {
 			t.Fatalf("FromReader() error = %v", err)
@@ -559,7 +561,7 @@ func TestJSONSchemaConverter_Integration(t *testing.T) {
 		}
 
 		// Convert to JSON with schema
-		inputConverter := ToJsonSchema(original)
+		inputConverter := ToJSONSchema(original)
 		reader, err := inputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)
@@ -602,7 +604,7 @@ func TestJSONSchemaConverter_StringInput(t *testing.T) {
 	t.Run("string input passthrough", func(t *testing.T) {
 		rawJSON := `{"direct": "json", "number": 42}`
 
-		converter := &jsonSchemaInputConverter{data: rawJSON}
+		converter := &SchemaInputConverter{data: rawJSON}
 		reader, err := converter.ToReader()
 		if err != nil {
 			t.Errorf("ToReader() error = %v", err)

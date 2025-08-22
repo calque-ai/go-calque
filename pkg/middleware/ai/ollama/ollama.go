@@ -1,3 +1,6 @@
+// Package ollama provides Ollama local AI model integration for the calque framework.
+// It implements the AI client interface to enable chat completions and tool calling
+// using locally hosted models through the Ollama server.
 package ollama
 
 import (
@@ -8,11 +11,12 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/invopop/jsonschema"
+	"github.com/ollama/ollama/api"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"github.com/invopop/jsonschema"
-	"github.com/ollama/ollama/api"
 )
 
 // Client implements the Client interface for Ollama.
@@ -245,12 +249,10 @@ func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 		if shouldBuffer {
 			// Buffer the response for tools or JSON schema processing
 			fullResponse.WriteString(resp.Message.Content)
-		} else {
+		} else if resp.Message.Content != "" {
 			// Stream directly for plain text responses
-			if resp.Message.Content != "" {
-				_, err := w.Data.Write([]byte(resp.Message.Content))
-				return err
-			}
+			_, err := w.Data.Write([]byte(resp.Message.Content))
+			return err
 		}
 		return nil
 	}
@@ -400,27 +402,29 @@ func (o *Client) applyChatConfig(req *api.ChatRequest, schema *ai.ResponseFormat
 	}
 
 	if responseFormat != nil {
-		switch responseFormat.Type {
-		case "json_object":
-			// Ollama supports JSON format via format parameter
-			req.Format = json.RawMessage(`"json"`)
-		case "json_schema":
-			req.Format = o.getSchemaFormat(responseFormat.Schema)
-		}
+		req.Format = o.determineResponseFormat(responseFormat)
 	}
 }
 
-// getSchemaFormat converts schema to Ollama format
-func (o *Client) getSchemaFormat(schema *jsonschema.Schema) json.RawMessage {
-	if schema == nil {
+// determineResponseFormat determines the appropriate response format for Ollama
+func (o *Client) determineResponseFormat(responseFormat *ai.ResponseFormat) json.RawMessage {
+	switch responseFormat.Type {
+	case "json_object":
+		// Ollama supports JSON format via format parameter
+		return json.RawMessage(`"json"`)
+	case "json_schema":
+		// For JSON schema, pass the actual schema object to Ollama's format field
+		if responseFormat.Schema != nil {
+			// Convert jsonschema.Schema to the format Ollama expects
+			schemaBytes, err := convertJSONSchemaToOllamaFormat(responseFormat.Schema)
+			if err == nil {
+				return schemaBytes
+			}
+		}
+		return json.RawMessage(`"json"`)
+	default:
 		return json.RawMessage(`"json"`)
 	}
-
-	schemaBytes, err := convertJSONSchemaToOllamaFormat(schema)
-	if err != nil {
-		return json.RawMessage(`"json"`)
-	}
-	return schemaBytes
 }
 
 // convertToOllamaTools converts our tool interface to Ollama's tool format

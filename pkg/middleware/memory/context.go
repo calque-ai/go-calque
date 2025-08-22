@@ -1,3 +1,6 @@
+// Package memory provides conversation and context memory middleware for the calque framework.
+// It implements sliding window memory with token-based trimming and pluggable storage
+// backends to maintain conversation history and context across multiple interactions.
 package memory
 
 import (

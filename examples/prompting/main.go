@@ -1,3 +1,6 @@
+// Package main demonstrates prompt engineering techniques with the calque framework.
+// It showcases various prompt templates, system messages, and conversation patterns
+// to effectively structure inputs for AI models and improve response quality.
 package main
 
 import (
@@ -51,7 +54,7 @@ func basicTemplateExample(client ai.Client) {
 func templateWithDataExample(client ai.Client) {
 	fmt.Println("=== Template with Data Example ===")
 
-	// additonal variable keys and data for the template
+	// additional variable keys and data for the template
 	params := map[string]any{
 		"Role":     "Senior Software Engineer",
 		"Language": "Go",

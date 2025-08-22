@@ -1,3 +1,6 @@
+// Package main demonstrates AI client integration with the calque framework.
+// It showcases how to use different AI providers (Ollama and Gemini) with
+// various middleware components to build intelligent conversational workflows.
 package main
 
 import (
@@ -5,6 +8,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/joho/godotenv"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
@@ -14,7 +19,6 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/logger"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 	"github.com/calque-ai/go-calque/pkg/middleware/text"
-	"github.com/joho/godotenv"
 )
 
 func main() {

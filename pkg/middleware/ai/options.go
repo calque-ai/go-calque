@@ -1,8 +1,9 @@
 package ai
 
 import (
-	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 	"github.com/invopop/jsonschema"
+
+	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
 // AgentOptions holds all configuration for an AI agent request.
@@ -138,7 +139,7 @@ func WithToolsConfig(config tools.Config) AgentOption {
 //
 // Provides the original MultimodalInput structure with io.Reader fields
 // to the AI client, enabling streaming processing of binary data.
-// Must be used in conjunction with convert.ToJson() input for metadata.
+// Must be used in conjunction with convert.ToJSON() input for metadata.
 //
 // Example:
 //
@@ -147,7 +148,7 @@ func WithToolsConfig(config tools.Config) AgentOption {
 //		ai.Image(imageReader, "image/jpeg"),
 //	)
 //	agent := ai.Agent(client, ai.WithMultimodalData(&input))
-//	err := flow.Run(ctx, convert.ToJson(input), &result)
+//	err := flow.Run(ctx, convert.ToJSON(input), &result)
 func WithMultimodalData(data *MultimodalInput) AgentOption {
 	return multimodalDataOption{data: data}
 }

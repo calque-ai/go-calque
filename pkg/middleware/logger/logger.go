@@ -10,9 +10,13 @@ import (
 type LogLevel int
 
 const (
+	// DebugLevel is for detailed debugging information
 	DebugLevel LogLevel = iota
+	// InfoLevel is for general informational messages
 	InfoLevel
+	// WarnLevel is for warning messages that are not errors
 	WarnLevel
+	// ErrorLevel is for error messages
 	ErrorLevel
 )
 
@@ -38,7 +42,7 @@ type Adapter interface {
 // LOGGER INSTANCE
 // ============================================================================
 
-// Logger wraps any LoggerInterface backend and provides the main API
+// Logger wraps any Interface backend and provides the main API
 type Logger struct {
 	backend Adapter
 }
@@ -57,6 +61,7 @@ func Default() *Logger {
 // LEVEL METHODS - Create HandlerBuilder with specific log levels
 // ============================================================================
 
+// Debug provides debug-level logging
 func (l *Logger) Debug() *HandlerBuilder {
 	return &HandlerBuilder{
 		logger:  l,
@@ -64,6 +69,7 @@ func (l *Logger) Debug() *HandlerBuilder {
 	}
 }
 
+// Info provides info-level logging
 func (l *Logger) Info() *HandlerBuilder {
 	return &HandlerBuilder{
 		logger:  l,
@@ -71,6 +77,7 @@ func (l *Logger) Info() *HandlerBuilder {
 	}
 }
 
+// Warn provides warning-level logging
 func (l *Logger) Warn() *HandlerBuilder {
 	return &HandlerBuilder{
 		logger:  l,
@@ -78,6 +85,7 @@ func (l *Logger) Warn() *HandlerBuilder {
 	}
 }
 
+// Error provides error-level logging
 func (l *Logger) Error() *HandlerBuilder {
 	return &HandlerBuilder{
 		logger:  l,
@@ -124,7 +132,8 @@ type SimplePrinter struct {
 	backend Adapter
 }
 
-func (sp *SimplePrinter) Print(ctx context.Context, msg string, attrs ...Attribute) {
+// Print implements Printer interface with simple Printf formatting
+func (sp *SimplePrinter) Print(_ context.Context, msg string, attrs ...Attribute) {
 	if len(attrs) == 0 {
 		sp.backend.Printf("%s", msg)
 		return
@@ -144,6 +153,7 @@ type LeveledPrinter struct {
 	level   LogLevel
 }
 
+// Print implements Printer interface with level checking
 func (lp *LeveledPrinter) Print(ctx context.Context, msg string, attrs ...Attribute) {
 	if lp.backend.IsLevelEnabled(ctx, lp.level) {
 		lp.backend.Log(ctx, lp.level, msg, attrs...)

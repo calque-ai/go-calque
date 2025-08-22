@@ -1,3 +1,6 @@
+// Package cache provides response caching middleware for the calque framework.
+// It implements pluggable cache backends with TTL support to improve performance
+// by storing and retrieving responses based on input content hashes.
 package cache
 
 import (
@@ -40,7 +43,7 @@ type Memory struct {
 // NewCache creates a cache memory with default in-memory store
 func NewCache() *Memory {
 	return &Memory{
-		store: NewInMemoryCacheStore(),
+		store: NewInMemoryStore(),
 	}
 }
 

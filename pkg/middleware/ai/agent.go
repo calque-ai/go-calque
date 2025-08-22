@@ -1,3 +1,6 @@
+// Package ai provides AI agent middleware for creating intelligent conversational
+// agents with optional tool-calling capabilities. It supports both simple chat
+// interactions and complex multi-step workflows with external tool integration.
 package ai
 
 import (
@@ -40,10 +43,8 @@ func Agent(client Client, opts ...AgentOption) calque.Handler {
 			// Tool-calling agent behavior (full agent loop)
 			return runToolCallingAgent(client, agentOpts, r, w)
 		}
-
 		// Simple chat behavior
 		return client.Chat(r, w, agentOpts)
-
 	})
 }
 

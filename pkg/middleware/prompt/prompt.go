@@ -1,3 +1,6 @@
+// Package prompt provides prompt engineering middleware for the calque framework.
+// It implements template-based prompt formatting, system message injection,
+// and various conversation patterns to structure inputs for AI models.
 package prompt
 
 import (

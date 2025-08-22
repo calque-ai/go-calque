@@ -25,7 +25,7 @@ func createMockClientForTest(responses []string, shouldErr bool) *MockClient {
 
 // createErrorTool creates a tool that always returns an error for testing
 func createErrorTool() tools.Tool {
-	return tools.Simple("error_tool", "Always errors", func(input string) string {
+	return tools.Simple("error_tool", "Always errors", func(_ string) string {
 		// This will cause an error when the tool is executed
 		panic("simulated tool error")
 	})
@@ -126,7 +126,7 @@ func TestAgent(t *testing.T) {
 }
 
 func TestAgentWithToolsConfig(t *testing.T) {
-	calc := tools.Simple("calculator", "Math Calculator", func(expr string) string { return "result" })
+	calc := tools.Simple("calculator", "Math Calculator", func(_ string) string { return "result" })
 	errorTool := createErrorTool()
 
 	tests := []struct {
@@ -162,7 +162,7 @@ func TestAgentWithToolsConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := createMockClientForTest(tt.llmResponses, tt.expectError && len(tt.llmResponses) == 0)
-			
+
 			// For error tool tests, we need to setup mock tool calls
 			if len(tt.tools) > 0 && tt.tools[0] == errorTool {
 				client.WithToolCalls(MockToolCall{Name: "error_tool", Arguments: "test"})
@@ -205,7 +205,7 @@ func TestAgentWithToolsConfig(t *testing.T) {
 
 func TestDefaultToolsConfig(t *testing.T) {
 	// Test that default tools config is created correctly when none provided
-	calc := tools.Simple("calculator", "Math Calculator", func(expr string) string { return "result" })
+	calc := tools.Simple("calculator", "Math Calculator", func(_ string) string { return "result" })
 	client := createMockClientForTest([]string{"Response"}, false)
 
 	// Agent with tools but no explicit config should use defaults
@@ -316,6 +316,6 @@ type errorReader struct {
 	err error
 }
 
-func (e *errorReader) Read(p []byte) (n int, err error) {
+func (e *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, e.err
 }

@@ -1,3 +1,6 @@
+// Package main demonstrates multi-agent coordination patterns with the calque framework.
+// It showcases intelligent routing, load balancing, consensus mechanisms,
+// and complex agent orchestration for building sophisticated AI workflows.
 package main
 
 import (
@@ -304,11 +307,12 @@ func textConsensusExample() {
 
 			// Extract the answer (A or B)
 			var answer string
-			if strings.Contains(text, "answer is a") {
+			switch {
+			case strings.Contains(text, "answer is a"):
 				answer = "A"
-			} else if strings.Contains(text, "answer is b") {
+			case strings.Contains(text, "answer is b"):
 				answer = "B"
-			} else {
+			default:
 				answer = "unknown"
 			}
 

@@ -69,11 +69,11 @@ func TestMessage(t *testing.T) {
 func TestNewConversation(t *testing.T) {
 	conv := NewConversation()
 
-	if conv == nil {
+	if conv == nil { //nolint:staticcheck
 		t.Error("NewConversation() returned nil")
 	}
 
-	if conv.store == nil {
+	if conv.store == nil { //nolint:staticcheck
 		t.Error("NewConversation() store is nil")
 	}
 }
@@ -82,11 +82,11 @@ func TestNewConversationWithStore(t *testing.T) {
 	store := NewInMemoryStore()
 	conv := NewConversationWithStore(store)
 
-	if conv == nil {
+	if conv == nil { //nolint:staticcheck
 		t.Error("NewConversationWithStore() returned nil")
 	}
 
-	if conv.store != store {
+	if conv.store != store { //nolint:staticcheck
 		t.Error("NewConversationWithStore() did not use provided store")
 	}
 }
@@ -575,15 +575,15 @@ type errorStore struct {
 	deleteError error
 }
 
-func (es *errorStore) Get(key string) ([]byte, error) {
+func (es *errorStore) Get(_ string) ([]byte, error) {
 	return nil, es.getError
 }
 
-func (es *errorStore) Set(key string, value []byte) error {
+func (es *errorStore) Set(_ string, _ []byte) error {
 	return es.setError
 }
 
-func (es *errorStore) Delete(key string) error {
+func (es *errorStore) Delete(_ string) error {
 	return es.deleteError
 }
 
@@ -591,7 +591,7 @@ func (es *errorStore) List() []string {
 	return []string{}
 }
 
-func (es *errorStore) Exists(key string) bool {
+func (es *errorStore) Exists(_ string) bool {
 	return false
 }
 

@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/invopop/jsonschema"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"github.com/invopop/jsonschema"
 )
 
 // MockClient implements the Client interface for testing

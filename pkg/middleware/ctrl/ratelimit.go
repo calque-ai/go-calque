@@ -35,7 +35,7 @@ type rateLimiter struct {
 func RateLimit(rate int, per time.Duration) calque.Handler {
 	// <= 0 requests per n makes no sense.
 	if rate <= 0 {
-		return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		return calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 			return fmt.Errorf("invalid rate limit: rate must be greater than 0, got %d", rate)
 		})
 	}

@@ -1,3 +1,7 @@
+// Package multiagent provides consensus mechanisms for coordinating multiple AI agents.
+// It implements voting and consensus algorithms that allow multiple agents to work
+// together and reach agreement on responses, enabling more robust and reliable
+// AI-powered workflows.
 package multiagent
 
 import (
