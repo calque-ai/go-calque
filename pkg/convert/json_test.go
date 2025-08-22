@@ -31,7 +31,7 @@ func TestJson(t *testing.T) {
 				t.Fatal("Json() returned nil")
 			}
 
-			converterInput, ok := converter.(*jsonInputConverter)
+			converterInput, ok := converter.(*JSONInputConverter)
 			if !ok {
 				t.Fatal("Json() did not return *jsonInputConverter")
 			}
@@ -52,7 +52,7 @@ func TestJsonOutput(t *testing.T) {
 		t.Fatal("JsonOutput() returned nil")
 	}
 
-	converterOutput, ok := converter.(*jsonOutputConverter)
+	converterOutput, ok := converter.(*JSONOutputConverter)
 	if !ok {
 		t.Fatal("JsonOutput() did not return *jsonOutputConverter")
 	}

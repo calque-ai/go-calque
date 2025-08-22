@@ -30,9 +30,9 @@ func TestYaml(t *testing.T) {
 				t.Fatal("Yaml() returned nil")
 			}
 
-			converterInput, ok := converter.(*yamlInputConverter)
+			converterInput, ok := converter.(*YAMLInputConverter)
 			if !ok {
-				t.Fatal("Yaml() did not return *yamlInputConverter")
+				t.Fatal("Yaml() did not return *YAMLInputConverter")
 			}
 			// Just verify the converter was created with some data
 			if converterInput.data == nil && tt.data != nil {
@@ -50,9 +50,9 @@ func TestYamlOutput(t *testing.T) {
 		t.Fatal("YamlOutput() returned nil")
 	}
 
-	converterOutput, ok := converter.(*yamlOutputConverter)
+	converterOutput, ok := converter.(*YAMLOutputConverter)
 	if !ok {
-		t.Fatal("YamlOutput() did not return *yamlOutputConverter")
+		t.Fatal("YamlOutput() did not return *YAMLOutputConverter")
 	}
 
 	if converterOutput.target != &target {

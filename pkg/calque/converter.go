@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// inputConverter converts data to an io.Reader for processing
-type inputConverter interface {
+// InputConverter converts data to an io.Reader for processing
+type InputConverter interface {
 	ToReader() (io.Reader, error)
 }
 
@@ -18,16 +18,16 @@ type OutputConverter interface {
 	FromReader(reader io.Reader) error
 }
 
-// Converter combines inputConverter and OutputConverter interfaces for bidirectional data conversion.
+// Converter combines InputConverter and OutputConverter interfaces for bidirectional data conversion.
 type Converter interface {
-	inputConverter
+	InputConverter
 	OutputConverter
 }
 
 // inputToReader converts input to io.Reader
 func (f *Flow) inputToReader(input any) (io.Reader, error) {
 	// Check if input is a converter with data
-	if conv, ok := input.(inputConverter); ok {
+	if conv, ok := input.(InputConverter); ok {
 		return conv.ToReader()
 	}
 
