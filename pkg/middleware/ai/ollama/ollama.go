@@ -8,11 +8,12 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/invopop/jsonschema"
+	"github.com/ollama/ollama/api"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"github.com/invopop/jsonschema"
-	"github.com/ollama/ollama/api"
 )
 
 // Client implements the Client interface for Ollama.
@@ -245,12 +246,10 @@ func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 		if shouldBuffer {
 			// Buffer the response for tools or JSON schema processing
 			fullResponse.WriteString(resp.Message.Content)
-		} else {
+		} else if resp.Message.Content != "" {
 			// Stream directly for plain text responses
-			if resp.Message.Content != "" {
-				_, err := w.Data.Write([]byte(resp.Message.Content))
-				return err
-			}
+			_, err := w.Data.Write([]byte(resp.Message.Content))
+			return err
 		}
 		return nil
 	}
@@ -400,30 +399,34 @@ func (o *Client) applyChatConfig(req *api.ChatRequest, schema *ai.ResponseFormat
 	}
 
 	if responseFormat != nil {
-		switch responseFormat.Type {
-		case "json_object":
-			// Ollama supports JSON format via format parameter
-			req.Format = json.RawMessage(`"json"`)
-		case "json_schema":
-			// For JSON schema, pass the actual schema object to Ollama's format field
-			if responseFormat.Schema != nil {
-				// Convert jsonschema.Schema to the format Ollama expects
-				schemaBytes, err := convertJSONSchemaToOllamaFormat(responseFormat.Schema)
-				if err == nil {
-					req.Format = schemaBytes
-				} else {
-					req.Format = json.RawMessage(`"json"`)
-				}
-			} else {
-				req.Format = json.RawMessage(`"json"`)
+		req.Format = o.determineResponseFormat(responseFormat)
+	}
+}
+
+// determineResponseFormat determines the appropriate response format for Ollama
+func (o *Client) determineResponseFormat(responseFormat *ai.ResponseFormat) json.RawMessage {
+	switch responseFormat.Type {
+	case "json_object":
+		// Ollama supports JSON format via format parameter
+		return json.RawMessage(`"json"`)
+	case "json_schema":
+		// For JSON schema, pass the actual schema object to Ollama's format field
+		if responseFormat.Schema != nil {
+			// Convert jsonschema.Schema to the format Ollama expects
+			schemaBytes, err := convertJSONSchemaToOllamaFormat(responseFormat.Schema)
+			if err == nil {
+				return schemaBytes
 			}
 		}
+		return json.RawMessage(`"json"`)
+	default:
+		return json.RawMessage(`"json"`)
 	}
 }
 
 // convertToOllamaTools converts our tool interface to Ollama's tool format
 func (o *Client) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
-	var ollamaTools []api.Tool
+	ollamaTools := make([]api.Tool, 0, len(toolList))
 
 	for _, tool := range toolList {
 		schema := tool.ParametersSchema()
@@ -461,7 +464,7 @@ func (o *Client) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
 // writeOllamaToolCalls converts Ollama tool calls to OpenAI format for the agent
 func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *calque.Response) error {
 	// Convert to OpenAI format
-	var openAIToolCalls []map[string]any
+	openAIToolCalls := make([]map[string]any, 0, len(toolCalls))
 
 	for _, call := range toolCalls {
 		// Extract input from tool call arguments

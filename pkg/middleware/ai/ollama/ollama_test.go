@@ -9,10 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ollama/ollama/api"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"github.com/ollama/ollama/api"
 )
 
 func TestNew(t *testing.T) {
@@ -338,7 +339,7 @@ func TestApplyChatConfig(t *testing.T) {
 
 func TestConvertToOllamaTools(t *testing.T) {
 	// Create a simple mock tool
-	tool := tools.Simple("calculator", "Performs calculations", func(input string) string {
+	tool := tools.Simple("calculator", "Performs calculations", func(_ string) string {
 		return "result"
 	})
 

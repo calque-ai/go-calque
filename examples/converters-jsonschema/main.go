@@ -31,6 +31,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/joho/godotenv"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/convert"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
@@ -39,7 +41,6 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
 	"github.com/calque-ai/go-calque/pkg/middleware/logger"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
-	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -286,7 +287,7 @@ func runExample3AdvancedCombined(client ai.Client) {
 	stage1Pipe.
 		Use(prompt.Template("Extract user profile from: {{.Input}}\nReturn valid JSON only.")).
 		Use(logger.Print("Prompt")).
-		Use(ctrl.Retry(ai.Agent(client, ai.WithSchema(&UserProfile{})), 3)). //Wrap agent in Retry handler
+		Use(ctrl.Retry(ai.Agent(client, ai.WithSchema(&UserProfile{})), 3)). // Wrap agent in Retry handler
 		Use(logger.Head("Output", 500))
 
 	var profile UserProfile

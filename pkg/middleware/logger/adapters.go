@@ -25,7 +25,7 @@ func (s *StandardAdapter) Log(ctx context.Context, level LogLevel, msg string, a
 	}
 
 	// Format fields as key=value pairs
-	var attrStrs []string
+	attrStrs := make([]string, 0, len(attrs))
 	for _, attr := range attrs {
 		attrStrs = append(attrStrs, fmt.Sprintf("%s=%v", attr.Key, attr.Value))
 	}

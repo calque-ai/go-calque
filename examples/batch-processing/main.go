@@ -292,7 +292,7 @@ func batchConfigurationExample() {
 			desc:   "Process 2 items or wait 100ms",
 		},
 		{
-			name:   "Medium batches", 
+			name:   "Medium batches",
 			config: ctrl.BatchConfig{MaxSize: 5, MaxWait: 200 * time.Millisecond, Separator: ctrl.DefaultBatchSeparator},
 			desc:   "Process 5 items or wait 200ms",
 		},
@@ -394,7 +394,7 @@ func customSeparatorExample() {
 
 // loadDocuments reads all text files from a directory
 func loadDocuments(dirPath string) ([]string, error) {
-	var documents []string
+	documents := make([]string, 0)
 
 	files, err := os.ReadDir(dirPath)
 	if err != nil {

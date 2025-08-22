@@ -134,25 +134,46 @@ func LineProcessor(fn func(string) string) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		reader := bufio.NewReader(req.Data)
 		writer := bufio.NewWriter(res.Data)
-		defer writer.Flush()
+		defer func() {
+			// Safety flush in defer - ignore errors as we can't propagate them
+			_ = writer.Flush()
+		}()
 
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				if err == io.EOF && len(line) > 0 {
-					// Process final line without newline
-					processed := fn(strings.TrimRight(line, "\n"))
-					writer.WriteString(processed)
-					writer.WriteByte('\n')
-				}
-				break
-			}
+		return processLines(reader, writer, fn)
+	})
+}
 
-			processed := fn(strings.TrimRight(line, "\n"))
-			writer.WriteString(processed)
-			writer.WriteByte('\n')
+// processLines handles the line-by-line processing logic
+func processLines(reader *bufio.Reader, writer *bufio.Writer, fn func(string) string) error {
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return handleLineError(err, line, writer, fn)
 		}
 
-		return nil
-	})
+		if err := writeProcessedLine(line, writer, fn); err != nil {
+			return err
+		}
+	}
+}
+
+// handleLineError handles errors during line reading
+func handleLineError(err error, line string, writer *bufio.Writer, fn func(string) string) error {
+	if err == io.EOF && len(line) > 0 {
+		// Process final line without newline
+		return writeProcessedLine(line, writer, fn)
+	}
+	return nil
+}
+
+// writeProcessedLine writes a processed line to the writer
+func writeProcessedLine(line string, writer *bufio.Writer, fn func(string) string) error {
+	processed := fn(strings.TrimRight(line, "\n"))
+	if _, err := writer.WriteString(processed); err != nil {
+		return err
+	}
+	if err := writer.WriteByte('\n'); err != nil {
+		return err
+	}
+	return nil
 }

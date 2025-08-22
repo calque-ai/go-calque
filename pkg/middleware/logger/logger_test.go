@@ -133,7 +133,7 @@ func (m *MockLogger) Log(ctx context.Context, level LogLevel, msg string, attrs 
 	m.buffer.WriteString(levelStr + " " + msg)
 
 	for _, attr := range attrs {
-		m.buffer.WriteString(fmt.Sprintf(" %s=%v", attr.Key, attr.Value))
+		fmt.Fprintf(m.buffer, " %s=%v", attr.Key, attr.Value)
 	}
 	m.buffer.WriteString("\n")
 }

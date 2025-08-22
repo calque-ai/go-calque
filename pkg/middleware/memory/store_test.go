@@ -10,15 +10,15 @@ import (
 func TestNewInMemoryStore(t *testing.T) {
 	store := NewInMemoryStore()
 
-	if store == nil {
+	if store == nil { //nolint:staticcheck
 		t.Error("NewInMemoryStore() returned nil")
 	}
 
-	if store.data == nil {
+	if store.data == nil { //nolint:staticcheck
 		t.Error("NewInMemoryStore() data map is nil")
 	}
 
-	if len(store.data) != 0 {
+	if len(store.data) != 0 { //nolint:staticcheck
 		t.Errorf("NewInMemoryStore() data map should be empty, got %d items", len(store.data))
 	}
 }

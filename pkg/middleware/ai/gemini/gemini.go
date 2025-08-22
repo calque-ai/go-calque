@@ -7,11 +7,14 @@ import (
 	"io"
 	"os"
 
+	"google.golang.org/genai"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"google.golang.org/genai"
 )
+
+const applicationJSON = "application/json"
 
 // Client implements the Client interface for Google Gemini.
 //
@@ -175,7 +178,6 @@ func New(model string, opts ...Option) (*Client, error) {
 	}, nil
 }
 
-
 // RequestConfig holds configuration for a Gemini request
 type RequestConfig struct {
 	GenaiConfig *genai.GenerateContentConfig
@@ -215,7 +217,7 @@ func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 // writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
 func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calque.Response) error {
 	// Convert to OpenAI format
-	var toolCalls []map[string]any
+	toolCalls := make([]map[string]any, 0, len(functionCalls))
 
 	for _, call := range functionCalls {
 		// Convert Gemini args to JSON string
@@ -304,9 +306,9 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 	if responseFormat != nil {
 		switch responseFormat.Type {
 		case "json_object":
-			config.ResponseMIMEType = "application/json"
+			config.ResponseMIMEType = applicationJSON
 		case "json_schema":
-			config.ResponseMIMEType = "application/json"
+			config.ResponseMIMEType = applicationJSON
 			if responseFormat.Schema != nil {
 				config.ResponseJsonSchema = responseFormat.Schema
 			}
@@ -318,7 +320,7 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 
 // Convert your OpenAI JSON schema tools to Gemini format
 func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclaration {
-	var functions []*genai.FunctionDeclaration
+	functions := make([]*genai.FunctionDeclaration, 0, len(tools))
 
 	for _, tool := range tools {
 		functions = append(functions, &genai.FunctionDeclaration{
@@ -330,7 +332,6 @@ func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclarat
 
 	return functions
 }
-
 
 // buildRequestConfig creates configuration for the request
 func (g *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool, ctx context.Context) (*RequestConfig, error) {
@@ -458,4 +459,3 @@ func (g *Client) multimodalToParts(multimodal *ai.MultimodalInput) ([]genai.Part
 
 	return parts, nil
 }
-

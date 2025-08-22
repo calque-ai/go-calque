@@ -9,6 +9,8 @@ import (
 	"testing"
 )
 
+const testConstant = "test"
+
 func TestJson(t *testing.T) {
 	tests := []struct {
 		name string
@@ -106,17 +108,7 @@ func TestJsonInputConverter_ToReader(t *testing.T) {
 			reader, err := j.ToReader()
 
 			if tt.wantErr {
-				if err == nil {
-					// For streaming cases, error might occur during read
-					if reader != nil {
-						_, readErr := io.ReadAll(reader)
-						if readErr == nil {
-							t.Error("ToReader() expected error, got nil")
-						}
-					} else {
-						t.Error("ToReader() expected error, got nil")
-					}
-				}
+				handleExpectedError(t, err, reader)
 				return
 			}
 
@@ -140,6 +132,21 @@ func TestJsonInputConverter_ToReader(t *testing.T) {
 				t.Errorf("ToReader() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// handleExpectedError handles expected error cases in tests
+func handleExpectedError(t *testing.T, err error, reader io.Reader) {
+	if err == nil {
+		// For streaming cases, error might occur during read
+		if reader != nil {
+			_, readErr := io.ReadAll(reader)
+			if readErr == nil {
+				t.Error("ToReader() expected error, got nil")
+			}
+		} else {
+			t.Error("ToReader() expected error, got nil")
+		}
 	}
 }
 
@@ -354,7 +361,7 @@ func (s *slowReader) Read(p []byte) (n int, err error) {
 	if s.pos >= len(s.data) {
 		return 0, io.EOF
 	}
-	
+
 	// Read only 1 byte at a time to simulate slow reader
 	if len(p) > 0 && s.pos < len(s.data) {
 		p[0] = s.data[s.pos]
@@ -437,9 +444,9 @@ func TestJsonInputConverter_ToReader_IoReader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 			j := &jsonInputConverter{data: reader}
-			
+
 			result, err := j.ToReader()
-			
+
 			if tt.wantErr {
 				if err == nil {
 					// For streaming validation, error might come when reading
@@ -450,22 +457,22 @@ func TestJsonInputConverter_ToReader_IoReader(t *testing.T) {
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("ToReader() error = %v", err)
 				return
 			}
-			
+
 			if result == nil {
 				t.Fatal("ToReader() returned nil reader")
 			}
-			
+
 			data, err := io.ReadAll(result)
 			if err != nil {
 				t.Errorf("Failed to read from result: %v", err)
 				return
 			}
-			
+
 			got := string(data)
 			if got != tt.want {
 				t.Errorf("ToReader() = %v, want %v", got, tt.want)
@@ -480,36 +487,36 @@ func TestJsonInputConverter_ToReader_IoReader_LargeData(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		largeObject[fmt.Sprintf("key_%d", i)] = fmt.Sprintf("value_%d", i)
 	}
-	
+
 	// Convert to JSON bytes first
 	jsonData, err := json.Marshal(largeObject)
 	if err != nil {
 		t.Fatalf("Failed to marshal large object: %v", err)
 	}
-	
+
 	reader := bytes.NewReader(jsonData)
 	j := &jsonInputConverter{data: reader}
-	
+
 	result, err := j.ToReader()
 	if err != nil {
 		t.Errorf("ToReader() error = %v", err)
 		return
 	}
-	
+
 	// Read result and verify it's valid JSON
 	data, err := io.ReadAll(result)
 	if err != nil {
 		t.Errorf("Failed to read from result: %v", err)
 		return
 	}
-	
+
 	// Verify the result is valid JSON by unmarshaling
 	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Errorf("Result is not valid JSON: %v", err)
 		return
 	}
-	
+
 	// Verify some content
 	if len(parsed) != 1000 {
 		t.Errorf("Parsed object length = %d, want 1000", len(parsed))
@@ -530,17 +537,17 @@ func TestJsonInputConverter_ToReader_IoReader_ErrorCases(t *testing.T) {
 			reader: &slowReader{data: []byte(`{"invalid": json}`)},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			j := &jsonInputConverter{data: tt.reader}
-			
+
 			result, err := j.ToReader()
 			if err != nil {
 				// Error during setup is acceptable
 				return
 			}
-			
+
 			// Error should occur when reading from result
 			_, err = io.ReadAll(result)
 			if err == nil {
@@ -575,7 +582,7 @@ func TestJsonIntegration(t *testing.T) {
 		}
 
 		// Verify roundtrip (note: numbers become float64 in JSON)
-		if result["name"] != "test" {
+		if result["name"] != testConstant {
 			t.Errorf("name = %v, want test", result["name"])
 		}
 		if result["value"] != float64(42) {
@@ -602,14 +609,14 @@ func TestJsonIntegration(t *testing.T) {
 	t.Run("io.Reader to output roundtrip", func(t *testing.T) {
 		jsonInput := `{"name": "test", "value": 42, "array": [1, 2, 3]}`
 		reader := strings.NewReader(jsonInput)
-		
+
 		// Convert io.Reader to reader via ToJson
 		inputConverter := ToJson(reader)
 		pipeReader, err := inputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)
 		}
-		
+
 		// Convert back from reader
 		var result map[string]any
 		outputConverter := FromJson(&result)
@@ -617,15 +624,15 @@ func TestJsonIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FromReader() error = %v", err)
 		}
-		
+
 		// Verify roundtrip
-		if result["name"] != "test" {
+		if result["name"] != testConstant {
 			t.Errorf("name = %v, want test", result["name"])
 		}
 		if result["value"] != float64(42) {
 			t.Errorf("value = %v, want 42", result["value"])
 		}
-		
+
 		array := result["array"].([]any)
 		expected := []any{float64(1), float64(2), float64(3)}
 		if len(array) != len(expected) {

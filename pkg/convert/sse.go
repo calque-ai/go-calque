@@ -227,35 +227,46 @@ func (s *SSEConverter) streamByWord(reader io.Reader) error {
 	for {
 		n, err := reader.Read(buffer)
 		if n > 0 {
-			char := buffer[0]
-
-			// If we hit a delimiter, send the current word
-			if char == ' ' || char == '\n' || char == '\t' {
-				if len(currentWord) > 0 {
-					if sendErr := s.sendChunk(string(currentWord) + " "); sendErr != nil {
-						return sendErr
-					}
-					currentWord = currentWord[:0] // Reset slice
-				}
-			} else {
-				currentWord = append(currentWord, char)
+			if s.processWordChar(buffer[0], &currentWord) {
+				return s.sendError(fmt.Errorf("failed to process word character"))
 			}
 		}
 
 		if err == io.EOF {
-			// Send any remaining word
-			if len(currentWord) > 0 {
-				if sendErr := s.sendChunk(string(currentWord)); sendErr != nil {
-					return sendErr
-				}
-			}
-			return s.sendCompletion()
+			return s.handleWordEOF(currentWord)
 		}
 
 		if err != nil {
 			return s.sendError(err)
 		}
 	}
+}
+
+// processWordChar processes a single character for word streaming
+func (s *SSEConverter) processWordChar(char byte, currentWord *[]byte) bool {
+	// If we hit a delimiter, send the current word
+	if char == ' ' || char == '\n' || char == '\t' {
+		if len(*currentWord) > 0 {
+			if sendErr := s.sendChunk(string(*currentWord) + " "); sendErr != nil {
+				return true
+			}
+			*currentWord = (*currentWord)[:0] // Reset slice
+		}
+	} else {
+		*currentWord = append(*currentWord, char)
+	}
+	return false
+}
+
+// handleWordEOF handles end-of-file for word streaming
+func (s *SSEConverter) handleWordEOF(currentWord []byte) error {
+	// Send any remaining word
+	if len(currentWord) > 0 {
+		if sendErr := s.sendChunk(string(currentWord)); sendErr != nil {
+			return sendErr
+		}
+	}
+	return s.sendCompletion()
 }
 
 // streamByChar streams content character by character

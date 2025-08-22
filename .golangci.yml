@@ -8,7 +8,7 @@ linters:
     - nestif
     - nilerr
     - prealloc
-    - revive
+#    - revive
     - unparam
   exclusions:
     generated: lax

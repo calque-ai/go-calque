@@ -81,10 +81,10 @@ func approximateTokenCount(data []byte) int {
 
 	// Add tokens for punctuation and special chars
 	for _, char := range text {
-		if !((char >= 'a' && char <= 'z') ||
-			(char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') ||
-			char == ' ') {
+		if (char < 'a' || char > 'z') &&
+			(char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') &&
+			char != ' ' {
 			tokenCount += 0.5
 		}
 	}

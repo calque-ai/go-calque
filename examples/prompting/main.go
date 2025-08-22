@@ -51,7 +51,7 @@ func basicTemplateExample(client ai.Client) {
 func templateWithDataExample(client ai.Client) {
 	fmt.Println("=== Template with Data Example ===")
 
-	// additonal variable keys and data for the template
+	// additional variable keys and data for the template
 	params := map[string]any{
 		"Role":     "Senior Software Engineer",
 		"Language": "Go",

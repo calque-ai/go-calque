@@ -19,11 +19,11 @@ import (
 
 func main() {
 
-	runTextOnlyExample() //Basic text transforming demo
+	runTextOnlyExample() // Basic text transforming demo
 
-	runStreamingExample() //Streaming capabilities demo
+	runStreamingExample() // Streaming capabilities demo
 
-	runComposedPipelineExample() //Pipeline composition demo
+	runComposedPipelineExample() // Pipeline composition demo
 
 	// Initialize AI client (using Ollama as a free, local option)
 	client, err := ollama.New("llama3.2:1b")
@@ -32,7 +32,7 @@ func main() {
 		return
 	}
 
-	runAIExample(client) //Basic AI demo
+	runAIExample(client) // Basic AI demo
 
 }
 

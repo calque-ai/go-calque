@@ -27,11 +27,11 @@ func TestNew(t *testing.T) {
 func TestFlow_Use(t *testing.T) {
 	flow := NewFlow()
 
-	handler1 := HandlerFunc(func(req *Request, res *Response) error {
+	handler1 := HandlerFunc(func(_ *Request, _ *Response) error {
 		return nil
 	})
 
-	handler2 := HandlerFunc(func(req *Request, res *Response) error {
+	handler2 := HandlerFunc(func(_ *Request, _ *Response) error {
 		return nil
 	})
 
@@ -52,7 +52,7 @@ func TestFlow_Use(t *testing.T) {
 func TestFlow_UseFunc(t *testing.T) {
 	flow := NewFlow()
 
-	handlerFunc := func(req *Request, res *Response) error {
+	handlerFunc := func(_ *Request, _ *Response) error {
 		return nil
 	}
 
@@ -144,7 +144,7 @@ func TestFlow_Run_SingleHandler(t *testing.T) {
 		},
 		{
 			name: "error handler",
-			handler: HandlerFunc(func(req *Request, res *Response) error {
+			handler: HandlerFunc(func(_ *Request, _ *Response) error {
 				return errors.New("handler error")
 			}),
 			input:   "error test",
@@ -229,7 +229,7 @@ func TestFlow_Run_HandlerError(t *testing.T) {
 		return err
 	})
 
-	errorHandler := HandlerFunc(func(req *Request, res *Response) error {
+	errorHandler := HandlerFunc(func(_ *Request, _ *Response) error {
 		return errors.New("processing failed")
 	})
 
@@ -254,13 +254,13 @@ func TestFlow_Run_ConcurrentHandlerError(t *testing.T) {
 	// Note: Due to concurrent execution, any handler might fail first
 	var executionCount int64
 
-	handler1 := HandlerFunc(func(req *Request, res *Response) error {
+	handler1 := HandlerFunc(func(_ *Request, _ *Response) error {
 		atomic.AddInt64(&executionCount, 1)
 		time.Sleep(10 * time.Millisecond) // Small delay
 		return errors.New("handler1 failed")
 	})
 
-	handler2 := HandlerFunc(func(req *Request, res *Response) error {
+	handler2 := HandlerFunc(func(_ *Request, _ *Response) error {
 		atomic.AddInt64(&executionCount, 1)
 		time.Sleep(5 * time.Millisecond) // Shorter delay, likely to complete first
 		return errors.New("handler2 failed")
@@ -992,6 +992,7 @@ func BenchmarkFlow_runWithStreaming(b *testing.B) {
 		})
 	}
 }
+
 func BenchmarkFlow_Run_ZeroCopy(b *testing.B) {
 	input := "zero copy benchmark test data"
 
@@ -1017,6 +1018,7 @@ func BenchmarkFlow_Run_ZeroCopy(b *testing.B) {
 		}
 	})
 }
+
 func BenchmarkStringConversion(b *testing.B) {
 	data := []byte("benchmark test data for string conversion efficiency")
 
@@ -1082,6 +1084,7 @@ func BenchmarkStringConversion_LargeData(b *testing.B) {
 		}
 	})
 }
+
 func BenchmarkIOReaderVsRunWithStreaming(b *testing.B) {
 	handler := HandlerFunc(func(req *Request, res *Response) error {
 		_, err := io.Copy(res.Data, req.Data)

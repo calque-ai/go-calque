@@ -89,15 +89,15 @@ func TestTransform(t *testing.T) {
 
 func TestBranch(t *testing.T) {
 	// Mock handlers for testing
-	mockIfHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	mockIfHandler := calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
 		return calque.Write(res, "if-handler")
 	})
 
-	mockElseHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	mockElseHandler := calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
 		return calque.Write(res, "else-handler")
 	})
 
-	errorHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	errorHandler := calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -149,7 +149,7 @@ func TestBranch(t *testing.T) {
 		{
 			name:        "if handler error",
 			input:       "trigger condition",
-			condition:   func(s string) bool { return true },
+			condition:   func(_ string) bool { return true },
 			ifHandler:   errorHandler,
 			elseHandler: mockElseHandler,
 			expected:    "",
@@ -158,7 +158,7 @@ func TestBranch(t *testing.T) {
 		{
 			name:        "else handler error",
 			input:       "trigger condition",
-			condition:   func(s string) bool { return false },
+			condition:   func(_ string) bool { return false },
 			ifHandler:   mockIfHandler,
 			elseHandler: errorHandler,
 			expected:    "",
@@ -381,21 +381,21 @@ func TestLineProcessor(t *testing.T) {
 }
 
 // Benchmark data
-var smallDataset = strings.Repeat("hello\nworld\ntest\ndata\n", 7) // 28 lines, similar to anagram example
+var smallDataset = strings.Repeat("hello\nworld\ntest\ndata\n", 7)                               // 28 lines, similar to anagram example
 var largeDataset = strings.Repeat("this is a longer line with more content to process\n", 10000) // 10k lines
 
 // Benchmarks for LineProcessor with small datasets (like anagram example)
 func BenchmarkLineProcessor_Small(b *testing.B) {
 	processor := LineProcessor(strings.ToUpper)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		reader := strings.NewReader(smallDataset)
-		
+
 		req := calque.NewRequest(context.Background(), reader)
 		res := calque.NewResponse(&buf)
-		
+
 		if err := processor.ServeFlow(req, res); err != nil {
 			b.Fatal(err)
 		}
@@ -405,15 +405,15 @@ func BenchmarkLineProcessor_Small(b *testing.B) {
 // Benchmark LineProcessor with large datasets (where it should excel)
 func BenchmarkLineProcessor_Large(b *testing.B) {
 	processor := LineProcessor(strings.ToUpper)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		reader := strings.NewReader(largeDataset)
-		
+
 		req := calque.NewRequest(context.Background(), reader)
 		res := calque.NewResponse(&buf)
-		
+
 		if err := processor.ServeFlow(req, res); err != nil {
 			b.Fatal(err)
 		}
@@ -423,15 +423,15 @@ func BenchmarkLineProcessor_Large(b *testing.B) {
 // Comparison: Transform vs LineProcessor for small data
 func BenchmarkTransform_Small(b *testing.B) {
 	transformer := Transform(strings.ToUpper)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		reader := strings.NewReader(smallDataset)
-		
+
 		req := calque.NewRequest(context.Background(), reader)
 		res := calque.NewResponse(&buf)
-		
+
 		if err := transformer.ServeFlow(req, res); err != nil {
 			b.Fatal(err)
 		}
@@ -441,15 +441,15 @@ func BenchmarkTransform_Small(b *testing.B) {
 // Comparison: Transform vs LineProcessor for large data
 func BenchmarkTransform_Large(b *testing.B) {
 	transformer := Transform(strings.ToUpper)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		reader := strings.NewReader(largeDataset)
-		
+
 		req := calque.NewRequest(context.Background(), reader)
 		res := calque.NewResponse(&buf)
-		
+
 		if err := transformer.ServeFlow(req, res); err != nil {
 			b.Fatal(err)
 		}
@@ -461,15 +461,15 @@ func BenchmarkLineProcessor_ComplexProcessing(b *testing.B) {
 	processor := LineProcessor(func(line string) string {
 		return fmt.Sprintf("[%d] %s", len(line), strings.ToUpper(strings.TrimSpace(line)))
 	})
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		reader := strings.NewReader(smallDataset)
-		
+
 		req := calque.NewRequest(context.Background(), reader)
 		res := calque.NewResponse(&buf)
-		
+
 		if err := processor.ServeFlow(req, res); err != nil {
 			b.Fatal(err)
 		}

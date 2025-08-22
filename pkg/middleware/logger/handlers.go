@@ -39,7 +39,9 @@ func (hb *HandlerBuilder) Head(prefix string, headBytes int, attrs ...Attribute)
 
 		// Log preview with structured attributes
 		preview := formatPreview(firstBytes)
-		allAttrs := append(attrs, Attribute{"preview", preview})
+		allAttrs := make([]Attribute, len(attrs), len(attrs)+1)
+		copy(allAttrs, attrs)
+		allAttrs = append(allAttrs, Attribute{"preview", preview})
 		logFunc(fmt.Sprintf("[%s]", prefix), allAttrs...)
 
 		// Pass through unchanged
@@ -80,7 +82,9 @@ func (hb *HandlerBuilder) Chunks(prefix string, chunkSize int, attrs ...Attribut
 				totalBytes += n
 
 				// Log this chunk
-				allAttrs := append(attrs,
+				allAttrs := make([]Attribute, len(attrs), len(attrs)+4)
+				copy(allAttrs, attrs)
+				allAttrs = append(allAttrs,
 					Attribute{"chunk_num", chunkNum},
 					Attribute{"chunk_size", n},
 					Attribute{"total_bytes", totalBytes},
@@ -140,7 +144,9 @@ func (hb *HandlerBuilder) Timing(prefix string, handler calque.Handler, attrs ..
 
 		// Log timing with duration formatting and throughput
 		durationField, durationValue := formatDuration(duration)
-		allAttrs := append(attrs,
+		allAttrs := make([]Attribute, len(attrs), len(attrs)+2)
+		copy(allAttrs, attrs)
+		allAttrs = append(allAttrs,
 			Attribute{durationField, durationValue},
 			Attribute{"bytes", bytesRead},
 		)
@@ -184,7 +190,9 @@ func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int
 		totalBytes := len(allData)
 		if totalBytes == 0 {
 			// Log empty stream
-			allAttrs := append(attrs, Attribute{"total_bytes", 0})
+			allAttrs := make([]Attribute, len(attrs), len(attrs)+1)
+			copy(allAttrs, attrs)
+			allAttrs = append(allAttrs, Attribute{"total_bytes", 0})
 			logFunc(fmt.Sprintf("[%s] Empty stream", prefix), allAttrs...)
 			return nil
 		}
@@ -216,7 +224,9 @@ func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int
 		}
 
 		// Create single log entry with all samples
-		allAttrs := append(attrs,
+		allAttrs := make([]Attribute, len(attrs), len(attrs)+5)
+		copy(allAttrs, attrs)
+		allAttrs = append(allAttrs,
 			Attribute{"total_bytes", totalBytes},
 			Attribute{"num_samples", len(samples)},
 			Attribute{"sample_size", sampleSize},
@@ -254,7 +264,9 @@ func (hb *HandlerBuilder) Print(prefix string, attrs ...Attribute) calque.Handle
 		}
 
 		// Log the complete content
-		allAttrs := append(attrs,
+		allAttrs := make([]Attribute, len(attrs), len(attrs)+2)
+		copy(allAttrs, attrs)
+		allAttrs = append(allAttrs,
 			Attribute{"total_bytes", len(allData)},
 			Attribute{"content", string(allData)}, // Full content as string
 		)
@@ -330,7 +342,9 @@ func (hb *HandlerBuilder) HeadTail(prefix string, headBytes, tailBytes int, attr
 		}
 
 		// Log head and tail
-		allAttrs := append(attrs,
+		allAttrs := make([]Attribute, len(attrs), len(attrs)+3)
+		copy(allAttrs, attrs)
+		allAttrs = append(allAttrs,
 			Attribute{"head", formatPreview(capture.headBuf)},
 			Attribute{"tail", formatPreview(capture.tailBuf)},
 			Attribute{"total_bytes", capture.totalBytes},
@@ -364,11 +378,12 @@ func (hb *HandlerBuilder) createHandler(handlerFunc func(*calque.Request, *calqu
 
 			// context handling: prefer explicit context, then request context, then background
 			var finalCtx context.Context
-			if hb.ctx != nil {
+			switch {
+			case hb.ctx != nil:
 				finalCtx = hb.ctx // 1. Use explicit context (highest priority)
-			} else if req.Context != nil {
+			case req.Context != nil:
 				finalCtx = req.Context // 2. Use request context (fallback)
-			} else {
+			default:
 				finalCtx = context.Background() // 3. Use background context (last resort)
 			}
 

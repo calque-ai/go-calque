@@ -304,11 +304,12 @@ func textConsensusExample() {
 
 			// Extract the answer (A or B)
 			var answer string
-			if strings.Contains(text, "answer is a") {
+			switch {
+			case strings.Contains(text, "answer is a"):
 				answer = "A"
-			} else if strings.Contains(text, "answer is b") {
+			case strings.Contains(text, "answer is b"):
 				answer = "B"
-			} else {
+			default:
 				answer = "unknown"
 			}
 

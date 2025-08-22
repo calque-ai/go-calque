@@ -75,7 +75,13 @@ func (j *jsonInputConverter) ToReader() (io.Reader, error) {
 		// Use json.Encoder for streaming marshal of structured data
 		pr, pw := io.Pipe()
 		go func() {
-			defer pw.Close()
+			defer func() {
+				if err := pw.Close(); err != nil {
+					// Pipe writer close errors here are expected if we already called CloseWithError
+					// for encoding failures, so we can safely ignore them
+					_ = err
+				}
+			}()
 			encoder := json.NewEncoder(pw)
 			if err := encoder.Encode(v); err != nil {
 				pw.CloseWithError(fmt.Errorf("failed to encode JSON: %w", err))
@@ -103,7 +109,13 @@ func (j *jsonInputConverter) ToReader() (io.Reader, error) {
 		// Use json.Encoder for streaming marshal of any other type
 		pr, pw := io.Pipe()
 		go func() {
-			defer pw.Close()
+			defer func() {
+				if err := pw.Close(); err != nil {
+					// Pipe writer close errors here are expected if we already called CloseWithError
+					// for encoding failures, so we can safely ignore them
+					_ = err
+				}
+			}()
 			encoder := json.NewEncoder(pw)
 			if err := encoder.Encode(j.data); err != nil {
 				pw.CloseWithError(fmt.Errorf("failed to encode JSON for type %T: %w", j.data, err))
@@ -117,80 +129,126 @@ func (j *jsonInputConverter) ToReader() (io.Reader, error) {
 func (j *jsonInputConverter) createStreamingValidatingReader(reader io.Reader, errorPrefix string) (io.Reader, error) {
 	pr, pw := io.Pipe()
 	go func() {
-		defer pw.Close()
-
-		// Use buffered writer to control output flow
-		bufWriter := bufio.NewWriterSize(pw, 4096) // 4KB buffer
-		var validationBuf bytes.Buffer
-
-		// TeeReader splits input: to validation buffer AND to a temp buffer for later output
-		var tempBuf bytes.Buffer
-		teeReader := io.TeeReader(reader, io.MultiWriter(&validationBuf, &tempBuf))
-
-		// Read in small chunks to allow early validation
-		buf := make([]byte, 1024) // 1KB chunks
-		totalRead := 0
-
-		for {
-			n, err := teeReader.Read(buf)
-			if n > 0 {
-				totalRead += n
-
-				// Try validating what we have so far (every 2KB or so)
-				if totalRead >= 2048 || err == io.EOF {
-					decoder := json.NewDecoder(bytes.NewReader(validationBuf.Bytes()))
-					var temp any
-					validateErr := decoder.Decode(&temp)
-
-					if validateErr == nil {
-						// Valid complete JSON - flush everything and switch to direct streaming
-						if _, writeErr := io.Copy(bufWriter, &tempBuf); writeErr != nil {
-							pw.CloseWithError(writeErr)
-							return
-						}
-						bufWriter.Flush()
-
-						// Continue streaming rest directly (validation passed)
-						if err != io.EOF {
-							if _, copyErr := io.Copy(bufWriter, reader); copyErr != nil {
-								pw.CloseWithError(copyErr)
-								return
-							}
-						}
-						bufWriter.Flush()
-						return
-					} else if validateErr != io.EOF && validateErr != io.ErrUnexpectedEOF {
-						// Definite validation error (not incomplete JSON)
-						pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
-						return
-					}
-					// Otherwise continue reading (JSON might be incomplete)
-				}
+		defer func() {
+			if err := pw.Close(); err != nil {
+				// Pipe writer close errors here are expected if we already called CloseWithError
+				// for encoding failures, so we can safely ignore them
+				_ = err
 			}
+		}()
 
-			if err == io.EOF {
-				// Final validation check
-				decoder := json.NewDecoder(&validationBuf)
-				var temp any
-				if finalErr := decoder.Decode(&temp); finalErr != nil {
-					pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, finalErr))
-					return
-				}
-
-				// Stream final buffered data
-				if _, writeErr := io.Copy(bufWriter, &tempBuf); writeErr != nil {
-					pw.CloseWithError(writeErr)
-					return
-				}
-				bufWriter.Flush()
-				break
-			} else if err != nil {
-				pw.CloseWithError(err)
-				return
-			}
-		}
+		j.processStreamingValidation(reader, pw, errorPrefix)
 	}()
 	return pr, nil
+}
+
+// processStreamingValidation handles the complex streaming validation logic
+func (j *jsonInputConverter) processStreamingValidation(reader io.Reader, pw *io.PipeWriter, errorPrefix string) {
+	// Use buffered writer to control output flow
+	bufWriter := bufio.NewWriterSize(pw, 4096) // 4KB buffer
+	var validationBuf bytes.Buffer
+
+	// TeeReader splits input: to validation buffer AND to a temp buffer for later output
+	var tempBuf bytes.Buffer
+	teeReader := io.TeeReader(reader, io.MultiWriter(&validationBuf, &tempBuf))
+
+	// Read in small chunks to allow early validation
+	buf := make([]byte, 1024) // 1KB chunks
+	totalRead := 0
+	validationPassed := false
+
+	for {
+		n, err := teeReader.Read(buf)
+		if n > 0 {
+			totalRead += n
+
+			// Try validating what we have so far (every 2KB or so)
+			if totalRead >= 2048 || err == io.EOF {
+				if j.handleValidationCheck(&validationBuf, &tempBuf, bufWriter, pw, errorPrefix) {
+					validationPassed = true
+					break
+				}
+			}
+		}
+
+		if err == io.EOF {
+			if j.handleFinalValidation(&validationBuf, &tempBuf, bufWriter, pw, errorPrefix) {
+				return
+			}
+			break
+		} else if err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+	}
+
+	// If validation passed early, continue reading the rest of the data
+	if validationPassed {
+		// Continue reading from the teeReader to get all remaining data
+		if _, err := io.Copy(bufWriter, teeReader); err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+		if err := bufWriter.Flush(); err != nil {
+			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			return
+		}
+	}
+}
+
+// handleValidationCheck processes validation during streaming
+func (j *jsonInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
+	decoder := json.NewDecoder(bytes.NewReader(validationBuf.Bytes()))
+	var temp any
+	validateErr := decoder.Decode(&temp)
+
+	if validateErr == nil {
+		// Valid complete JSON - flush everything and switch to direct streaming
+		if j.flushBufferedData(tempBuf, bufWriter, pw) {
+			return true
+		}
+
+		// Continue streaming rest directly (validation passed)
+		// Note: We can't continue streaming from the original reader here
+		// as it's already been consumed by the teeReader
+		if err := bufWriter.Flush(); err != nil {
+			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			return true
+		}
+		return true
+	} else if validateErr != io.EOF && validateErr != io.ErrUnexpectedEOF {
+		// Definite validation error (not incomplete JSON)
+		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
+		return true
+	}
+	// Otherwise continue reading (JSON might be incomplete)
+	return false
+}
+
+// handleFinalValidation processes final validation at EOF
+func (j *jsonInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
+	decoder := json.NewDecoder(validationBuf)
+	var temp any
+	if finalErr := decoder.Decode(&temp); finalErr != nil {
+		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, finalErr))
+		return true
+	}
+
+	// Stream final buffered data
+	return j.flushBufferedData(tempBuf, bufWriter, pw)
+}
+
+// flushBufferedData flushes buffered data to the writer
+func (j *jsonInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter) bool {
+	if _, writeErr := io.Copy(bufWriter, tempBuf); writeErr != nil {
+		pw.CloseWithError(writeErr)
+		return true
+	}
+	if err := bufWriter.Flush(); err != nil {
+		pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+		return true
+	}
+	return false
 }
 
 func (j *jsonOutputConverter) FromReader(reader io.Reader) error {

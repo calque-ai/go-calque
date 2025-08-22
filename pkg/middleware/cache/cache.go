@@ -93,6 +93,7 @@ func (cm *CacheMemory) Cache(handler calque.Handler, ttl time.Duration) calque.H
 		if err := cm.store.Set(key, result, ttl); err != nil {
 			// Log error but don't fail the request
 			// Could add optional logger here
+			_ = err // Explicitly ignore error
 		}
 
 		_, err = w.Data.Write(result)

@@ -99,7 +99,7 @@ func (j *jsonSchemaInputConverter) ToReader() (io.Reader, error) {
 			return nil, fmt.Errorf("input is nil pointer")
 		}
 		val = val.Elem()
-		typ = typ.Elem()
+		typ = val.Type()
 	}
 
 	if typ.Kind() == reflect.String {

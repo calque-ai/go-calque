@@ -3,12 +3,17 @@ package logger
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
+
+const testMessage = "Hello, world!"
+
+type contextKey string
 
 // TestHandlerHead tests the Head handler functionality
 func TestHandlerHead(t *testing.T) {
@@ -60,7 +65,7 @@ func TestHandlerHeadTail(t *testing.T) {
 
 	handler := log.Info().HeadTail("TEST_HEADTAIL", 5, 3)
 
-	input := strings.NewReader("Hello, world!")
+	input := strings.NewReader(testMessage)
 	var output bytes.Buffer
 
 	req := &calque.Request{
@@ -75,7 +80,7 @@ func TestHandlerHeadTail(t *testing.T) {
 	}
 
 	// Verify output passes through unchanged
-	if output.String() != "Hello, world!" {
+	if output.String() != testMessage {
 		t.Errorf("Output mismatch: got %q", output.String())
 	}
 
@@ -100,7 +105,7 @@ func TestHandlerChunks(t *testing.T) {
 
 	handler := log.Debug().Chunks("TEST_CHUNKS", 5)
 
-	input := strings.NewReader("Hello, world!")
+	input := strings.NewReader(testMessage)
 	var output bytes.Buffer
 
 	req := &calque.Request{
@@ -115,7 +120,7 @@ func TestHandlerChunks(t *testing.T) {
 	}
 
 	// Verify output passes through unchanged
-	if output.String() != "Hello, world!" {
+	if output.String() != testMessage {
 		t.Errorf("Output mismatch: got %q", output.String())
 	}
 
@@ -150,7 +155,7 @@ func TestHandlerTiming(t *testing.T) {
 
 	handler := log.Info().Timing("TEST_TIMING", innerHandler)
 
-	input := strings.NewReader("Hello, world!")
+	input := strings.NewReader(testMessage)
 	var output bytes.Buffer
 
 	req := &calque.Request{
@@ -165,7 +170,7 @@ func TestHandlerTiming(t *testing.T) {
 	}
 
 	// Verify output passes through unchanged
-	if output.String() != "Hello, world!" {
+	if output.String() != testMessage {
 		t.Errorf("Output mismatch: got %q", output.String())
 	}
 
@@ -231,7 +236,7 @@ func TestHandlerPrint(t *testing.T) {
 
 	handler := log.Debug().Print("TEST_PRINT")
 
-	input := strings.NewReader("Hello, world!")
+	input := strings.NewReader(testMessage)
 	var output bytes.Buffer
 
 	req := &calque.Request{
@@ -246,7 +251,7 @@ func TestHandlerPrint(t *testing.T) {
 	}
 
 	// Verify output passes through unchanged
-	if output.String() != "Hello, world!" {
+	if output.String() != testMessage {
 		t.Errorf("Output mismatch: got %q", output.String())
 	}
 
@@ -305,7 +310,7 @@ func TestHandlerWithContext(t *testing.T) {
 	log := New(mockLogger)
 
 	// Test with explicit context
-	ctx := context.WithValue(context.Background(), "trace_id", "test-trace-123")
+	ctx := context.WithValue(context.Background(), contextKey("trace_id"), "test-trace-123")
 	handler := log.Info().WithContext(ctx).Head("CTX_TEST", 10)
 
 	input := strings.NewReader("test data")
@@ -386,7 +391,6 @@ func TestFormatPreview(t *testing.T) {
 
 // MockContextLogger extends MockLogger to capture context information
 type MockContextLogger struct {
-	*MockLogger
 	buffer *bytes.Buffer
 }
 
@@ -401,20 +405,31 @@ func (m *MockContextLogger) Log(ctx context.Context, level LogLevel, msg string,
 	m.buffer.WriteString(levelStr + " " + msg)
 
 	// Add context values to log output
-	if traceID := ctx.Value("trace_id"); traceID != nil {
+	if traceID := ctx.Value(contextKey("trace_id")); traceID != nil {
 		m.buffer.WriteString(" trace_id=" + traceID.(string))
 	}
 
+	// Add attributes to log output
 	for _, attr := range attrs {
-		m.buffer.WriteString(" " + attr.Key + "=" + attr.Value.(string))
+		m.buffer.WriteString(" " + attr.Key + "=")
+		switch v := attr.Value.(type) {
+		case string:
+			m.buffer.WriteString(v)
+		case int:
+			fmt.Fprintf(m.buffer, "%d", v)
+		case float64:
+			fmt.Fprintf(m.buffer, "%g", v)
+		default:
+			fmt.Fprintf(m.buffer, "%v", v)
+		}
 	}
 	m.buffer.WriteString("\n")
 }
 
-func (m *MockContextLogger) IsLevelEnabled(ctx context.Context, level LogLevel) bool {
+func (m *MockContextLogger) IsLevelEnabled(_ context.Context, _ LogLevel) bool {
 	return true // Always enabled for testing
 }
 
-func (m *MockContextLogger) Printf(format string, v ...any) {
+func (m *MockContextLogger) Printf(_ string, v ...any) {
 	// Not used in tests
 }

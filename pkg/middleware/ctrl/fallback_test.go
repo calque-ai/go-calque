@@ -21,7 +21,7 @@ func TestFallback(t *testing.T) {
 		return calque.Write(res, "success:"+input)
 	})
 
-	primaryFailHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	primaryFailHandler := calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("primary failed")
 	})
 
@@ -34,7 +34,7 @@ func TestFallback(t *testing.T) {
 		return calque.Write(res, "fallback:"+input)
 	})
 
-	alwaysFailHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	alwaysFailHandler := calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("always fails")
 	})
 
@@ -446,7 +446,7 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 }
 
 func TestFallbackContextCancellation(t *testing.T) {
-	slowHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	slowHandler := calque.HandlerFunc(func(req *calque.Request, _ *calque.Response) error {
 		select {
 		case <-req.Context.Done():
 			return req.Context.Err()

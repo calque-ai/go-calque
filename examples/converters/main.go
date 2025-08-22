@@ -67,9 +67,9 @@ func runConverterBasics() {
 	// Pipeline: Json String -> Json -> Uppercase -> Struct
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("JSON_INPUT")).                                          // Log original JSON
-		Use(text.Transform(func(s string) string { return strings.ToUpper(s) })). // Convert to uppercase for processing
-		Use(logger.Print("UPPERCASE_JSON"))                                       // Log transformed JSON
+		Use(logger.Print("JSON_INPUT")).      // Log original JSON
+		Use(text.Transform(strings.ToUpper)). // Convert to uppercase for processing
+		Use(logger.Print("UPPERCASE_JSON"))   // Log transformed JSON
 
 	// Execute with json string input
 	// convert.ToJson parses the string to make sure its valid json
