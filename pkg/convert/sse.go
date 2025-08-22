@@ -59,7 +59,7 @@ const (
 
 // RawContentFormatter sends content directly without wrapping (default).
 //
-// Input: content string, done flag
+// Input: content string, done flag (ignored)
 // Output: content as-is
 // Behavior: Simple pass-through formatter
 //

@@ -36,7 +36,8 @@ type Store interface {
 
 // Memory provides response caching using a pluggable store
 type Memory struct {
-	store Store
+	store   Store
+	onError func(error) // Optional error handler
 }
 
 // NewCache creates a cache memory with default in-memory store
@@ -51,6 +52,11 @@ func NewCacheWithStore(store Store) *Memory {
 	return &Memory{
 		store: store,
 	}
+}
+
+// OnError configures a callback for cache errors
+func (cm *Memory) OnError(callback func(error)) {
+	cm.onError = callback
 }
 
 // Cache creates a caching middleware that stores responses based on input hash
@@ -94,9 +100,9 @@ func (cm *Memory) Cache(handler calque.Handler, ttl time.Duration) calque.Handle
 
 		// Store in cache
 		if err := cm.store.Set(key, result, ttl); err != nil {
-			// Log error but don't fail the request
-			// Could add optional logger here
-			_ = err // Explicitly ignore error
+			if cm.onError != nil {
+				cm.onError(fmt.Errorf("cache write failed: %w", err))
+			}
 		}
 
 		_, err = w.Data.Write(result)

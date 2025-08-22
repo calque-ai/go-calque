@@ -220,9 +220,9 @@ func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 // writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
 func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calque.Response) error {
 	// Convert to OpenAI format
-	toolCalls := make([]map[string]any, 0, len(functionCalls))
+	toolCalls := make([]map[string]any, len(functionCalls))
 
-	for _, call := range functionCalls {
+	for i, call := range functionCalls {
 		// Convert Gemini args to JSON string
 		var argsJSON string
 		if call.Args != nil && call.Args["input"] != nil {
@@ -239,7 +239,7 @@ func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calq
 				"arguments": argsJSON,
 			},
 		}
-		toolCalls = append(toolCalls, toolCall)
+		toolCalls[i] = toolCall
 	}
 
 	// Use json.Marshal for proper JSON formatting
@@ -323,14 +323,14 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 
 // Convert your OpenAI JSON schema tools to Gemini format
 func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclaration {
-	functions := make([]*genai.FunctionDeclaration, 0, len(tools))
+	functions := make([]*genai.FunctionDeclaration, len(tools))
 
-	for _, tool := range tools {
-		functions = append(functions, &genai.FunctionDeclaration{
+	for i, tool := range tools {
+		functions[i] = &genai.FunctionDeclaration{
 			Name:                 tool.Name(),
 			Description:          tool.Description(),
 			ParametersJsonSchema: tool.ParametersSchema(), // Use raw JSON schema like response format
-		})
+		}
 	}
 
 	return functions

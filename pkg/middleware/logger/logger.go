@@ -31,8 +31,8 @@ func Attr(key string, value any) Attribute {
 	return Attribute{Key: key, Value: value}
 }
 
-// Interface defines the contract for logging backends (zerolog, slog, standard log, etc.)
-type Interface interface {
+// Adapter defines the contract for logging backends (zerolog, slog, standard log, etc.)
+type Adapter interface {
 	Log(ctx context.Context, level LogLevel, msg string, attrs ...Attribute) // Structured logging with level
 	IsLevelEnabled(ctx context.Context, level LogLevel) bool                 // Performance check - skip work if disabled
 	Printf(format string, v ...any)                                          // Simple printf-style logging
@@ -44,11 +44,11 @@ type Interface interface {
 
 // Logger wraps any Interface backend and provides the main API
 type Logger struct {
-	backend Interface
+	backend Adapter
 }
 
 // New creates a Logger with a custom backend (zerolog, slog, etc.)
-func New(backend Interface) *Logger {
+func New(backend Adapter) *Logger {
 	return &Logger{backend: backend}
 }
 
@@ -129,7 +129,7 @@ type Printer interface {
 
 // SimplePrinter uses Printf() - no levels, simple formatting
 type SimplePrinter struct {
-	backend Interface
+	backend Adapter
 }
 
 // Print implements Printer interface with simple Printf formatting
@@ -149,7 +149,7 @@ func (sp *SimplePrinter) Print(_ context.Context, msg string, attrs ...Attribute
 
 // LeveledPrinter uses Log() with level checking - structured logging
 type LeveledPrinter struct {
-	backend Interface
+	backend Adapter
 	level   LogLevel
 }
 

@@ -30,8 +30,14 @@ func TestJson(t *testing.T) {
 			if converter == nil {
 				t.Fatal("Json() returned nil")
 			}
+
+			converterInput, ok := converter.(*jsonInputConverter)
+			if !ok {
+				t.Fatal("Json() did not return *jsonInputConverter")
+			}
+
 			// Just verify the converter was created with some data
-			if converter.data == nil && tt.data != nil {
+			if converterInput.data == nil && tt.data != nil {
 				t.Error("Json() data is nil when input was not nil")
 			}
 		})
@@ -45,7 +51,13 @@ func TestJsonOutput(t *testing.T) {
 	if converter == nil {
 		t.Fatal("JsonOutput() returned nil")
 	}
-	if converter.target != &target {
+
+	converterOutput, ok := converter.(*jsonOutputConverter)
+	if !ok {
+		t.Fatal("JsonOutput() did not return *jsonOutputConverter")
+	}
+
+	if converterOutput.target != &target {
 		t.Error("JsonOutput() target not set correctly")
 	}
 }

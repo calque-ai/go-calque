@@ -34,8 +34,14 @@ func TestToJSONSchema(t *testing.T) {
 	if converter == nil {
 		t.Fatal("ToJSONSchema() returned nil")
 	}
-	if converter.data == nil {
-		t.Error("ToJSONSchema() did not set data")
+
+	converterInput, ok := converter.(*SchemaInputConverter)
+	if !ok {
+		t.Fatal("ToJSONSchema() did not return *SchemaInputConverter")
+	}
+
+	if converterInput.data == nil {
+			t.Error("ToJSONSchema() did not set data")
 	}
 }
 
@@ -46,7 +52,13 @@ func TestFromJSONSchema(t *testing.T) {
 	if converter == nil {
 		t.Fatal("FromJSONSchema() returned nil")
 	}
-	if converter.target != &target {
+
+	converterOutput, ok := converter.(*SchemaOutputConverter[JSONSchemaTestStruct])
+	if !ok {
+		t.Fatal("FromJSONSchema() did not return *SchemaOutputConverter")
+	}
+
+	if converterOutput.target != &target {
 		t.Error("FromJSONSchema() target not set correctly")
 	}
 }

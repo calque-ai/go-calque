@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/goccy/go-yaml"
 )
 
@@ -23,7 +24,7 @@ type YAMLOutputConverter struct {
 // ToYAML creates an input converter for transforming structured data to YAML streams.
 //
 // Input: any data type (structs, maps, slices, YAML strings, YAML bytes)
-// Output: *YAMLInputConverter for pipeline input position
+// Output: calque.InputConverter for pipeline input position
 // Behavior: STREAMING - uses yaml.Encoder for automatic streaming optimization
 //
 // Converts various data types to valid YAML format for pipeline processing:
@@ -43,14 +44,14 @@ type YAMLOutputConverter struct {
 //
 //	config := Config{Database: {Host: "localhost", Port: 5432}}
 //	err := pipeline.Run(ctx, convert.ToYAML(config), &result)
-func ToYAML(data any) *YAMLInputConverter {
+func ToYAML(data any) calque.InputConverter {
 	return &YAMLInputConverter{data: data}
 }
 
 // FromYAML creates an output converter for parsing YAML streams to structured data.
 //
 // Input: pointer to target variable for unmarshaling
-// Output: *YAMLOutputConverter for pipeline output position
+// Output: calque.OutputConverter for pipeline output position
 // Behavior: STREAMING - uses yaml.Decoder for automatic streaming/buffering as needed
 //
 // Parses YAML data from pipeline output into the specified target type.
@@ -69,7 +70,7 @@ func ToYAML(data any) *YAMLInputConverter {
 //	var config Config
 //	err := pipeline.Run(ctx, input, convert.FromYAML(&config))
 //	fmt.Printf("DB: %s:%d\n", config.Database.Host, config.Database.Port)
-func FromYAML(target any) *YAMLOutputConverter {
+func FromYAML(target any) calque.OutputConverter {
 	return &YAMLOutputConverter{target: target}
 }
 
@@ -141,7 +142,6 @@ func (y *YAMLInputConverter) createStreamingValidatingReader(reader io.Reader, e
 				_ = err
 			}
 		}()
-
 		y.processStreamingValidation(reader, pw, errorPrefix)
 	}()
 	return pr, nil

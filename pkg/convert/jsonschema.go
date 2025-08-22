@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/invopop/jsonschema"
 )
 
@@ -24,7 +25,7 @@ type SchemaOutputConverter[T any] struct {
 // ToJSONSchema creates an input converter for transforming structured data to JSON streams.
 //
 // Input: any data type (structs, maps, slices, JSON strings, JSON bytes)
-// Output: *SchemaInputConverter for pipeline input position
+// Output: calque.InputConverter for pipeline input position
 // Behavior: STREAMING - uses json.Encoder for automatic streaming optimization
 //
 // Converts various data types to valid JSON format for pipeline processing:
@@ -43,7 +44,7 @@ type SchemaOutputConverter[T any] struct {
 //
 //	task := Task{Type: "feature", Priority: "high", Hours: 8}
 //	err := pipeline.Run(ctx, convert.ToJSONSchema(task), &result)
-func ToJSONSchema(data any) *SchemaInputConverter {
+func ToJSONSchema(data any) calque.InputConverter {
 	return &SchemaInputConverter{
 		data: data,
 	}
@@ -52,7 +53,7 @@ func ToJSONSchema(data any) *SchemaInputConverter {
 // FromJSONSchema creates an output converter that validates JSON against schema.
 //
 // Input: pointer to target variable for unmarshaling, generic type parameter for validation
-// Output: *SchemaOutputConverter for pipeline output position
+// Output: calque.OutputConverter for pipeline output position
 // Behavior: BUFFERED - reads entire JSON stream, validates against schema, unmarshals to target
 //
 // Parses JSON data that may contain embedded schema information and unmarshals
@@ -76,7 +77,7 @@ func ToJSONSchema(data any) *SchemaInputConverter {
 //	var task Task
 //	err := pipeline.Run(ctx, schemaInput, convert.FromJSONSchema[Task](&task))
 //	fmt.Printf("Task: %s priority, %d hours\n", task.Priority, task.Hours)
-func FromJSONSchema[T any](target any) *SchemaOutputConverter[T] {
+func FromJSONSchema[T any](target any) calque.OutputConverter {
 	return &SchemaOutputConverter[T]{
 		target: target,
 	}
@@ -89,12 +90,11 @@ func (j *SchemaInputConverter) ToReader() (io.Reader, error) {
 	typ := val.Type()
 
 	// Handle pointers
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return nil, fmt.Errorf("input is nil pointer")
 		}
-		val = val.Elem()
-		typ = val.Type()
+		typ = typ.Elem()
 	}
 
 	if typ.Kind() == reflect.String {

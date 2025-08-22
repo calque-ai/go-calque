@@ -429,9 +429,9 @@ func (o *Client) determineResponseFormat(responseFormat *ai.ResponseFormat) json
 
 // convertToOllamaTools converts our tool interface to Ollama's tool format
 func (o *Client) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
-	ollamaTools := make([]api.Tool, 0, len(toolList))
+	ollamaTools := make([]api.Tool, len(toolList))
 
-	for _, tool := range toolList {
+	for i, tool := range toolList {
 		schema := tool.ParametersSchema()
 
 		// Convert schema properties to Ollama format
@@ -458,7 +458,7 @@ func (o *Client) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
 			Type:     "function",
 			Function: function,
 		}
-		ollamaTools = append(ollamaTools, ollamaTool)
+		ollamaTools[i] = ollamaTool
 	}
 
 	return ollamaTools
@@ -467,9 +467,9 @@ func (o *Client) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
 // writeOllamaToolCalls converts Ollama tool calls to OpenAI format for the agent
 func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *calque.Response) error {
 	// Convert to OpenAI format
-	openAIToolCalls := make([]map[string]any, 0, len(toolCalls))
+	openAIToolCalls := make([]map[string]any, len(toolCalls))
 
-	for _, call := range toolCalls {
+	for i, call := range toolCalls {
 		// Extract input from tool call arguments
 		var argsJSON string
 		if call.Function.Arguments != nil {
@@ -491,7 +491,7 @@ func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *calque.Respon
 				"arguments": argsJSON,
 			},
 		}
-		openAIToolCalls = append(openAIToolCalls, toolCall)
+		openAIToolCalls[i] = toolCall
 	}
 
 	// Create OpenAI format JSON

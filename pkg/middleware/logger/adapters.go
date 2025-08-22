@@ -28,9 +28,9 @@ func (s *StandardAdapter) Log(_ context.Context, _ LogLevel, msg string, attrs .
 	}
 
 	// Format fields as key=value pairs
-	attrStrs := make([]string, 0, len(attrs))
-	for _, attr := range attrs {
-		attrStrs = append(attrStrs, fmt.Sprintf("%s=%v", attr.Key, attr.Value))
+	attrStrs := make([]string, len(attrs))
+	for i, attr := range attrs {
+		attrStrs[i] = fmt.Sprintf("%s=%v", attr.Key, attr.Value)
 	}
 
 	s.logger.Printf("%s %s", msg, strings.Join(attrStrs, " "))
