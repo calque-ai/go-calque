@@ -6,18 +6,18 @@
 // - Use ai.WithSchema(&MyStruct{}) to force AI to generate valid JSON
 // - AI receives schema automatically, returns structured data
 // - Best for: Single AI calls that need structured output
-// - Output: convert.FromJson() to parse AI's JSON response
+// - Output: convert.FromJSON() to parse AI's JSON response
 //
 // APPROACH 2: Schema Converters - Context-Aware Processing
-// - Use convert.ToJsonSchema() to embed schema with input data
-// - Use convert.FromJsonSchema() to validate and parse output
+// - Use convert.ToJSONSchema() to embed schema with input data
+// - Use convert.FromJSONSchema() to validate and parse output
 // - AI sees both data AND schema structure in prompt
 // - Best for: When AI needs to understand input/output relationships
 //
 // APPROACH 3: Multi-Stage Pipelines - Complex Workflows
 // - Combine both approaches for sophisticated data flows
-// - Stage 1: WithSchema() + FromJson() for initial extraction
-// - Stage 2: ToJsonSchema() + FromJsonSchema() for context passing
+// - Stage 1: WithSchema() + FromJSON() for initial extraction
+// - Stage 2: ToJSONSchema() + FromJSONSchema() for context passing
 // - Best for: Multi-step AI processing with data transformation
 //
 // This package contains 3 focused examples showing these approaches:
@@ -138,7 +138,7 @@ func runExample1WithSchema(client ai.Client) {
 
 	// Use standard JSON converters since AI generates structured JSON
 	var analysis TaskAnalysis
-	err := pipe.Run(context.Background(), taskDescription, convert.FromJson(&analysis))
+	err := pipe.Run(context.Background(), taskDescription, convert.FromJSON(&analysis))
 	if err != nil {
 		log.Printf("Analysis failed: %v", err)
 		return
@@ -189,7 +189,7 @@ The input includes both the user data and the JSON schema structure. Please prov
 
 Do not include any explanatory text, only the JSON response.`
 
-// runExample2JsonSchemaConverters shows convert.ToJsonSchema() and convert.FromJsonSchema()
+// runExample2JsonSchemaConverters shows convert.ToJSONSchema() and convert.FromJSONSchema()
 func runExample2JsonSchemaConverters(client ai.Client) {
 	fmt.Println("=== Example 2: JSON Schema Converters Usage ===")
 
@@ -217,8 +217,8 @@ func runExample2JsonSchemaConverters(client ai.Client) {
 	var advice CareerAdvice
 	err := pipe.Run(
 		context.Background(),
-		convert.ToJsonSchema(userProfile),             // Embeds schema with data into input
-		convert.FromJsonSchema[CareerAdvice](&advice), // Validates output against schema
+		convert.ToJSONSchema(userProfile),             // Embeds schema with data into input
+		convert.FromJSONSchema[CareerAdvice](&advice), // Validates output against schema
 	)
 	if err != nil {
 		log.Printf("Career advice generation failed: %v", err)
@@ -281,7 +281,7 @@ func runExample3AdvancedCombined(client ai.Client) {
 	fmt.Printf("Input: %s\n", inputText)
 
 	// Stage 1: Extract basic profile using WithSchema (like Example 1)
-	fmt.Println("\n Stage 1: Extract structured data (WithSchema + FromJson)")
+	fmt.Println("\n Stage 1: Extract structured data (WithSchema + FromJSON)")
 
 	stage1Pipe := calque.NewFlow()
 	stage1Pipe.
@@ -291,7 +291,7 @@ func runExample3AdvancedCombined(client ai.Client) {
 		Use(logger.Head("Output", 500))
 
 	var profile UserProfile
-	err := stage1Pipe.Run(context.Background(), inputText, convert.FromJson(&profile))
+	err := stage1Pipe.Run(context.Background(), inputText, convert.FromJSON(&profile))
 	if err != nil {
 		log.Printf("Stage 1 failed: %v", err)
 		return
@@ -300,7 +300,7 @@ func runExample3AdvancedCombined(client ai.Client) {
 	fmt.Printf("Extracted: %s (%s, %d years)\n", profile.Name, profile.Role, profile.Experience)
 
 	// Stage 2: Enhance profile using context from Stage 1
-	fmt.Println("\n Stage 2: Enhance with context (ToJsonSchema + FromJsonSchema)")
+	fmt.Println("\n Stage 2: Enhance with context (ToJSONSchema + FromJSONSchema)")
 
 	stage2Pipe := calque.NewFlow()
 	stage2Pipe.
@@ -310,8 +310,8 @@ func runExample3AdvancedCombined(client ai.Client) {
 	var enhanced EnhancedProfile
 	err = stage2Pipe.Run(
 		context.Background(),
-		convert.ToJsonSchema(profile),                      // Stage 1 output as schema-embedded input
-		convert.FromJsonSchema[EnhancedProfile](&enhanced), // Stage 2 output with validation
+		convert.ToJSONSchema(profile),                      // Stage 1 output as schema-embedded input
+		convert.FromJSONSchema[EnhancedProfile](&enhanced), // Stage 2 output with validation
 	)
 	if err != nil {
 		log.Printf("Stage 2 failed: %v", err)
@@ -327,7 +327,7 @@ func runExample3AdvancedCombined(client ai.Client) {
 	}
 
 	fmt.Println("\nMulti-stage pipeline completed:")
-	fmt.Println("  Stage 1: WithSchema → FromJson (structured extraction)")
-	fmt.Println("  Stage 2: ToJsonSchema → FromJsonSchema (context passing)")
+	fmt.Println("  Stage 1: WithSchema → FromJSON (structured extraction)")
+	fmt.Println("  Stage 2: ToJSONSchema → FromJSONSchema (context passing)")
 	fmt.Println("  Key: Stage 1 output becomes Stage 2 input with embedded schema")
 }

@@ -1,3 +1,6 @@
+// Package main demonstrates map-reduce patterns with the calque framework.
+// It showcases how to process large datasets by mapping operations across
+// multiple items and then reducing the results into meaningful summaries.
 package main
 
 import (
@@ -96,7 +99,7 @@ func main() {
 		fmt.Printf("Processing resume %d/%d: %s\n", i+1, len(resumes), resume.Filename)
 
 		var evaluation Evaluation
-		err := evaluationPipeline.Run(context.Background(), resume.Content, convert.FromJson(&evaluation))
+		err := evaluationPipeline.Run(context.Background(), resume.Content, convert.FromJSON(&evaluation))
 		if err != nil {
 			log.Printf("Failed to evaluate %s: %v", resume.Filename, err)
 			continue

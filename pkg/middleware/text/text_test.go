@@ -97,7 +97,7 @@ func TestBranch(t *testing.T) {
 		return calque.Write(res, "else-handler")
 	})
 
-	errorHandler := calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
+	errorHandler := calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -200,7 +200,7 @@ func TestFilter(t *testing.T) {
 		return calque.Write(res, "processed: "+input)
 	})
 
-	errorHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	errorHandler := calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("processing error")
 	})
 
@@ -255,7 +255,7 @@ func TestFilter(t *testing.T) {
 		{
 			name:      "handler error when condition true",
 			input:     "trigger processing",
-			condition: func(s string) bool { return true },
+			condition: func(_ string) bool { return true },
 			handler:   errorHandler,
 			expected:  "",
 			wantErr:   true,

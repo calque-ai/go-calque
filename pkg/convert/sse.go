@@ -40,38 +40,21 @@ type SSEEvent struct {
 //	}
 type SSEEventFormatter func(content string, done bool) any
 
-// SSEConverter streams data as Server-Sent Events to an HTTP response writer.
-//
-// Handles real-time streaming of data chunks with configurable chunking modes
-// and event formatting. Automatically sets SSE headers and manages flushing.
-//
-// Example:
-//
-//	sse := convert.ToSSE(w).WithChunkMode(convert.SSEChunkByWord)
-//	err := sse.FromReader(dataReader)
-type SSEConverter struct {
-	writer      http.ResponseWriter
-	flusher     http.Flusher
-	chunkBy     SSEChunkMode
-	formatter   SSEEventFormatter // RawContentFormatter or MapEventFormatter
-	eventFields map[string]any    // Additional fields to include in events
-}
-
 // SSEChunkMode defines how to chunk the streaming data.
 //
 // Controls granularity of streaming: by character, word, line, or complete.
 // Affects real-time user experience and bandwidth usage.
-//
-// Example:
-//
-//	sse.WithChunkMode(convert.SSEChunkByWord) // Stream word by word
 type SSEChunkMode int
 
 const (
+	// SSEChunkByWord streams content word by word (default mode)
 	SSEChunkByWord SSEChunkMode = iota // Stream word by word (default)
-	SSEChunkByChar                     // Stream character by character
-	SSEChunkByLine                     // Stream line by line
-	SSEChunkNone                       // Stream entire response as single event
+	// SSEChunkByChar streams content character by character
+	SSEChunkByChar // Stream character by character
+	// SSEChunkByLine streams content line by line
+	SSEChunkByLine // Stream line by line
+	// SSEChunkNone streams entire response as single event
+	SSEChunkNone // Stream entire response as single event
 )
 
 // RawContentFormatter sends content directly without wrapping (default).
@@ -87,7 +70,7 @@ const (
 //
 //	formatter := convert.RawContentFormatter
 //	data := formatter("hello", false) // returns "hello"
-func RawContentFormatter(content string, done bool) any {
+func RawContentFormatter(content string, _ bool) any {
 	return content
 }
 
@@ -154,6 +137,23 @@ func ToSSE(w http.ResponseWriter) *SSEConverter {
 		formatter:   RawContentFormatter, // Default: send raw content
 		eventFields: nil,                 // No additional fields by default
 	}
+}
+
+// SSEConverter streams data as Server-Sent Events to an HTTP response writer.
+//
+// Handles real-time streaming of data chunks with configurable chunking modes
+// and event formatting. Automatically sets SSE headers and manages flushing.
+//
+// Example:
+//
+//	sse := convert.ToSSE(w).WithChunkMode(convert.SSEChunkByWord)
+//	err := sse.FromReader(dataReader)
+type SSEConverter struct {
+	writer      http.ResponseWriter
+	flusher     http.Flusher
+	chunkBy     SSEChunkMode
+	formatter   SSEEventFormatter // RawContentFormatter or MapEventFormatter
+	eventFields map[string]any    // Additional fields to include in events
 }
 
 // WithChunkMode sets how the data should be chunked for streaming.

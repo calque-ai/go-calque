@@ -10,20 +10,20 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Input converter for YAML data -> YAML bytes
-type yamlInputConverter struct {
+// YAMLInputConverter is an input converter for transforming structured data to YAML streams.
+type YAMLInputConverter struct {
 	data any
 }
 
-// Output converter for YAML bytes -> any type
-type yamlOutputConverter struct {
+// YAMLOutputConverter is an output converter for parsing YAML streams to structured data.
+type YAMLOutputConverter struct {
 	target any
 }
 
-// ToYaml creates an input converter for transforming structured data to YAML streams.
+// ToYAML creates an input converter for transforming structured data to YAML streams.
 //
 // Input: any data type (structs, maps, slices, YAML strings, YAML bytes)
-// Output: *yamlInputConverter for pipeline input position
+// Output: *YAMLInputConverter for pipeline input position
 // Behavior: STREAMING - uses yaml.Encoder for automatic streaming optimization
 //
 // Converts various data types to valid YAML format for pipeline processing:
@@ -42,15 +42,15 @@ type yamlOutputConverter struct {
 //	}
 //
 //	config := Config{Database: {Host: "localhost", Port: 5432}}
-//	err := pipeline.Run(ctx, convert.ToYaml(config), &result)
-func ToYaml(data any) *yamlInputConverter {
-	return &yamlInputConverter{data: data}
+//	err := pipeline.Run(ctx, convert.ToYAML(config), &result)
+func ToYAML(data any) *YAMLInputConverter {
+	return &YAMLInputConverter{data: data}
 }
 
-// FromYaml creates an output converter for parsing YAML streams to structured data.
+// FromYAML creates an output converter for parsing YAML streams to structured data.
 //
 // Input: pointer to target variable for unmarshaling
-// Output: *yamlOutputConverter for pipeline output position
+// Output: *YAMLOutputConverter for pipeline output position
 // Behavior: STREAMING - uses yaml.Decoder for automatic streaming/buffering as needed
 //
 // Parses YAML data from pipeline output into the specified target type.
@@ -67,14 +67,14 @@ func ToYaml(data any) *yamlInputConverter {
 //	}
 //
 //	var config Config
-//	err := pipeline.Run(ctx, input, convert.FromYaml(&config))
+//	err := pipeline.Run(ctx, input, convert.FromYAML(&config))
 //	fmt.Printf("DB: %s:%d\n", config.Database.Host, config.Database.Port)
-func FromYaml(target any) *yamlOutputConverter {
-	return &yamlOutputConverter{target: target}
+func FromYAML(target any) *YAMLOutputConverter {
+	return &YAMLOutputConverter{target: target}
 }
 
-// InputConverter interface
-func (y *yamlInputConverter) ToReader() (io.Reader, error) {
+// ToReader converts structured data to an io.Reader for YAML processing.
+func (y *YAMLInputConverter) ToReader() (io.Reader, error) {
 	switch v := y.data.(type) {
 	case map[string]any, map[any]any, []any:
 		// Use yaml.Encoder for streaming marshal of structured data
@@ -131,7 +131,7 @@ func (y *yamlInputConverter) ToReader() (io.Reader, error) {
 }
 
 // createStreamingValidatingReader creates a streaming reader with chunked validation for io.Reader inputs
-func (y *yamlInputConverter) createStreamingValidatingReader(reader io.Reader, errorPrefix string) (io.Reader, error) {
+func (y *YAMLInputConverter) createStreamingValidatingReader(reader io.Reader, errorPrefix string) (io.Reader, error) {
 	pr, pw := io.Pipe()
 	go func() {
 		defer func() {
@@ -148,7 +148,7 @@ func (y *yamlInputConverter) createStreamingValidatingReader(reader io.Reader, e
 }
 
 // processStreamingValidation handles the complex streaming validation logic
-func (y *yamlInputConverter) processStreamingValidation(reader io.Reader, pw *io.PipeWriter, errorPrefix string) {
+func (y *YAMLInputConverter) processStreamingValidation(reader io.Reader, pw *io.PipeWriter, errorPrefix string) {
 	// Use buffered writer to control output flow
 	bufWriter := bufio.NewWriterSize(pw, 4096) // 4KB buffer
 	var validationBuf bytes.Buffer
@@ -202,7 +202,7 @@ func (y *yamlInputConverter) processStreamingValidation(reader io.Reader, pw *io
 }
 
 // handleValidationCheck processes validation during streaming
-func (y *yamlInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
+func (y *YAMLInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
 	var temp any
 	validateErr := yaml.Unmarshal(validationBuf.Bytes(), &temp)
 
@@ -230,7 +230,7 @@ func (y *yamlInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes
 }
 
 // handleFinalValidation processes final validation at EOF
-func (y *yamlInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
+func (y *YAMLInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
 	var temp any
 	if finalErr := yaml.Unmarshal(validationBuf.Bytes(), &temp); finalErr != nil {
 		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, finalErr))
@@ -242,7 +242,7 @@ func (y *yamlInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes
 }
 
 // flushBufferedData flushes buffered data to the writer
-func (y *yamlInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter) bool {
+func (y *YAMLInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter) bool {
 	if _, writeErr := io.Copy(bufWriter, tempBuf); writeErr != nil {
 		pw.CloseWithError(writeErr)
 		return true
@@ -268,8 +268,8 @@ func isIncompleteYAMLError(err error) bool {
 		strings.Contains(errStr, "mapping value is not allowed in this context")
 }
 
-// OutputConverter interface
-func (y *yamlOutputConverter) FromReader(reader io.Reader) error {
+// FromReader reads YAML data from an io.Reader into the target variable.
+func (y *YAMLOutputConverter) FromReader(reader io.Reader) error {
 	// Use yaml.Decoder for streaming decode
 	decoder := yaml.NewDecoder(reader)
 	if err := decoder.Decode(y.target); err != nil {

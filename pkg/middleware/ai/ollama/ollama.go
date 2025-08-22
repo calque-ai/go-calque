@@ -1,3 +1,6 @@
+// Package ollama provides Ollama local AI model integration for the calque framework.
+// It implements the AI client interface to enable chat completions and tool calling
+// using locally hosted models through the Ollama server.
 package ollama
 
 import (

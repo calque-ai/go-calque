@@ -1,3 +1,6 @@
+// Package cache provides response caching middleware for the calque framework.
+// It implements pluggable cache backends with TTL support to improve performance
+// by storing and retrieving responses based on input content hashes.
 package cache
 
 import (
@@ -10,8 +13,8 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
-// CacheStore interface for cache backends with TTL support
-type CacheStore interface {
+// Store interface for cache backends with TTL support
+type Store interface {
 	// Get retrieves data for a key, returns nil if not found or expired
 	Get(key string) ([]byte, error)
 
@@ -31,21 +34,21 @@ type CacheStore interface {
 	List() []string
 }
 
-// CacheMemory provides response caching using a pluggable store
-type CacheMemory struct {
-	store CacheStore
+// Memory provides response caching using a pluggable store
+type Memory struct {
+	store Store
 }
 
 // NewCache creates a cache memory with default in-memory store
-func NewCache() *CacheMemory {
-	return &CacheMemory{
-		store: NewInMemoryCacheStore(),
+func NewCache() *Memory {
+	return &Memory{
+		store: NewInMemoryStore(),
 	}
 }
 
 // NewCacheWithStore creates a cache memory with custom store
-func NewCacheWithStore(store CacheStore) *CacheMemory {
-	return &CacheMemory{
+func NewCacheWithStore(store Store) *Memory {
+	return &Memory{
 		store: store,
 	}
 }
@@ -64,7 +67,7 @@ func NewCacheWithStore(store CacheStore) *CacheMemory {
 //
 //	cacheM := cache.NewCache()
 //	flow.Use(cacheM.Cache(llmHandler, 1*time.Hour)) // Cache for 1 hour
-func (cm *CacheMemory) Cache(handler calque.Handler, ttl time.Duration) calque.Handler {
+func (cm *Memory) Cache(handler calque.Handler, ttl time.Duration) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		input, err := io.ReadAll(r.Data)
 		if err != nil {
@@ -102,21 +105,21 @@ func (cm *CacheMemory) Cache(handler calque.Handler, ttl time.Duration) calque.H
 }
 
 // Clear removes all cached responses
-func (cm *CacheMemory) Clear() error {
+func (cm *Memory) Clear() error {
 	return cm.store.Clear()
 }
 
 // Delete removes a specific cached response by key
-func (cm *CacheMemory) Delete(key string) error {
+func (cm *Memory) Delete(key string) error {
 	return cm.store.Delete(key)
 }
 
 // Exists checks if a response is cached for the given key
-func (cm *CacheMemory) Exists(key string) bool {
+func (cm *Memory) Exists(key string) bool {
 	return cm.store.Exists(key)
 }
 
 // ListKeys returns all cached keys
-func (cm *CacheMemory) ListKeys() []string {
+func (cm *Memory) ListKeys() []string {
 	return cm.store.List()
 }

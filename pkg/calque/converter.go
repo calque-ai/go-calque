@@ -1,3 +1,4 @@
+// Package calque provides a flexible data processing framework with flow-based operations.
 package calque
 
 import (
@@ -7,8 +8,8 @@ import (
 	"strings"
 )
 
-// InputConverter converts data to an io.Reader for processing
-type InputConverter interface {
+// inputConverter converts data to an io.Reader for processing
+type inputConverter interface {
 	ToReader() (io.Reader, error)
 }
 
@@ -17,15 +18,16 @@ type OutputConverter interface {
 	FromReader(reader io.Reader) error
 }
 
+// Converter combines inputConverter and OutputConverter interfaces for bidirectional data conversion.
 type Converter interface {
-	InputConverter
+	inputConverter
 	OutputConverter
 }
 
 // inputToReader converts input to io.Reader
 func (f *Flow) inputToReader(input any) (io.Reader, error) {
 	// Check if input is a converter with data
-	if conv, ok := input.(InputConverter); ok {
+	if conv, ok := input.(inputConverter); ok {
 		return conv.ToReader()
 	}
 

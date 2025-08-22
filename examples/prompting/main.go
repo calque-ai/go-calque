@@ -1,3 +1,6 @@
+// Package main demonstrates prompt engineering techniques with the calque framework.
+// It showcases various prompt templates, system messages, and conversation patterns
+// to effectively structure inputs for AI models and improve response quality.
 package main
 
 import (

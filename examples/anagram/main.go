@@ -1,3 +1,6 @@
+// Package main demonstrates text processing workflows using the calque framework.
+// It showcases how to build complex text analysis pipelines by comparing
+// traditional implementations with framework-based approaches for anagram detection.
 package main
 
 import (

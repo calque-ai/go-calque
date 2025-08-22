@@ -430,6 +430,6 @@ func (m *MockContextLogger) IsLevelEnabled(_ context.Context, _ LogLevel) bool {
 	return true // Always enabled for testing
 }
 
-func (m *MockContextLogger) Printf(_ string, v ...any) {
+func (m *MockContextLogger) Printf(_ string, _ ...any) {
 	// Not used in tests
 }

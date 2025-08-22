@@ -1,3 +1,6 @@
+// Package main demonstrates basic usage of the calque framework.
+// It showcases core concepts like flows, middleware, text processing,
+// streaming, and AI integration through simple, practical examples.
 package main
 
 import (

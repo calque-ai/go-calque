@@ -122,7 +122,7 @@ type MockLogger struct {
 	enabledLevel LogLevel
 }
 
-func (m *MockLogger) Log(ctx context.Context, level LogLevel, msg string, attrs ...Attribute) {
+func (m *MockLogger) Log(_ context.Context, level LogLevel, msg string, attrs ...Attribute) {
 	levelStr := map[LogLevel]string{
 		DebugLevel: "[DEBUG]",
 		InfoLevel:  "[INFO]",
@@ -138,10 +138,10 @@ func (m *MockLogger) Log(ctx context.Context, level LogLevel, msg string, attrs 
 	m.buffer.WriteString("\n")
 }
 
-func (m *MockLogger) IsLevelEnabled(ctx context.Context, level LogLevel) bool {
+func (m *MockLogger) IsLevelEnabled(_ context.Context, level LogLevel) bool {
 	return level >= m.enabledLevel
 }
 
-func (m *MockLogger) Printf(format string, v ...any) {
+func (m *MockLogger) Printf(_ string, _ ...any) {
 	// Not used in tests
 }

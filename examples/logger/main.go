@@ -1,3 +1,6 @@
+// Package main demonstrates logging middleware capabilities with the calque framework.
+// It showcases different logging backends (standard log, slog, zerolog) and various
+// logging patterns for debugging and monitoring data flows in production systems.
 package main
 
 import (

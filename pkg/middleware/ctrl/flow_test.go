@@ -14,17 +14,17 @@ import (
 )
 
 func TestBranch(t *testing.T) {
-	mockIfHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	mockIfHandler := calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
 		_, err := res.Data.Write([]byte("if-executed"))
 		return err
 	})
 
-	mockElseHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	mockElseHandler := calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
 		_, err := res.Data.Write([]byte("else-executed"))
 		return err
 	})
 
-	errorHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	errorHandler := calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -76,7 +76,7 @@ func TestBranch(t *testing.T) {
 		{
 			name:        "if handler error",
 			input:       "trigger condition",
-			condition:   func(b []byte) bool { return true },
+			condition:   func(_ []byte) bool { return true },
 			ifHandler:   errorHandler,
 			elseHandler: mockElseHandler,
 			expected:    "",
@@ -85,7 +85,7 @@ func TestBranch(t *testing.T) {
 		{
 			name:        "else handler error",
 			input:       "trigger condition",
-			condition:   func(b []byte) bool { return false },
+			condition:   func(_ []byte) bool { return false },
 			ifHandler:   mockIfHandler,
 			elseHandler: errorHandler,
 			expected:    "",
@@ -237,7 +237,7 @@ func TestParallel(t *testing.T) {
 		return calque.Write(res, "slow:"+input)
 	})
 
-	errorHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	errorHandler := calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -469,7 +469,7 @@ func TestRetry(t *testing.T) {
 		return calque.Write(res, "success:"+input)
 	})
 
-	alwaysFailHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	alwaysFailHandler := calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("persistent failure")
 	})
 
@@ -625,8 +625,8 @@ func BenchmarkBranch(b *testing.B) {
 		size      int
 		condition func([]byte) bool
 	}{
-		{"Small_TrueCondition", 1024, func(b []byte) bool { return true }},
-		{"Small_FalseCondition", 1024, func(b []byte) bool { return false }},
+		{"Small_TrueCondition", 1024, func(_ []byte) bool { return true }},
+		{"Small_FalseCondition", 1024, func(_ []byte) bool { return false }},
 		{"Medium_JSONCheck", 100 * 1024, func(b []byte) bool { return bytes.HasPrefix(b, []byte("{")) }},
 		{"Large_ContainsCheck", 1024 * 1024, func(b []byte) bool { return bytes.Contains(b, []byte("search")) }},
 	}
@@ -641,7 +641,7 @@ func BenchmarkBranch(b *testing.B) {
 				data[0] = '{'
 			}
 			if strings.Contains(tt.name, "Contains") {
-				copy(data[tt.size/2:], []byte("search"))
+				copy(data[tt.size/2:], "search")
 			}
 
 			handler := Branch(tt.condition, mockHandler, mockHandler)

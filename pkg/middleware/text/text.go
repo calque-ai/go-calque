@@ -1,3 +1,6 @@
+// Package text provides text processing middleware for the calque framework.
+// It implements string transformations, conditional branching, filtering,
+// and other text manipulation utilities for processing content in workflows.
 package text
 
 import (

@@ -1,3 +1,6 @@
+// Package gemini provides Google Gemini AI model integration for the calque framework.
+// It implements the AI client interface to enable chat completions, tool calling,
+// and streaming responses using Google's Gemini models including Pro and Flash variants.
 package gemini
 
 import (
@@ -205,7 +208,7 @@ func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Build request configuration based on input type
-	config, err := g.buildRequestConfig(input, ai.GetSchema(opts), ai.GetTools(opts), r.Context)
+	config, err := g.buildRequestConfig(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts))
 	if err != nil {
 		return err
 	}
@@ -334,7 +337,7 @@ func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclarat
 }
 
 // buildRequestConfig creates configuration for the request
-func (g *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool, ctx context.Context) (*RequestConfig, error) {
+func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool) (*RequestConfig, error) {
 	// Build config once
 	genaiConfig := g.buildGenerateConfig(schema)
 

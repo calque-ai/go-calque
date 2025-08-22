@@ -14,8 +14,11 @@ import (
 type InputType int
 
 const (
+	// TextInput is plain text input
 	TextInput InputType = iota
+	// MultimodalJSONInput is multimodal input via JSON structure
 	MultimodalJSONInput
+	// MultimodalStreamingInput is multimodal input via streaming (e.g., multipart)
 	MultimodalStreamingInput
 )
 
@@ -95,7 +98,7 @@ func hasJSONData(multimodal MultimodalInput) bool {
 	return false
 }
 
-// Helper functions for extracting options
+// GetSchema extracts schema from AgentOptions, returns nil if none
 func GetSchema(opts *AgentOptions) *ResponseFormat {
 	if opts != nil {
 		return opts.Schema
@@ -103,6 +106,7 @@ func GetSchema(opts *AgentOptions) *ResponseFormat {
 	return nil
 }
 
+// GetTools extracts tools from AgentOptions, returns nil if none
 func GetTools(opts *AgentOptions) []tools.Tool {
 	if opts != nil {
 		return opts.Tools

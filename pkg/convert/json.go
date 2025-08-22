@@ -1,3 +1,5 @@
+// Package convert provides utilities for converting structured data to and from JSON streams.
+// It includes converters for both input (structured data to JSON) and output (JSON streams to structured data).
 package convert
 
 import (
@@ -9,20 +11,20 @@ import (
 	"strings"
 )
 
-// Input converter for JSON data -> JSON bytes
-type jsonInputConverter struct {
+// JSONInputConverter for structured data -> JSON streams
+type JSONInputConverter struct {
 	data any
 }
 
-// Output converter for JSON bytes -> any type
-type jsonOutputConverter struct {
+// JSONOutputConverter for JSON streams -> structured data
+type JSONOutputConverter struct {
 	target any
 }
 
-// ToJson creates an input converter for transforming structured data to JSON streams.
+// ToJSON creates an input converter for transforming structured data to JSON streams.
 //
 // Input: any data type (structs, maps, slices, JSON strings, JSON bytes)
-// Output: *jsonInputConverter for pipeline input position
+// Output: *JSONInputConverter for pipeline input position
 // Behavior: STREAMING - uses json.Encoder for automatic streaming optimization
 //
 // Converts various data types to valid JSON format for pipeline processing:
@@ -39,15 +41,15 @@ type jsonOutputConverter struct {
 //	}
 //
 //	user := User{Name: "Alice", Age: 30}
-//	err := pipeline.Run(ctx, convert.ToJson(user), &result)
-func ToJson(data any) *jsonInputConverter {
-	return &jsonInputConverter{data: data}
+//	err := pipeline.Run(ctx, convert.ToJSON(user), &result)
+func ToJSON(data any) *JSONInputConverter {
+	return &JSONInputConverter{data: data}
 }
 
-// FromJson creates an output converter for parsing JSON streams to structured data.
+// FromJSON creates an output converter for parsing JSON streams to structured data.
 //
 // Input: pointer to target variable for unmarshaling
-// Output: *jsonOutputConverter for pipeline output position
+// Output: *JSONOutputConverter for pipeline output position
 // Behavior: STREAMING - uses json.Decoder for automatic streaming/buffering as needed
 //
 // Parses JSON data from pipeline output into the specified target type.
@@ -62,14 +64,14 @@ func ToJson(data any) *jsonInputConverter {
 //	}
 //
 //	var user User
-//	err := pipeline.Run(ctx, input, convert.FromJson(&user))
+//	err := pipeline.Run(ctx, input, convert.FromJSON(&user))
 //	fmt.Printf("User: %s, Age: %d\n", user.Name, user.Age)
-func FromJson(target any) *jsonOutputConverter {
-	return &jsonOutputConverter{target: target}
+func FromJSON(target any) *JSONOutputConverter {
+	return &JSONOutputConverter{target: target}
 }
 
-// InputConverter interface
-func (j *jsonInputConverter) ToReader() (io.Reader, error) {
+// ToReader converts the input data to an io.Reader for streaming JSON processing.
+func (j *JSONInputConverter) ToReader() (io.Reader, error) {
 	switch v := j.data.(type) {
 	case map[string]any, []any:
 		// Use json.Encoder for streaming marshal of structured data
@@ -126,7 +128,7 @@ func (j *jsonInputConverter) ToReader() (io.Reader, error) {
 }
 
 // createStreamingValidatingReader creates a streaming reader with chunked validation for io.Reader inputs
-func (j *jsonInputConverter) createStreamingValidatingReader(reader io.Reader, errorPrefix string) (io.Reader, error) {
+func (j *JSONInputConverter) createStreamingValidatingReader(reader io.Reader, errorPrefix string) (io.Reader, error) {
 	pr, pw := io.Pipe()
 	go func() {
 		defer func() {
@@ -143,7 +145,7 @@ func (j *jsonInputConverter) createStreamingValidatingReader(reader io.Reader, e
 }
 
 // processStreamingValidation handles the complex streaming validation logic
-func (j *jsonInputConverter) processStreamingValidation(reader io.Reader, pw *io.PipeWriter, errorPrefix string) {
+func (j *JSONInputConverter) processStreamingValidation(reader io.Reader, pw *io.PipeWriter, errorPrefix string) {
 	// Use buffered writer to control output flow
 	bufWriter := bufio.NewWriterSize(pw, 4096) // 4KB buffer
 	var validationBuf bytes.Buffer
@@ -197,7 +199,7 @@ func (j *jsonInputConverter) processStreamingValidation(reader io.Reader, pw *io
 }
 
 // handleValidationCheck processes validation during streaming
-func (j *jsonInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
+func (j *JSONInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
 	decoder := json.NewDecoder(bytes.NewReader(validationBuf.Bytes()))
 	var temp any
 	validateErr := decoder.Decode(&temp)
@@ -226,7 +228,7 @@ func (j *jsonInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes
 }
 
 // handleFinalValidation processes final validation at EOF
-func (j *jsonInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
+func (j *JSONInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
 	decoder := json.NewDecoder(validationBuf)
 	var temp any
 	if finalErr := decoder.Decode(&temp); finalErr != nil {
@@ -239,7 +241,7 @@ func (j *jsonInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes
 }
 
 // flushBufferedData flushes buffered data to the writer
-func (j *jsonInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter) bool {
+func (j *JSONInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter) bool {
 	if _, writeErr := io.Copy(bufWriter, tempBuf); writeErr != nil {
 		pw.CloseWithError(writeErr)
 		return true
@@ -251,7 +253,8 @@ func (j *jsonInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter 
 	return false
 }
 
-func (j *jsonOutputConverter) FromReader(reader io.Reader) error {
+// FromReader implements the OutputConverter interface for JSON streams -> structured data.
+func (j *JSONOutputConverter) FromReader(reader io.Reader) error {
 	// Use json.Decoder for streaming decode
 	decoder := json.NewDecoder(reader)
 	if err := decoder.Decode(j.target); err != nil {

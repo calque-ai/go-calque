@@ -215,27 +215,27 @@ Transform structured data at flow boundaries:
 **Input Converters** (prepare data for processing):
 
 ```go
-convert.ToJson(struct)      // Struct → JSON stream
-convert.ToYaml(struct)      // Struct → YAML stream
-convert.ToJsonSchema(struct) // Struct + schema → stream (for AI context)
+convert.ToJSON(struct)      // Struct → JSON stream
+convert.ToYAML(struct)      // Struct → YAML stream
+convert.ToJSONSchema(struct) // Struct + schema → stream (for AI context)
 ```
 
 **Output Converters** (parse results):
 
 ```go
-convert.FromJson(&result)           // JSON stream → struct
-convert.FromYaml(&result)           // Yaml stream → struct
-convert.FromJsonSchema(&result)     // Validates output against schema
+convert.FromJSON(&result)           // JSON stream → struct
+convert.FromYAML(&result)           // Yaml stream → struct
+convert.FromJSONSchema(&result)     // Validates output against schema
 ```
 
 **Usage:**
 
 ```go
 // JSON processing flow
-err := flow.Run(ctx, convert.ToJson(data), convert.FromJson(&result))
+err := flow.Run(ctx, convert.ToJSON(data), convert.FromJSON(&result))
 
 // input and output json with schema validation. Useful for AI structured output
-err := flow.Run(ctx, convert.ToJsonSchema(input), convert.FromJsonSchema[Output](&result))
+err := flow.Run(ctx, convert.ToJSONSchema(input), convert.FromJSONSchema[Output](&result))
 ```
 
 ## Examples
@@ -283,7 +283,7 @@ flow := calque.NewFlow().
     Use(ai.Agent(client, ai.WithSchema(&TaskAnalysis{})))
 
 var analysis TaskAnalysis
-flow.Run(ctx, "Build a chat app", convert.FromJsonSchema[TaskAnalysis](&analysis))
+flow.Run(ctx, "Build a chat app", convert.FromJSONSchema[TaskAnalysis](&analysis))
 ```
 
 ### Flow Composition

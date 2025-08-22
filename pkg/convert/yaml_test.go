@@ -25,7 +25,7 @@ func TestYaml(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			converter := ToYaml(tt.data)
+			converter := ToYAML(tt.data)
 			if converter == nil {
 				t.Fatal("Yaml() returned nil")
 			}
@@ -39,7 +39,7 @@ func TestYaml(t *testing.T) {
 
 func TestYamlOutput(t *testing.T) {
 	var target map[string]any
-	converter := FromYaml(&target)
+	converter := FromYAML(&target)
 
 	if converter == nil {
 		t.Fatal("YamlOutput() returned nil")
@@ -49,7 +49,7 @@ func TestYamlOutput(t *testing.T) {
 	}
 }
 
-func TestYamlInputConverter_ToReader(t *testing.T) {
+func TestYAMLInputConverter_ToReader(t *testing.T) {
 	tests := []struct {
 		name    string
 		data    any
@@ -104,7 +104,7 @@ value: 42`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			y := &yamlInputConverter{data: tt.data}
+			y := &YAMLInputConverter{data: tt.data}
 			reader, err := y.ToReader()
 
 			if tt.wantErr {
@@ -150,7 +150,7 @@ func handleYamlExpectedError(t *testing.T, err error, reader io.Reader) {
 	}
 }
 
-func TestYamlOutputConverter_FromReader(t *testing.T) {
+func TestOutputConverter_FromReader(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -222,7 +222,7 @@ value: 42`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			y := &yamlOutputConverter{target: tt.target}
+			y := &YAMLOutputConverter{target: tt.target}
 			reader := strings.NewReader(tt.input)
 
 			err := y.FromReader(reader)
@@ -329,7 +329,7 @@ func deepEqual(a, b any) bool {
 	}
 }
 
-func TestYamlInputConverter_ToReader_EdgeCases(t *testing.T) {
+func TestYAMLInputConverter_ToReader_EdgeCases(t *testing.T) {
 	tests := []struct {
 		name    string
 		data    any
@@ -385,7 +385,7 @@ symbol: '@#$%'`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			y := &yamlInputConverter{data: tt.data}
+			y := &YAMLInputConverter{data: tt.data}
 			reader, err := y.ToReader()
 
 			if tt.wantErr {
@@ -414,7 +414,7 @@ symbol: '@#$%'`,
 	}
 }
 
-func TestYamlOutputConverter_FromReader_ErrorCases(t *testing.T) {
+func TestOutputConverter_FromReader_ErrorCases(t *testing.T) {
 	tests := []struct {
 		name   string
 		reader io.Reader
@@ -429,7 +429,7 @@ func TestYamlOutputConverter_FromReader_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			y := &yamlOutputConverter{target: tt.target}
+			y := &YAMLOutputConverter{target: tt.target}
 			err := y.FromReader(tt.reader)
 
 			if err == nil {
@@ -439,9 +439,9 @@ func TestYamlOutputConverter_FromReader_ErrorCases(t *testing.T) {
 	}
 }
 
-func TestYamlOutputConverter_FromReader_EmptyInput(t *testing.T) {
+func TestOutputConverter_FromReader_EmptyInput(t *testing.T) {
 	var target map[string]any
-	converter := &yamlOutputConverter{target: &target}
+	converter := &YAMLOutputConverter{target: &target}
 	reader := strings.NewReader("")
 
 	err := converter.FromReader(reader)
@@ -456,7 +456,7 @@ func TestYamlOutputConverter_FromReader_EmptyInput(t *testing.T) {
 	}
 }
 
-func TestYamlInputConverter_ToReader_IoReader(t *testing.T) {
+func TestYAMLInputConverter_ToReader_IoReader(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
@@ -524,7 +524,7 @@ func TestYamlInputConverter_ToReader_IoReader(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reader := strings.NewReader(tt.input)
-			y := &yamlInputConverter{data: reader}
+			y := &YAMLInputConverter{data: reader}
 
 			result, err := y.ToReader()
 
@@ -562,7 +562,7 @@ func TestYamlInputConverter_ToReader_IoReader(t *testing.T) {
 	}
 }
 
-func TestYamlInputConverter_ToReader_IoReader_LargeData(t *testing.T) {
+func TestYAMLInputConverter_ToReader_IoReader_LargeData(t *testing.T) {
 	// Test with data larger than buffer sizes to ensure chunked validation works
 	largeObject := make(map[string]any)
 	for i := 0; i < 1000; i++ {
@@ -576,7 +576,7 @@ func TestYamlInputConverter_ToReader_IoReader_LargeData(t *testing.T) {
 	}
 
 	reader := bytes.NewReader(yamlData)
-	y := &yamlInputConverter{data: reader}
+	y := &YAMLInputConverter{data: reader}
 
 	result, err := y.ToReader()
 	if err != nil {
@@ -604,7 +604,7 @@ func TestYamlInputConverter_ToReader_IoReader_LargeData(t *testing.T) {
 	}
 }
 
-func TestYamlInputConverter_ToReader_IoReader_ErrorCases(t *testing.T) {
+func TestYAMLInputConverter_ToReader_IoReader_ErrorCases(t *testing.T) {
 	tests := []struct {
 		name   string
 		reader io.Reader
@@ -621,7 +621,7 @@ func TestYamlInputConverter_ToReader_IoReader_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			y := &yamlInputConverter{data: tt.reader}
+			y := &YAMLInputConverter{data: tt.reader}
 
 			result, err := y.ToReader()
 			if err != nil {
@@ -648,15 +648,15 @@ func TestYamlIntegration(t *testing.T) {
 		}
 
 		// Convert to reader
-		inputConverter := ToYaml(original)
-		reader, err := inputConverter.ToReader()
+		YAMLInputConverter := ToYAML(original)
+		reader, err := YAMLInputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)
 		}
 
 		// Convert back from reader
 		var result map[string]any
-		outputConverter := FromYaml(&result)
+		outputConverter := FromYAML(&result)
 		err = outputConverter.FromReader(reader)
 		if err != nil {
 			t.Fatalf("FromReader() error = %v", err)
@@ -701,15 +701,15 @@ func TestYamlIntegration(t *testing.T) {
 		}
 
 		// Convert to reader
-		inputConverter := ToYaml(original)
-		reader, err := inputConverter.ToReader()
+		YAMLInputConverter := ToYAML(original)
+		reader, err := YAMLInputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)
 		}
 
 		// Convert back from reader
 		var result TestStruct
-		outputConverter := FromYaml(&result)
+		outputConverter := FromYAML(&result)
 		err = outputConverter.FromReader(reader)
 		if err != nil {
 			t.Fatalf("FromReader() error = %v", err)
@@ -737,15 +737,15 @@ items:
   - item2`
 
 		// Convert string to reader
-		inputConverter := ToYaml(originalYAML)
-		reader, err := inputConverter.ToReader()
+		YAMLInputConverter := ToYAML(originalYAML)
+		reader, err := YAMLInputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)
 		}
 
 		// Convert back from reader
 		var result map[string]any
-		outputConverter := FromYaml(&result)
+		outputConverter := FromYAML(&result)
 		err = outputConverter.FromReader(reader)
 		if err != nil {
 			t.Fatalf("FromReader() error = %v", err)
@@ -782,16 +782,16 @@ value: 42
 array: [1, 2, 3]`
 		reader := strings.NewReader(yamlInput)
 
-		// Convert io.Reader to reader via ToYaml
-		inputConverter := ToYaml(reader)
-		pipeReader, err := inputConverter.ToReader()
+		// Convert io.Reader to reader via ToYAML
+		YAMLInputConverter := ToYAML(reader)
+		pipeReader, err := YAMLInputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)
 		}
 
 		// Convert back from reader
 		var result map[string]any
-		outputConverter := FromYaml(&result)
+		outputConverter := FromYAML(&result)
 		err = outputConverter.FromReader(pipeReader)
 		if err != nil {
 			t.Fatalf("FromReader() error = %v", err)
@@ -825,7 +825,7 @@ yes_value: yes
 no_value: no`
 
 		var result map[string]any
-		converter := FromYaml(&result)
+		converter := FromYAML(&result)
 		reader := strings.NewReader(input)
 
 		err := converter.FromReader(reader)
@@ -853,7 +853,7 @@ value2: ~
 value3:`
 
 		var result map[string]any
-		converter := FromYaml(&result)
+		converter := FromYAML(&result)
 		reader := strings.NewReader(input)
 
 		err := converter.FromReader(reader)
@@ -880,7 +880,7 @@ octal: 0o755
 hex: 0xff`
 
 		var result map[string]any
-		converter := FromYaml(&result)
+		converter := FromYAML(&result)
 		reader := strings.NewReader(input)
 
 		err := converter.FromReader(reader)

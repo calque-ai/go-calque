@@ -1,3 +1,6 @@
+// Package main demonstrates batch processing capabilities with the calque framework.
+// It showcases how to efficiently process multiple items by batching them together,
+// improving performance and resource utilization in data processing workflows.
 package main
 
 import (

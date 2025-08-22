@@ -120,7 +120,7 @@ func TestConsensus_VoteFunctionError(t *testing.T) {
 	}
 
 	// Vote function that always returns an error
-	errorVote := func(responses []string) (string, error) {
+	errorVote := func(_ []string) (string, error) {
 		return "", fmt.Errorf("voting error")
 	}
 

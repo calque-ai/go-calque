@@ -1,3 +1,6 @@
+// Package main demonstrates memory management capabilities with the calque framework.
+// It showcases conversation memory, context memory, and custom storage backends
+// to maintain state and history across multiple AI interactions.
 package main
 
 import (
@@ -86,7 +89,7 @@ func conversationExample(client ai.Client) {
 // Example 2: Using a 3rd party (badgerDB) database for storage.
 func badgerConversationExample(client ai.Client) {
 	// Create Badger store
-	badgerStore, err := badger.NewBadgerStore("./conversations.db")
+	badgerStore, err := badger.NewStore("./conversations.db")
 	if err != nil {
 		log.Fatal(err)
 	}

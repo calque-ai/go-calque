@@ -10,9 +10,13 @@ import (
 type LogLevel int
 
 const (
+	// DebugLevel is for detailed debugging information
 	DebugLevel LogLevel = iota
+	// InfoLevel is for general informational messages
 	InfoLevel
+	// WarnLevel is for warning messages that are not errors
 	WarnLevel
+	// ErrorLevel is for error messages
 	ErrorLevel
 )
 
@@ -27,8 +31,8 @@ func Attr(key string, value any) Attribute {
 	return Attribute{Key: key, Value: value}
 }
 
-// LoggerInterface defines the contract for logging backends (zerolog, slog, standard log, etc.)
-type LoggerInterface interface {
+// Interface defines the contract for logging backends (zerolog, slog, standard log, etc.)
+type Interface interface {
 	Log(ctx context.Context, level LogLevel, msg string, attrs ...Attribute) // Structured logging with level
 	IsLevelEnabled(ctx context.Context, level LogLevel) bool                 // Performance check - skip work if disabled
 	Printf(format string, v ...any)                                          // Simple printf-style logging
@@ -38,13 +42,13 @@ type LoggerInterface interface {
 // LOGGER INSTANCE
 // ============================================================================
 
-// Logger wraps any LoggerInterface backend and provides the main API
+// Logger wraps any Interface backend and provides the main API
 type Logger struct {
-	backend LoggerInterface
+	backend Interface
 }
 
 // New creates a Logger with a custom backend (zerolog, slog, etc.)
-func New(backend LoggerInterface) *Logger {
+func New(backend Interface) *Logger {
 	return &Logger{backend: backend}
 }
 
@@ -57,6 +61,7 @@ func Default() *Logger {
 // LEVEL METHODS - Create HandlerBuilder with specific log levels
 // ============================================================================
 
+// Debug provides debug-level logging
 func (l *Logger) Debug() *HandlerBuilder {
 	return &HandlerBuilder{
 		logger:  l,
@@ -64,6 +69,7 @@ func (l *Logger) Debug() *HandlerBuilder {
 	}
 }
 
+// Info provides info-level logging
 func (l *Logger) Info() *HandlerBuilder {
 	return &HandlerBuilder{
 		logger:  l,
@@ -71,6 +77,7 @@ func (l *Logger) Info() *HandlerBuilder {
 	}
 }
 
+// Warn provides warning-level logging
 func (l *Logger) Warn() *HandlerBuilder {
 	return &HandlerBuilder{
 		logger:  l,
@@ -78,6 +85,7 @@ func (l *Logger) Warn() *HandlerBuilder {
 	}
 }
 
+// Error provides error-level logging
 func (l *Logger) Error() *HandlerBuilder {
 	return &HandlerBuilder{
 		logger:  l,
@@ -121,10 +129,11 @@ type Printer interface {
 
 // SimplePrinter uses Printf() - no levels, simple formatting
 type SimplePrinter struct {
-	backend LoggerInterface
+	backend Interface
 }
 
-func (sp *SimplePrinter) Print(ctx context.Context, msg string, attrs ...Attribute) {
+// Print implements Printer interface with simple Printf formatting
+func (sp *SimplePrinter) Print(_ context.Context, msg string, attrs ...Attribute) {
 	if len(attrs) == 0 {
 		sp.backend.Printf("%s", msg)
 		return
@@ -140,10 +149,11 @@ func (sp *SimplePrinter) Print(ctx context.Context, msg string, attrs ...Attribu
 
 // LeveledPrinter uses Log() with level checking - structured logging
 type LeveledPrinter struct {
-	backend LoggerInterface
+	backend Interface
 	level   LogLevel
 }
 
+// Print implements Printer interface with level checking
 func (lp *LeveledPrinter) Print(ctx context.Context, msg string, attrs ...Attribute) {
 	if lp.backend.IsLevelEnabled(ctx, lp.level) {
 		lp.backend.Log(ctx, lp.level, msg, attrs...)

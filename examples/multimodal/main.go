@@ -1,3 +1,6 @@
+// Package main demonstrates multimodal AI capabilities with the calque framework.
+// It showcases how to process images and text together using different AI models,
+// including both serialized and streaming approaches for handling binary data.
 package main
 
 import (
@@ -7,13 +10,14 @@ import (
 	"log"
 	"os"
 
+	"github.com/joho/godotenv"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/convert"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/logger"
-	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -73,7 +77,7 @@ func analyzeImageSimple(imagePath string) {
 
 	// Run the flow - all data is serialized to json in the multimodal input
 	var result string
-	err = flow.Run(context.Background(), convert.ToJson(multimodalInput), &result)
+	err = flow.Run(context.Background(), convert.ToJSON(multimodalInput), &result)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -118,7 +122,7 @@ func analyzeImageStreaming(imagePath string) {
 
 	// Run the flow - input is JSON metadata, actual data is in WithMultimodalData
 	var result string
-	err = flow.Run(context.Background(), convert.ToJson(multimodalInput), &result)
+	err = flow.Run(context.Background(), convert.ToJSON(multimodalInput), &result)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -164,7 +168,7 @@ func analyzeImageOllama(imagePath string) {
 
 	// Run the flow - identical to Gemini usage
 	var result string
-	err = flow.Run(context.Background(), convert.ToJson(multimodalInput), &result)
+	err = flow.Run(context.Background(), convert.ToJSON(multimodalInput), &result)
 	if err != nil {
 		log.Printf("Ollama analysis failed: %v", err)
 		return

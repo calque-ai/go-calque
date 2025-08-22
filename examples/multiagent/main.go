@@ -1,3 +1,6 @@
+// Package main demonstrates multi-agent coordination patterns with the calque framework.
+// It showcases intelligent routing, load balancing, consensus mechanisms,
+// and complex agent orchestration for building sophisticated AI workflows.
 package main
 
 import (

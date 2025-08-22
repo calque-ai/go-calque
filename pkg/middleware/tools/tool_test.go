@@ -229,7 +229,7 @@ func TestHandlerFunc(t *testing.T) {
 }
 
 func TestHandlerFuncWithError(t *testing.T) {
-	tool := HandlerFunc("error_tool", "Tool that returns error", func(_ *calque.Request, res *calque.Response) error {
+	tool := HandlerFunc("error_tool", "Tool that returns error", func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("handler function error")
 	})
 
@@ -270,7 +270,7 @@ func TestToolInterfaceCompliance(t *testing.T) {
 	tools = append(tools, Simple("test", "desc", func(s string) string { return s }))
 
 	// HandlerFunc
-	tools = append(tools, HandlerFunc("test", "desc", func(_ *calque.Request, res *calque.Response) error {
+	tools = append(tools, HandlerFunc("test", "desc", func(_ *calque.Request, _ *calque.Response) error {
 		return nil
 	}))
 
