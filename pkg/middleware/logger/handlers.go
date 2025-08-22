@@ -39,8 +39,8 @@ func (hb *HandlerBuilder) Head(prefix string, headBytes int, attrs ...Attribute)
 
 		// Log preview with structured attributes
 		preview := formatPreview(firstBytes)
-		allAttrs := append(attrs, Attribute{"preview", preview})
-		logFunc(fmt.Sprintf("[%s]", prefix), allAttrs...)
+		attrs = append(attrs, Attribute{"preview", preview})
+		logFunc(fmt.Sprintf("[%s]", prefix), attrs...)
 
 		// Pass through unchanged
 		_, err = io.Copy(res.Data, bufReader)
@@ -80,13 +80,13 @@ func (hb *HandlerBuilder) Chunks(prefix string, chunkSize int, attrs ...Attribut
 				totalBytes += n
 
 				// Log this chunk
-				allAttrs := append(attrs,
+				attrs = append(attrs,
 					Attribute{"chunk_num", chunkNum},
 					Attribute{"chunk_size", n},
 					Attribute{"total_bytes", totalBytes},
 					Attribute{"data", formatPreview(buf[:n])},
 				)
-				logFunc(fmt.Sprintf("[%s] Chunk %d", prefix, chunkNum), allAttrs...)
+				logFunc(fmt.Sprintf("[%s] Chunk %d", prefix, chunkNum), attrs...)
 
 				// Write chunk to response (data from teeReader)
 				if _, writeErr := res.Data.Write(buf[:n]); writeErr != nil {
@@ -140,18 +140,18 @@ func (hb *HandlerBuilder) Timing(prefix string, handler calque.Handler, attrs ..
 
 		// Log timing with duration formatting and throughput
 		durationField, durationValue := formatDuration(duration)
-		allAttrs := append(attrs,
+		attrs = append(attrs,
 			Attribute{durationField, durationValue},
 			Attribute{"bytes", bytesRead},
 		)
 
 		// Add throughput if we have meaningful data and time
 		if bytesRead > 0 && duration.Seconds() > 0 {
-			allAttrs = append(allAttrs, Attribute{"bytes_per_sec", float64(bytesRead) / duration.Seconds()})
+			attrs = append(attrs, Attribute{"bytes_per_sec", float64(bytesRead) / duration.Seconds()})
 		}
 
 		// Log the completion message
-		logFunc(fmt.Sprintf("[%s] completed", prefix), allAttrs...)
+		logFunc(fmt.Sprintf("[%s] completed", prefix), attrs...)
 
 		return err
 	})
@@ -184,8 +184,8 @@ func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int
 		totalBytes := len(allData)
 		if totalBytes == 0 {
 			// Log empty stream
-			allAttrs := append(attrs, Attribute{"total_bytes", 0})
-			logFunc(fmt.Sprintf("[%s] Empty stream", prefix), allAttrs...)
+			attrs = append(attrs, Attribute{"total_bytes", 0})
+			logFunc(fmt.Sprintf("[%s] Empty stream", prefix), attrs...)
 			return nil
 		}
 
@@ -216,14 +216,14 @@ func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int
 		}
 
 		// Create single log entry with all samples
-		allAttrs := append(attrs,
+		attrs = append(attrs,
 			Attribute{"total_bytes", totalBytes},
 			Attribute{"num_samples", len(samples)},
 			Attribute{"sample_size", sampleSize},
 			Attribute{"sample_positions", samplePositions},
 			Attribute{"samples", samples},
 		)
-		logFunc(fmt.Sprintf("[%s] %d samples from %d bytes", prefix, len(samples), totalBytes), allAttrs...)
+		logFunc(fmt.Sprintf("[%s] %d samples from %d bytes", prefix, len(samples), totalBytes), attrs...)
 
 		// Write all data to response
 		return calque.Write(res, allData)
@@ -254,11 +254,11 @@ func (hb *HandlerBuilder) Print(prefix string, attrs ...Attribute) calque.Handle
 		}
 
 		// Log the complete content
-		allAttrs := append(attrs,
+		attrs = append(attrs,
 			Attribute{"total_bytes", len(allData)},
 			Attribute{"content", string(allData)}, // Full content as string
 		)
-		logFunc(fmt.Sprintf("[%s]", prefix), allAttrs...)
+		logFunc(fmt.Sprintf("[%s]", prefix), attrs...)
 
 		// Write all data to response
 		return calque.Write(res, allData)
@@ -330,12 +330,12 @@ func (hb *HandlerBuilder) HeadTail(prefix string, headBytes, tailBytes int, attr
 		}
 
 		// Log head and tail
-		allAttrs := append(attrs,
+		attrs = append(attrs,
 			Attribute{"head", formatPreview(capture.headBuf)},
 			Attribute{"tail", formatPreview(capture.tailBuf)},
 			Attribute{"total_bytes", capture.totalBytes},
 		)
-		logFunc(fmt.Sprintf("[%s]", prefix), allAttrs...)
+		logFunc(fmt.Sprintf("[%s]", prefix), attrs...)
 
 		return nil
 	})
@@ -364,11 +364,13 @@ func (hb *HandlerBuilder) createHandler(handlerFunc func(*calque.Request, *calqu
 
 			// context handling: prefer explicit context, then request context, then background
 			var finalCtx context.Context
-			if hb.ctx != nil {
+
+			switch {
+			case hb.ctx != nil:
 				finalCtx = hb.ctx // 1. Use explicit context (highest priority)
-			} else if req.Context != nil {
+			case req.Context != nil:
 				finalCtx = req.Context // 2. Use request context (fallback)
-			} else {
+			default:
 				finalCtx = context.Background() // 3. Use background context (last resort)
 			}
 

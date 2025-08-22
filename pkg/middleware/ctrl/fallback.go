@@ -39,7 +39,7 @@ type circuitBreaker struct {
 //	fallback := ctrl.Fallback(primaryLLM, fallbackLLM, localLLM)
 func Fallback(handlers ...calque.Handler) calque.Handler {
 	if len(handlers) == 0 {
-		return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		return calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
 			return fmt.Errorf("no handlers provided to fallback")
 		})
 	}

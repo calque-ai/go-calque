@@ -95,7 +95,7 @@ func hasJSONData(multimodal MultimodalInput) bool {
 	return false
 }
 
-// Helper functions for extracting options
+// GetSchema is a helper function for extracting options
 func GetSchema(opts *AgentOptions) *ResponseFormat {
 	if opts != nil {
 		return opts.Schema
@@ -103,6 +103,7 @@ func GetSchema(opts *AgentOptions) *ResponseFormat {
 	return nil
 }
 
+// GetTools is a helper function for extracting options
 func GetTools(opts *AgentOptions) []tools.Tool {
 	if opts != nil {
 		return opts.Tools

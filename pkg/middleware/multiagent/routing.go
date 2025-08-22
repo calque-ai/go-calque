@@ -195,7 +195,7 @@ func findHandlerByID(routeID string, routes []*routeHandler) calque.Handler {
 //	lb := multiagent.LoadBalancer(agent1, agent2, agent3)
 func LoadBalancer(handlers ...calque.Handler) calque.Handler {
 	if len(handlers) == 0 {
-		return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		return calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 			return fmt.Errorf("no handlers provided to load balancer")
 		})
 	}

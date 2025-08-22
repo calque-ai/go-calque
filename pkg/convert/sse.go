@@ -76,7 +76,7 @@ const (
 
 // RawContentFormatter sends content directly without wrapping (default).
 //
-// Input: content string, done flag
+// Input: content string, done flag (ignored)
 // Output: content as-is
 // Behavior: Simple pass-through formatter
 //
@@ -87,7 +87,7 @@ const (
 //
 //	formatter := convert.RawContentFormatter
 //	data := formatter("hello", false) // returns "hello"
-func RawContentFormatter(content string, done bool) any {
+func RawContentFormatter(content string, _ bool) any {
 	return content
 }
 

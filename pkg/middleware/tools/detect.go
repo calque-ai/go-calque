@@ -51,16 +51,16 @@ func DetectWithBufferSize(ifHandler, elseHandler calque.Handler, bufferSize int)
 
 		if !hasToolCalls(initialChunk) {
 			// No tools detected - stream to elseHandler
-			return streamToHandler(elseHandler, r.Context, initialChunk, r, w)
+			return streamToHandler(r.Context, elseHandler, initialChunk, r, w)
 		}
 
 		// Tools detected - buffer full input and pass to ifHandler
-		return bufferToHandler(ifHandler, r.Context, initialChunk, r, w)
+		return bufferToHandler(r.Context, ifHandler, initialChunk, r, w)
 	})
 }
 
 // streamToHandler streams the initial chunk and remaining data to the given handler
-func streamToHandler(handler calque.Handler, ctx context.Context, initialChunk []byte, r *calque.Request, w *calque.Response) error {
+func streamToHandler(ctx context.Context, handler calque.Handler, initialChunk []byte, r *calque.Request, w *calque.Response) error {
 	// Create a reader that provides the initial chunk followed by remaining data
 	combinedReader := io.MultiReader(bytes.NewReader(initialChunk), r.Data)
 	req := calque.NewRequest(ctx, combinedReader)
@@ -68,7 +68,7 @@ func streamToHandler(handler calque.Handler, ctx context.Context, initialChunk [
 }
 
 // bufferToHandler buffers all input and passes it to the given handler
-func bufferToHandler(handler calque.Handler, ctx context.Context, initialChunk []byte, r *calque.Request, w *calque.Response) error {
+func bufferToHandler(ctx context.Context, handler calque.Handler, initialChunk []byte, r *calque.Request, w *calque.Response) error {
 	// Read remaining data and combine with initial chunk
 	var remainingData []byte
 	err := calque.Read(r, &remainingData)

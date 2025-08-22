@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/invopop/jsonschema"
 )
 
@@ -24,7 +25,7 @@ type jsonSchemaOutputConverter[T any] struct {
 // ToJsonSchema creates an input converter that embeds JSON Schema with structured data.
 //
 // Input: struct with json and jsonschema tags, or JSON string
-// Output: *jsonSchemaInputConverter for pipeline input position
+// Output: calque.InputConverter for pipeline input position
 // Behavior: BUFFERED - generates JSON Schema and embeds with data as single JSON object
 //
 // Generates JSON Schema from struct definition using invopop/jsonschema library
@@ -48,7 +49,7 @@ type jsonSchemaOutputConverter[T any] struct {
 //
 //	task := Task{Type: "feature", Priority: "high", Hours: 8}
 //	err := pipeline.Run(ctx, convert.ToJsonSchema(task), &result)
-func ToJsonSchema(data any) *jsonSchemaInputConverter {
+func ToJsonSchema(data any) calque.InputConverter {
 	return &jsonSchemaInputConverter{
 		data: data,
 	}
@@ -57,7 +58,7 @@ func ToJsonSchema(data any) *jsonSchemaInputConverter {
 // FromJsonSchema creates an output converter that validates JSON against schema.
 //
 // Input: pointer to target variable for unmarshaling, generic type parameter for validation
-// Output: *jsonSchemaOutputConverter for pipeline output position
+// Output: calque.OutputConverter for pipeline output position
 // Behavior: BUFFERED - reads entire JSON stream, validates against schema, unmarshals to target
 //
 // Parses JSON data that may contain embedded schema information and unmarshals
@@ -81,7 +82,7 @@ func ToJsonSchema(data any) *jsonSchemaInputConverter {
 //	var task Task
 //	err := pipeline.Run(ctx, schemaInput, convert.FromJsonSchema[Task](&task))
 //	fmt.Printf("Task: %s priority, %d hours\n", task.Priority, task.Hours)
-func FromJsonSchema[T any](target any) *jsonSchemaOutputConverter[T] {
+func FromJsonSchema[T any](target any) calque.OutputConverter {
 	return &jsonSchemaOutputConverter[T]{
 		target: target,
 	}
@@ -94,11 +95,10 @@ func (j *jsonSchemaInputConverter) ToReader() (io.Reader, error) {
 	typ := val.Type()
 
 	// Handle pointers
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return nil, fmt.Errorf("input is nil pointer")
 		}
-		val = val.Elem()
 		typ = typ.Elem()
 	}
 

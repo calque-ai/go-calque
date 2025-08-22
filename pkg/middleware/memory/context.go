@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
@@ -81,10 +82,7 @@ func approximateTokenCount(data []byte) int {
 
 	// Add tokens for punctuation and special chars
 	for _, char := range text {
-		if !((char >= 'a' && char <= 'z') ||
-			(char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') ||
-			char == ' ') {
+		if !unicode.IsLetter(char) && !unicode.IsDigit(char) && char != ' ' {
 			tokenCount += 0.5
 		}
 	}

@@ -29,8 +29,13 @@ func TestYaml(t *testing.T) {
 			if converter == nil {
 				t.Fatal("Yaml() returned nil")
 			}
+
+			converterInput, ok := converter.(*yamlInputConverter)
+			if !ok {
+				t.Fatal("Yaml() did not return *yamlInputConverter")
+			}
 			// Just verify the converter was created with some data
-			if converter.data == nil && tt.data != nil {
+			if converterInput.data == nil && tt.data != nil {
 				t.Error("Yaml() data is nil when input was not nil")
 			}
 		})
@@ -44,7 +49,13 @@ func TestYamlOutput(t *testing.T) {
 	if converter == nil {
 		t.Fatal("YamlOutput() returned nil")
 	}
-	if converter.target != &target {
+
+	converterOutput, ok := converter.(*yamlOutputConverter)
+	if !ok {
+		t.Fatal("YamlOutput() did not return *yamlOutputConverter")
+	}
+
+	if converterOutput.target != &target {
 		t.Error("YamlOutput() target not set correctly")
 	}
 }
@@ -520,9 +531,9 @@ func TestYamlInputConverter_ToReader_IoReader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reader := strings.NewReader(tt.input)
 			y := &yamlInputConverter{data: reader}
-			
+
 			result, err := y.ToReader()
-			
+
 			if tt.wantErr {
 				if err == nil {
 					// For streaming validation, error might come when reading
@@ -533,22 +544,22 @@ func TestYamlInputConverter_ToReader_IoReader(t *testing.T) {
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("ToReader() error = %v", err)
 				return
 			}
-			
+
 			if result == nil {
 				t.Fatal("ToReader() returned nil reader")
 			}
-			
+
 			data, err := io.ReadAll(result)
 			if err != nil {
 				t.Errorf("Failed to read from result: %v", err)
 				return
 			}
-			
+
 			got := string(data)
 			if got != tt.want {
 				t.Errorf("ToReader() = %v, want %v", got, tt.want)
@@ -563,36 +574,36 @@ func TestYamlInputConverter_ToReader_IoReader_LargeData(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		largeObject[fmt.Sprintf("key_%d", i)] = fmt.Sprintf("value_%d", i)
 	}
-	
+
 	// Convert to YAML bytes first
 	yamlData, err := yaml.Marshal(largeObject)
 	if err != nil {
 		t.Fatalf("Failed to marshal large object: %v", err)
 	}
-	
+
 	reader := bytes.NewReader(yamlData)
 	y := &yamlInputConverter{data: reader}
-	
+
 	result, err := y.ToReader()
 	if err != nil {
 		t.Errorf("ToReader() error = %v", err)
 		return
 	}
-	
+
 	// Read result and verify it's valid YAML
 	data, err := io.ReadAll(result)
 	if err != nil {
 		t.Errorf("Failed to read from result: %v", err)
 		return
 	}
-	
+
 	// Verify the result is valid YAML by unmarshaling
 	var parsed map[string]any
 	if err := yaml.Unmarshal(data, &parsed); err != nil {
 		t.Errorf("Result is not valid YAML: %v", err)
 		return
 	}
-	
+
 	// Verify some content
 	if len(parsed) != 1000 {
 		t.Errorf("Parsed object length = %d, want 1000", len(parsed))
@@ -613,17 +624,17 @@ func TestYamlInputConverter_ToReader_IoReader_ErrorCases(t *testing.T) {
 			reader: &slowReader{data: []byte("invalid: [yaml")},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			y := &yamlInputConverter{data: tt.reader}
-			
+
 			result, err := y.ToReader()
 			if err != nil {
 				// Error during setup is acceptable
 				return
 			}
-			
+
 			// Error should occur when reading from result
 			_, err = io.ReadAll(result)
 			if err == nil {
@@ -776,14 +787,14 @@ items:
 value: 42
 array: [1, 2, 3]`
 		reader := strings.NewReader(yamlInput)
-		
+
 		// Convert io.Reader to reader via ToYaml
 		inputConverter := ToYaml(reader)
 		pipeReader, err := inputConverter.ToReader()
 		if err != nil {
 			t.Fatalf("ToReader() error = %v", err)
 		}
-		
+
 		// Convert back from reader
 		var result map[string]any
 		outputConverter := FromYaml(&result)
@@ -791,7 +802,7 @@ array: [1, 2, 3]`
 		if err != nil {
 			t.Fatalf("FromReader() error = %v", err)
 		}
-		
+
 		// Verify roundtrip
 		if result["name"] != "test" {
 			t.Errorf("name = %v, want test", result["name"])
@@ -799,7 +810,7 @@ array: [1, 2, 3]`
 		if result["value"] != uint64(42) {
 			t.Errorf("value = %v, want 42", result["value"])
 		}
-		
+
 		array := result["array"].([]any)
 		if len(array) != 3 {
 			t.Errorf("array length = %d, want 3", len(array))

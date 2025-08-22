@@ -175,7 +175,6 @@ func New(model string, opts ...Option) (*Client, error) {
 	}, nil
 }
 
-
 // RequestConfig holds configuration for a Gemini request
 type RequestConfig struct {
 	GenaiConfig *genai.GenerateContentConfig
@@ -203,7 +202,7 @@ func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Build request configuration based on input type
-	config, err := g.buildRequestConfig(input, ai.GetSchema(opts), ai.GetTools(opts), r.Context)
+	config, err := g.buildRequestConfig(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts))
 	if err != nil {
 		return err
 	}
@@ -215,9 +214,9 @@ func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 // writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
 func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calque.Response) error {
 	// Convert to OpenAI format
-	var toolCalls []map[string]any
+	toolCalls := make([]map[string]any, len(functionCalls))
 
-	for _, call := range functionCalls {
+	for i, call := range functionCalls {
 		// Convert Gemini args to JSON string
 		var argsJSON string
 		if call.Args != nil && call.Args["input"] != nil {
@@ -234,7 +233,7 @@ func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calq
 				"arguments": argsJSON,
 			},
 		}
-		toolCalls = append(toolCalls, toolCall)
+		toolCalls[i] = toolCall
 	}
 
 	// Use json.Marshal for proper JSON formatting
@@ -318,22 +317,21 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 
 // Convert your OpenAI JSON schema tools to Gemini format
 func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclaration {
-	var functions []*genai.FunctionDeclaration
+	functions := make([]*genai.FunctionDeclaration, len(tools))
 
-	for _, tool := range tools {
-		functions = append(functions, &genai.FunctionDeclaration{
+	for i, tool := range tools {
+		functions[i] = &genai.FunctionDeclaration{
 			Name:                 tool.Name(),
 			Description:          tool.Description(),
 			ParametersJsonSchema: tool.ParametersSchema(), // Use raw JSON schema like response format
-		})
+		}
 	}
 
 	return functions
 }
 
-
 // buildRequestConfig creates configuration for the request
-func (g *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool, ctx context.Context) (*RequestConfig, error) {
+func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool) (*RequestConfig, error) {
 	// Build config once
 	genaiConfig := g.buildGenerateConfig(schema)
 
@@ -458,4 +456,3 @@ func (g *Client) multimodalToParts(multimodal *ai.MultimodalInput) ([]genai.Part
 
 	return parts, nil
 }
-

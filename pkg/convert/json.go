@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Input converter for JSON data -> JSON bytes
@@ -22,7 +24,7 @@ type jsonOutputConverter struct {
 // ToJson creates an input converter for transforming structured data to JSON streams.
 //
 // Input: any data type (structs, maps, slices, JSON strings, JSON bytes)
-// Output: *jsonInputConverter for pipeline input position
+// Output: calque.InputConverter for pipeline input position
 // Behavior: STREAMING - uses json.Encoder for automatic streaming optimization
 //
 // Converts various data types to valid JSON format for pipeline processing:
@@ -40,14 +42,14 @@ type jsonOutputConverter struct {
 //
 //	user := User{Name: "Alice", Age: 30}
 //	err := pipeline.Run(ctx, convert.ToJson(user), &result)
-func ToJson(data any) *jsonInputConverter {
+func ToJson(data any) calque.InputConverter {
 	return &jsonInputConverter{data: data}
 }
 
 // FromJson creates an output converter for parsing JSON streams to structured data.
 //
 // Input: pointer to target variable for unmarshaling
-// Output: *jsonOutputConverter for pipeline output position
+// Output: calque.OutputConverter for pipeline output position
 // Behavior: STREAMING - uses json.Decoder for automatic streaming/buffering as needed
 //
 // Parses JSON data from pipeline output into the specified target type.
@@ -64,7 +66,7 @@ func ToJson(data any) *jsonInputConverter {
 //	var user User
 //	err := pipeline.Run(ctx, input, convert.FromJson(&user))
 //	fmt.Printf("User: %s, Age: %d\n", user.Name, user.Age)
-func FromJson(target any) *jsonOutputConverter {
+func FromJson(target any) calque.OutputConverter {
 	return &jsonOutputConverter{target: target}
 }
 

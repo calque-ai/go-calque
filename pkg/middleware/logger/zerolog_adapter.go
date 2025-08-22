@@ -45,7 +45,7 @@ func (z *ZerologAdapter) Log(ctx context.Context, level LogLevel, msg string, at
 }
 
 // IsLevelEnabled checks if the given level is enabled in zerolog
-func (z *ZerologAdapter) IsLevelEnabled(ctx context.Context, level LogLevel) bool {
+func (z *ZerologAdapter) IsLevelEnabled(_ context.Context, level LogLevel) bool {
 	zerologLevel := logLevelToZerolog(level)
 	return z.logger.GetLevel() <= zerologLevel
 }

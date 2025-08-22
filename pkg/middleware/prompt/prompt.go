@@ -25,7 +25,7 @@ func Template(templateStr string, data ...map[string]any) calque.Handler {
 	tmpl, err := template.New("prompt").Parse(templateStr)
 	if err != nil {
 		// Return a handler that always returns the parsing error
-		return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		return calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 			return fmt.Errorf("template parse error: %w", err)
 		})
 	}

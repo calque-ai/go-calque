@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/goccy/go-yaml"
 )
 
@@ -23,7 +24,7 @@ type yamlOutputConverter struct {
 // ToYaml creates an input converter for transforming structured data to YAML streams.
 //
 // Input: any data type (structs, maps, slices, YAML strings, YAML bytes)
-// Output: *yamlInputConverter for pipeline input position
+// Output: calque.InputConverter for pipeline input position
 // Behavior: STREAMING - uses yaml.Encoder for automatic streaming optimization
 //
 // Converts various data types to valid YAML format for pipeline processing:
@@ -43,14 +44,14 @@ type yamlOutputConverter struct {
 //
 //	config := Config{Database: {Host: "localhost", Port: 5432}}
 //	err := pipeline.Run(ctx, convert.ToYaml(config), &result)
-func ToYaml(data any) *yamlInputConverter {
+func ToYaml(data any) calque.InputConverter {
 	return &yamlInputConverter{data: data}
 }
 
 // FromYaml creates an output converter for parsing YAML streams to structured data.
 //
 // Input: pointer to target variable for unmarshaling
-// Output: *yamlOutputConverter for pipeline output position
+// Output: calque.OutputConverter for pipeline output position
 // Behavior: STREAMING - uses yaml.Decoder for automatic streaming/buffering as needed
 //
 // Parses YAML data from pipeline output into the specified target type.
@@ -69,7 +70,7 @@ func ToYaml(data any) *yamlInputConverter {
 //	var config Config
 //	err := pipeline.Run(ctx, input, convert.FromYaml(&config))
 //	fmt.Printf("DB: %s:%d\n", config.Database.Host, config.Database.Port)
-func FromYaml(target any) *yamlOutputConverter {
+func FromYaml(target any) calque.OutputConverter {
 	return &yamlOutputConverter{target: target}
 }
 
@@ -140,55 +141,51 @@ func (y *yamlInputConverter) createStreamingValidatingReader(reader io.Reader, e
 			n, err := teeReader.Read(buf)
 			if n > 0 {
 				totalRead += n
-
-				// Try validating what we have so far (every 2KB or so)
-				if totalRead >= 2048 || err == io.EOF {
-					var temp any
-					validateErr := yaml.Unmarshal(validationBuf.Bytes(), &temp)
-
-					if validateErr == nil {
-						// Valid complete YAML - flush everything and switch to direct streaming
-						if _, writeErr := io.Copy(bufWriter, &tempBuf); writeErr != nil {
-							pw.CloseWithError(writeErr)
-							return
-						}
-						bufWriter.Flush()
-
-						// Continue streaming rest directly (validation passed)
-						if err != io.EOF {
-							if _, copyErr := io.Copy(bufWriter, reader); copyErr != nil {
-								pw.CloseWithError(copyErr)
-								return
-							}
-						}
-						bufWriter.Flush()
-						return
-					} else if !isIncompleteYAMLError(validateErr) {
-						// Definite validation error (not incomplete YAML)
-						pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
-						return
-					}
-					// Otherwise continue reading (YAML might be incomplete)
-				}
 			}
 
-			if err == io.EOF {
-				// Final validation check
-				var temp any
-				if finalErr := yaml.Unmarshal(validationBuf.Bytes(), &temp); finalErr != nil {
-					pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, finalErr))
-					return
-				}
+			// Handle read errors first (except EOF)
+			if err != nil && err != io.EOF {
+				pw.CloseWithError(err)
+				return
+			}
 
-				// Stream final buffered data
+			// Skip validation if not enough data and not EOF
+			if totalRead < 2048 && err != io.EOF {
+				continue
+			}
+
+			// Validate YAML
+			var temp any
+			validateErr := yaml.Unmarshal(validationBuf.Bytes(), &temp)
+
+			// Handle validation success - flush and continue
+			if validateErr == nil {
 				if _, writeErr := io.Copy(bufWriter, &tempBuf); writeErr != nil {
 					pw.CloseWithError(writeErr)
 					return
 				}
 				bufWriter.Flush()
-				break
-			} else if err != nil {
-				pw.CloseWithError(err)
+
+				// Continue streaming rest directly if not EOF
+				if err != io.EOF {
+					if _, copyErr := io.Copy(bufWriter, reader); copyErr != nil {
+						pw.CloseWithError(copyErr)
+						return
+					}
+				}
+				bufWriter.Flush()
+				return
+			}
+
+			// Handle validation failure
+			if !isIncompleteYAMLError(validateErr) {
+				pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
+				return
+			}
+
+			// If EOF and still invalid, it's a final error
+			if err == io.EOF {
+				pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
 				return
 			}
 		}
