@@ -383,7 +383,7 @@ func (c *Client) multimodalToMessages(multimodal *ai.MultimodalInput) ([]openai.
 		return nil, fmt.Errorf("multimodal input cannot be nil")
 	}
 
-	var messageParts []openai.ChatMessagePart
+	messageParts := make([]openai.ChatMessagePart, 0, len(multimodal.Parts))
 
 	for _, part := range multimodal.Parts {
 		switch part.Type {
@@ -489,7 +489,7 @@ func (c *Client) applyChatConfig(req *openai.ChatCompletionRequest, schema *ai.R
 				// Convert jsonschema.Schema to OpenAI format
 				schemaBytes, err := json.Marshal(responseFormat.Schema)
 				if err == nil {
-					var schemaObj interface{}
+					var schemaObj any
 					if json.Unmarshal(schemaBytes, &schemaObj) == nil {
 						req.ResponseFormat = &openai.ChatCompletionResponseFormat{
 							Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
@@ -513,34 +513,19 @@ func (c *Client) applyChatConfig(req *openai.ChatCompletionRequest, schema *ai.R
 
 // convertToOpenAITools converts our tool interface to OpenAI's tool format
 func (c *Client) convertToOpenAITools(toolList []tools.Tool) []openai.Tool {
-	var openaiTools []openai.Tool
+	openaiTools := make([]openai.Tool, len(toolList))
 
-	for _, tool := range toolList {
-		schema := tool.ParametersSchema()
-
-		// Convert schema to OpenAI format
-		parameters := make(map[string]interface{})
-		properties := make(map[string]interface{})
-
-		if schema.Properties != nil {
-			for pair := schema.Properties.Oldest(); pair != nil; pair = pair.Next() {
-				prop := map[string]interface{}{
-					"type": pair.Value.Type,
-				}
-				if pair.Value.Description != "" {
-					prop["description"] = pair.Value.Description
-				}
-				properties[pair.Key] = prop
+	for i, tool := range toolList {
+		// Convert jsonschema.Schema to map for OpenAI parameters
+		var parameters map[string]any
+		if schema := tool.ParametersSchema(); schema != nil {
+			// Marshal and unmarshal to convert to generic map
+			if schemaBytes, err := json.Marshal(schema); err == nil {
+				json.Unmarshal(schemaBytes, &parameters)
 			}
 		}
 
-		parameters["type"] = "object"
-		parameters["properties"] = properties
-		if len(schema.Required) > 0 {
-			parameters["required"] = schema.Required
-		}
-
-		openaiTool := openai.Tool{
+		openaiTools[i] = openai.Tool{
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{
 				Name:        tool.Name(),
@@ -548,7 +533,6 @@ func (c *Client) convertToOpenAITools(toolList []tools.Tool) []openai.Tool {
 				Parameters:  parameters,
 			},
 		}
-		openaiTools = append(openaiTools, openaiTool)
 	}
 
 	return openaiTools
@@ -557,17 +541,16 @@ func (c *Client) convertToOpenAITools(toolList []tools.Tool) []openai.Tool {
 // writeOpenAIToolCalls formats OpenAI tool calls for the agent framework
 func (c *Client) writeOpenAIToolCalls(toolCalls []openai.ToolCall, w *calque.Response) error {
 	// Convert to the expected format
-	var formattedToolCalls []map[string]any
+	formattedToolCalls := make([]map[string]any, len(toolCalls))
 
-	for _, call := range toolCalls {
-		toolCall := map[string]any{
+	for i, call := range toolCalls {
+		formattedToolCalls[i] = map[string]any{
 			"type": "function",
 			"function": map[string]any{
 				"name":      call.Function.Name,
 				"arguments": call.Function.Arguments,
 			},
 		}
-		formattedToolCalls = append(formattedToolCalls, toolCall)
 	}
 
 	// Create the expected JSON structure
