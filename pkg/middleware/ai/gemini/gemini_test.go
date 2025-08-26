@@ -7,11 +7,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/invopop/jsonschema"
+	"google.golang.org/genai"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"github.com/invopop/jsonschema"
-	"google.golang.org/genai"
 )
 
 func TestNew(t *testing.T) {
@@ -417,7 +418,7 @@ func TestInputToParts(t *testing.T) {
 
 func TestConvertToolsToGeminiFunctions(t *testing.T) {
 	// Create a simple mock tool
-	tool := tools.Simple("calculator", "Performs calculations", func(input string) string {
+	tool := tools.Simple("calculator", "Performs calculations", func(_ string) string {
 		return "result"
 	})
 
@@ -540,7 +541,7 @@ func TestWriteFunctionCallsEmptyArgs(t *testing.T) {
 }
 
 // Mock tests for interface compliance
-func TestClientInterfaceCompliance(t *testing.T) {
+func TestClientInterfaceCompliance(_ *testing.T) {
 	// Test that Client implements ai.Client interface
 	var _ ai.Client = (*Client)(nil)
 }

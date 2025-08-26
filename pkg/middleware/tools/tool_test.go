@@ -9,9 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
+
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Mock handler for testing
@@ -228,7 +229,7 @@ func TestHandlerFunc(t *testing.T) {
 }
 
 func TestHandlerFuncWithError(t *testing.T) {
-	tool := HandlerFunc("error_tool", "Tool that returns error", func(req *calque.Request, res *calque.Response) error {
+	tool := HandlerFunc("error_tool", "Tool that returns error", func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("handler function error")
 	})
 
@@ -269,7 +270,7 @@ func TestToolInterfaceCompliance(t *testing.T) {
 	tools = append(tools, Simple("test", "desc", func(s string) string { return s }))
 
 	// HandlerFunc
-	tools = append(tools, HandlerFunc("test", "desc", func(req *calque.Request, res *calque.Response) error {
+	tools = append(tools, HandlerFunc("test", "desc", func(_ *calque.Request, _ *calque.Response) error {
 		return nil
 	}))
 
@@ -316,7 +317,7 @@ type errorReader struct {
 	err error
 }
 
-func (e *errorReader) Read(p []byte) (n int, err error) {
+func (e *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, e.err
 }
 

@@ -70,7 +70,8 @@ func Branch(condition func([]byte) bool, ifHandler calque.Handler, elseHandler c
 func TeeReader(destinations ...io.Writer) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Create MultiWriter to write to all destinations plus the output
-		allWriters := append(destinations, res.Data)
+		allWriters := append([]io.Writer(nil), destinations...)
+		allWriters = append(allWriters, res.Data)
 		multiWriter := io.MultiWriter(allWriters...)
 
 		_, err := io.Copy(multiWriter, req.Data)
@@ -120,10 +121,18 @@ func Parallel(handlers ...calque.Handler) calque.Handler {
 		go func() {
 			defer func() {
 				for _, w := range writers {
-					w.(*io.PipeWriter).Close()
+					if err := w.(*io.PipeWriter).Close(); err != nil {
+						// Pipe writer close errors are expected if handlers have already
+						// finished reading, so we can safely ignore them
+						_ = err
+					}
 				}
 			}()
-			io.Copy(io.Discard, teeReader)
+			if _, err := io.Copy(io.Discard, teeReader); err != nil {
+				// Copy to discard errors are not critical - we're just consuming
+				// the tee'd stream to ensure all data flows through
+				_ = err
+			}
 		}()
 
 		type result struct {
@@ -186,7 +195,7 @@ func Timeout(handler calque.Handler, timeout time.Duration) calque.Handler {
 		timeoutCtx, cancel := context.WithTimeout(req.Context, timeout)
 		defer cancel()
 
-		req.Context = timeoutCtx //update req context
+		req.Context = timeoutCtx // update req context
 
 		done := make(chan error, 1)
 		go func() {

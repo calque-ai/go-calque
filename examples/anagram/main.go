@@ -1,3 +1,6 @@
+// Package main demonstrates text processing workflows using the calque framework.
+// It showcases how to build complex text analysis pipelines by comparing
+// traditional implementations with framework-based approaches for anagram detection.
 package main
 
 import (
@@ -75,7 +78,7 @@ func GoCalqueFramework(words []string) map[string]map[string]struct{} {
 // Baseline implementation
 // This is a simple implementation that processes words into anagrams
 func Baseline(words []string) map[string]map[string]struct{} {
-	var swa []Anagrams
+	swa := make([]Anagrams, 0, len(words))
 	for _, w := range words {
 		if !moreThanOneChar(w) {
 			continue
@@ -176,17 +179,17 @@ func accumulateAnagrams() calque.Handler {
 		}
 
 		// Output in a parseable format
-		var lines_out []string
+		linesOut := make([]string, 0, len(result))
 		for key, wordSet := range result {
 			var wordList []string
 			for word := range wordSet {
 				wordList = append(wordList, word)
 			}
 			sort.Strings(wordList)
-			lines_out = append(lines_out, fmt.Sprintf("%s=%s", key, strings.Join(wordList, ",")))
+			linesOut = append(linesOut, fmt.Sprintf("%s=%s", key, strings.Join(wordList, ",")))
 		}
 
-		return calque.Write(w, strings.Join(lines_out, "\n"))
+		return calque.Write(w, strings.Join(linesOut, "\n"))
 	})
 }
 

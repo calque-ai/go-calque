@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// InMemoryCacheStore provides a simple in-memory cache implementation with TTL
-type InMemoryCacheStore struct {
+// InMemoryStore provides a simple in-memory cache implementation with TTL
+type InMemoryStore struct {
 	data map[string]*cacheEntry
 	mu   sync.RWMutex
 }
@@ -17,9 +17,9 @@ type cacheEntry struct {
 	ttl       time.Duration
 }
 
-// NewInMemoryCacheStore creates a new in-memory cache store
-func NewInMemoryCacheStore() *InMemoryCacheStore {
-	store := &InMemoryCacheStore{
+// NewInMemoryStore creates a new in-memory cache store
+func NewInMemoryStore() *InMemoryStore {
+	store := &InMemoryStore{
 		data: make(map[string]*cacheEntry),
 	}
 
@@ -30,7 +30,7 @@ func NewInMemoryCacheStore() *InMemoryCacheStore {
 }
 
 // Get retrieves data for a key
-func (s *InMemoryCacheStore) Get(key string) ([]byte, error) {
+func (s *InMemoryStore) Get(key string) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -51,7 +51,7 @@ func (s *InMemoryCacheStore) Get(key string) ([]byte, error) {
 }
 
 // Set stores data for a key with TTL
-func (s *InMemoryCacheStore) Set(key string, value []byte, ttl time.Duration) error {
+func (s *InMemoryStore) Set(key string, value []byte, ttl time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -69,7 +69,7 @@ func (s *InMemoryCacheStore) Set(key string, value []byte, ttl time.Duration) er
 }
 
 // Delete removes data for a key
-func (s *InMemoryCacheStore) Delete(key string) error {
+func (s *InMemoryStore) Delete(key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -78,7 +78,7 @@ func (s *InMemoryCacheStore) Delete(key string) error {
 }
 
 // Clear removes all cached data
-func (s *InMemoryCacheStore) Clear() error {
+func (s *InMemoryStore) Clear() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -87,7 +87,7 @@ func (s *InMemoryCacheStore) Clear() error {
 }
 
 // Exists checks if a key exists and hasn't expired
-func (s *InMemoryCacheStore) Exists(key string) bool {
+func (s *InMemoryStore) Exists(key string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -101,7 +101,7 @@ func (s *InMemoryCacheStore) Exists(key string) bool {
 }
 
 // List returns all non-expired keys
-func (s *InMemoryCacheStore) List() []string {
+func (s *InMemoryStore) List() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -118,7 +118,7 @@ func (s *InMemoryCacheStore) List() []string {
 }
 
 // backgroundCleanup runs periodically to remove expired entries
-func (s *InMemoryCacheStore) backgroundCleanup() {
+func (s *InMemoryStore) backgroundCleanup() {
 	ticker := time.NewTicker(5 * time.Minute) // Cleanup every 5 minutes
 	defer ticker.Stop()
 
@@ -128,7 +128,7 @@ func (s *InMemoryCacheStore) backgroundCleanup() {
 }
 
 // cleanup removes expired entries (internal method)
-func (s *InMemoryCacheStore) cleanup() {
+func (s *InMemoryStore) cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

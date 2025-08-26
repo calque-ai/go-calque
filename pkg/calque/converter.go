@@ -1,3 +1,4 @@
+// Package calque provides a flexible data processing framework with flow-based operations.
 package calque
 
 import (
@@ -17,6 +18,7 @@ type OutputConverter interface {
 	FromReader(reader io.Reader) error
 }
 
+// Converter combines InputConverter and OutputConverter interfaces for bidirectional data conversion.
 type Converter interface {
 	InputConverter
 	OutputConverter

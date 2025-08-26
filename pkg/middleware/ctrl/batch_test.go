@@ -30,7 +30,7 @@ func TestBatch(t *testing.T) {
 		return calque.Write(res, strings.ToUpper(input))
 	})
 
-	errorHandler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	errorHandler := calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("handler error")
 	})
 
@@ -291,8 +291,8 @@ func TestBatchResponseSplittingFailure(t *testing.T) {
 	}
 }
 
-func TestBatchEmptyBatch(t *testing.T) {
-	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+func TestBatchEmptyBatch(_ *testing.T) {
+	handler := calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
 		return calque.Write(res, "should-not-be-called")
 	})
 

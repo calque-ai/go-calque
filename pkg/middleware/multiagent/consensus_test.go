@@ -12,7 +12,7 @@ import (
 
 // Mock agent that returns a fixed response
 func mockAgent(response string) calque.Handler {
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	return calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
 		return calque.Write(res, []byte(response))
 	})
 }
@@ -120,7 +120,7 @@ func TestConsensus_VoteFunctionError(t *testing.T) {
 	}
 
 	// Vote function that always returns an error
-	errorVote := func(responses []string) (string, error) {
+	errorVote := func(_ []string) (string, error) {
 		return "", fmt.Errorf("voting error")
 	}
 

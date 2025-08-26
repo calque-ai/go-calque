@@ -1,3 +1,6 @@
+// Package ctrl provides control flow middleware for the calque framework.
+// It implements batching, parallel execution, and other flow control patterns
+// to optimize performance and coordinate multiple handlers in complex workflows.
 package ctrl
 
 import (
@@ -13,9 +16,13 @@ import (
 // batch items. It's designed to be unlikely to appear in normal data content.
 const DefaultBatchSeparator = "\n---BATCH_SEPARATOR---\n"
 
+// BatchConfig holds configuration for the Batch middleware
 type BatchConfig struct {
-	MaxSize   int
-	MaxWait   time.Duration
+	// MaxSize is the maximum number of requests to batch together
+	MaxSize int
+	// MaxWait is the maximum time to wait before processing a batch
+	MaxWait time.Duration
+	// Separator is the string used to separate individual requests in the batch
 	Separator string
 }
 

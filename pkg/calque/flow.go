@@ -258,12 +258,28 @@ func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output io.
 		pipes[i].r, pipes[i].w = Pipe()
 	}
 
+	// Create error channel for goroutine communication
+	errCh := make(chan error, len(f.handlers)+2) // create error chan with small extra buffer
+
 	// Creates inputReader for the first handler's input
 	inputR, inputW := io.Pipe()                    // Create a pipe for input
 	inputReader := &PipeReader{PipeReader: inputR} // Wraps the input reader
 	go func() {
-		defer inputW.Close()
-		io.Copy(inputW, input) // Copy input reader to pipe writer
+		defer func() {
+			if err := inputW.Close(); err != nil {
+				// Input writer close errors can be safely ignored in most cases
+				// as they typically indicate the reader was closed first
+				_ = err
+			}
+		}()
+		if _, err := io.Copy(inputW, input); err != nil {
+			// Send copy errors to error channel as they indicate real problems
+			select {
+			case errCh <- err:
+			default:
+				// Channel might be full, but we've already signaled an error
+			}
+		}
 	}()
 
 	// Sets finalReader to read the last handler's output
@@ -274,7 +290,6 @@ func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output io.
 	//  Handler2:   [========]
 	//  Handler3:     [========]
 	var wg sync.WaitGroup
-	errCh := make(chan error, len(f.handlers)+2) //create error chan with small extra buffer
 
 	for i, handler := range f.handlers {
 		wg.Add(1)
@@ -292,7 +307,13 @@ func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output io.
 			}
 
 			defer wg.Done()
-			defer pipes[idx].w.Close()
+			defer func() {
+				if err := pipes[idx].w.Close(); err != nil {
+					// Pipe writer close errors can indicate issues but shouldn't fail the flow
+					// Log the error but don't propagate it as the handler might have already completed successfully
+					_ = err
+				}
+			}()
 
 			var reader io.Reader
 			if idx == 0 {

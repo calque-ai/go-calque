@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/invopop/jsonschema"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"github.com/invopop/jsonschema"
 )
 
 // MockClient implements the Client interface for testing
@@ -130,21 +131,21 @@ func (m *MockClient) Chat(req *calque.Request, res *calque.Response, opts *Agent
 // simulateToolCalls generates mock tool calls in OpenAI format
 func (m *MockClient) simulateToolCalls(res *calque.Response) error {
 	// Convert mock tool calls to OpenAI format
-	var toolCalls []map[string]interface{}
+	toolCalls := make([]map[string]any, len(m.toolCalls))
 
-	for _, call := range m.toolCalls {
-		toolCall := map[string]interface{}{
+	for i, call := range m.toolCalls {
+		toolCall := map[string]any{
 			"type": "function",
-			"function": map[string]interface{}{
+			"function": map[string]any{
 				"name":      call.Name,
 				"arguments": call.Arguments,
 			},
 		}
-		toolCalls = append(toolCalls, toolCall)
+		toolCalls[i] = toolCall
 	}
 
 	// Create OpenAI format JSON
-	result := map[string]interface{}{
+	result := map[string]any{
 		"tool_calls": toolCalls,
 	}
 

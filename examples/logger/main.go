@@ -1,3 +1,6 @@
+// Package main demonstrates logging middleware capabilities with the calque framework.
+// It showcases different logging backends (standard log, slog, zerolog) and various
+// logging patterns for debugging and monitoring data flows in production systems.
 package main
 
 import (
@@ -35,7 +38,7 @@ func setupSimpleExample() {
 		Use(text.Transform(func(s string) string {
 			return fmt.Sprintf("Processed: %s", s)
 		})).
-		Use(logger.HeadTail("FINAL_CHECK", 20, 15)) // Log n bytes of the begining and end of an input (buffered)
+		Use(logger.HeadTail("FINAL_CHECK", 20, 15)) // Log n bytes of the beginning and end of an input (buffered)
 
 	input := "Quick debugging example"
 	var result string

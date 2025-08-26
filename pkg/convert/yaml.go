@@ -7,23 +7,24 @@ import (
 	"io"
 	"strings"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/goccy/go-yaml"
 )
 
-// Input converter for YAML data -> YAML bytes
-type yamlInputConverter struct {
+// YAMLInputConverter is an input converter for transforming structured data to YAML streams.
+type YAMLInputConverter struct {
 	data any
 }
 
-// Output converter for YAML bytes -> any type
-type yamlOutputConverter struct {
+// YAMLOutputConverter is an output converter for parsing YAML streams to structured data.
+type YAMLOutputConverter struct {
 	target any
 }
 
-// ToYaml creates an input converter for transforming structured data to YAML streams.
+// ToYAML creates an input converter for transforming structured data to YAML streams.
 //
 // Input: any data type (structs, maps, slices, YAML strings, YAML bytes)
-// Output: *yamlInputConverter for pipeline input position
+// Output: calque.InputConverter for pipeline input position
 // Behavior: STREAMING - uses yaml.Encoder for automatic streaming optimization
 //
 // Converts various data types to valid YAML format for pipeline processing:
@@ -42,15 +43,15 @@ type yamlOutputConverter struct {
 //	}
 //
 //	config := Config{Database: {Host: "localhost", Port: 5432}}
-//	err := pipeline.Run(ctx, convert.ToYaml(config), &result)
-func ToYaml(data any) *yamlInputConverter {
-	return &yamlInputConverter{data: data}
+//	err := pipeline.Run(ctx, convert.ToYAML(config), &result)
+func ToYAML(data any) calque.InputConverter {
+	return &YAMLInputConverter{data: data}
 }
 
-// FromYaml creates an output converter for parsing YAML streams to structured data.
+// FromYAML creates an output converter for parsing YAML streams to structured data.
 //
 // Input: pointer to target variable for unmarshaling
-// Output: *yamlOutputConverter for pipeline output position
+// Output: calque.OutputConverter for pipeline output position
 // Behavior: STREAMING - uses yaml.Decoder for automatic streaming/buffering as needed
 //
 // Parses YAML data from pipeline output into the specified target type.
@@ -67,20 +68,26 @@ func ToYaml(data any) *yamlInputConverter {
 //	}
 //
 //	var config Config
-//	err := pipeline.Run(ctx, input, convert.FromYaml(&config))
+//	err := pipeline.Run(ctx, input, convert.FromYAML(&config))
 //	fmt.Printf("DB: %s:%d\n", config.Database.Host, config.Database.Port)
-func FromYaml(target any) *yamlOutputConverter {
-	return &yamlOutputConverter{target: target}
+func FromYAML(target any) calque.OutputConverter {
+	return &YAMLOutputConverter{target: target}
 }
 
-// InputConverter interface
-func (y *yamlInputConverter) ToReader() (io.Reader, error) {
+// ToReader converts structured data to an io.Reader for YAML processing.
+func (y *YAMLInputConverter) ToReader() (io.Reader, error) {
 	switch v := y.data.(type) {
 	case map[string]any, map[any]any, []any:
 		// Use yaml.Encoder for streaming marshal of structured data
 		pr, pw := io.Pipe()
 		go func() {
-			defer pw.Close()
+			defer func() {
+				if err := pw.Close(); err != nil {
+					// Pipe writer close errors here are expected if we already called CloseWithError
+					// for encoding failures, so we can safely ignore them
+					_ = err
+				}
+			}()
 			encoder := yaml.NewEncoder(pw)
 			if err := encoder.Encode(v); err != nil {
 				pw.CloseWithError(fmt.Errorf("failed to encode YAML: %w", err))
@@ -108,7 +115,13 @@ func (y *yamlInputConverter) ToReader() (io.Reader, error) {
 		// Use yaml.Encoder for streaming marshal of any other type
 		pr, pw := io.Pipe()
 		go func() {
-			defer pw.Close()
+			defer func() {
+				if err := pw.Close(); err != nil {
+					// Pipe writer close errors here are expected if we already called CloseWithError
+					// for encoding failures, so we can safely ignore them
+					_ = err
+				}
+			}()
 			encoder := yaml.NewEncoder(pw)
 			if err := encoder.Encode(y.data); err != nil {
 				pw.CloseWithError(fmt.Errorf("failed to encode YAML for type %T: %w", y.data, err))
@@ -119,81 +132,126 @@ func (y *yamlInputConverter) ToReader() (io.Reader, error) {
 }
 
 // createStreamingValidatingReader creates a streaming reader with chunked validation for io.Reader inputs
-func (y *yamlInputConverter) createStreamingValidatingReader(reader io.Reader, errorPrefix string) (io.Reader, error) {
+func (y *YAMLInputConverter) createStreamingValidatingReader(reader io.Reader, errorPrefix string) (io.Reader, error) {
 	pr, pw := io.Pipe()
 	go func() {
-		defer pw.Close()
-
-		// Use buffered writer to control output flow
-		bufWriter := bufio.NewWriterSize(pw, 4096) // 4KB buffer
-		var validationBuf bytes.Buffer
-
-		// TeeReader splits input: to validation buffer AND to a temp buffer for later output
-		var tempBuf bytes.Buffer
-		teeReader := io.TeeReader(reader, io.MultiWriter(&validationBuf, &tempBuf))
-
-		// Read in small chunks to allow early validation
-		buf := make([]byte, 1024) // 1KB chunks
-		totalRead := 0
-
-		for {
-			n, err := teeReader.Read(buf)
-			if n > 0 {
-				totalRead += n
-
-				// Try validating what we have so far (every 2KB or so)
-				if totalRead >= 2048 || err == io.EOF {
-					var temp any
-					validateErr := yaml.Unmarshal(validationBuf.Bytes(), &temp)
-
-					if validateErr == nil {
-						// Valid complete YAML - flush everything and switch to direct streaming
-						if _, writeErr := io.Copy(bufWriter, &tempBuf); writeErr != nil {
-							pw.CloseWithError(writeErr)
-							return
-						}
-						bufWriter.Flush()
-
-						// Continue streaming rest directly (validation passed)
-						if err != io.EOF {
-							if _, copyErr := io.Copy(bufWriter, reader); copyErr != nil {
-								pw.CloseWithError(copyErr)
-								return
-							}
-						}
-						bufWriter.Flush()
-						return
-					} else if !isIncompleteYAMLError(validateErr) {
-						// Definite validation error (not incomplete YAML)
-						pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
-						return
-					}
-					// Otherwise continue reading (YAML might be incomplete)
-				}
+		defer func() {
+			if err := pw.Close(); err != nil {
+				// Pipe writer close errors here are expected if we already called CloseWithError
+				// for encoding failures, so we can safely ignore them
+				_ = err
 			}
-
-			if err == io.EOF {
-				// Final validation check
-				var temp any
-				if finalErr := yaml.Unmarshal(validationBuf.Bytes(), &temp); finalErr != nil {
-					pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, finalErr))
-					return
-				}
-
-				// Stream final buffered data
-				if _, writeErr := io.Copy(bufWriter, &tempBuf); writeErr != nil {
-					pw.CloseWithError(writeErr)
-					return
-				}
-				bufWriter.Flush()
-				break
-			} else if err != nil {
-				pw.CloseWithError(err)
-				return
-			}
-		}
+		}()
+		y.processStreamingValidation(reader, pw, errorPrefix)
 	}()
 	return pr, nil
+}
+
+// processStreamingValidation handles the complex streaming validation logic
+func (y *YAMLInputConverter) processStreamingValidation(reader io.Reader, pw *io.PipeWriter, errorPrefix string) {
+	// Use buffered writer to control output flow
+	bufWriter := bufio.NewWriterSize(pw, 4096) // 4KB buffer
+	var validationBuf bytes.Buffer
+
+	// TeeReader splits input: to validation buffer AND to a temp buffer for later output
+	var tempBuf bytes.Buffer
+	teeReader := io.TeeReader(reader, io.MultiWriter(&validationBuf, &tempBuf))
+
+	// Read in small chunks to allow early validation
+	buf := make([]byte, 1024) // 1KB chunks
+	totalRead := 0
+	validationPassed := false
+
+	for {
+		n, err := teeReader.Read(buf)
+		if n > 0 {
+			totalRead += n
+
+			// Try validating what we have so far (every 2KB or so)
+			if totalRead >= 2048 || err == io.EOF {
+				if y.handleValidationCheck(&validationBuf, &tempBuf, bufWriter, pw, errorPrefix) {
+					validationPassed = true
+					break
+				}
+			}
+		}
+
+		if err == io.EOF {
+			if y.handleFinalValidation(&validationBuf, &tempBuf, bufWriter, pw, errorPrefix) {
+				return
+			}
+			break
+		} else if err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+	}
+
+	// If validation passed early, continue reading the rest of the data
+	if validationPassed {
+		// Continue reading from the teeReader to get all remaining data
+		if _, err := io.Copy(bufWriter, teeReader); err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+		if err := bufWriter.Flush(); err != nil {
+			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			return
+		}
+	}
+}
+
+// handleValidationCheck processes validation during streaming
+func (y *YAMLInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
+	var temp any
+	validateErr := yaml.Unmarshal(validationBuf.Bytes(), &temp)
+
+	if validateErr == nil {
+		// Valid complete YAML - flush everything and switch to direct streaming
+		if y.flushBufferedData(tempBuf, bufWriter, pw) {
+			return true
+		}
+
+		// Continue streaming rest directly (validation passed)
+		// Note: We can't continue streaming from the original reader here
+		// as it's already been consumed by the teeReader
+		if err := bufWriter.Flush(); err != nil {
+			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			return true
+		}
+		return true
+	} else if !isIncompleteYAMLError(validateErr) {
+		// Definite validation error (not incomplete YAML)
+		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
+		return true
+	}
+	// Otherwise continue reading (YAML might be incomplete)
+	return false
+}
+
+// handleFinalValidation processes final validation at EOF
+func (y *YAMLInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
+	var temp any
+	if finalErr := yaml.Unmarshal(validationBuf.Bytes(), &temp); finalErr != nil {
+		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, finalErr))
+		return true
+	}
+
+	// Stream final buffered data
+	return y.flushBufferedData(tempBuf, bufWriter, pw)
+}
+
+// flushBufferedData flushes buffered data to the writer
+func (y *YAMLInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter) bool {
+	if _, writeErr := io.Copy(bufWriter, tempBuf); writeErr != nil {
+		pw.CloseWithError(writeErr)
+		return true
+	}
+	if err := bufWriter.Flush(); err != nil {
+		pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+		return true
+	}
+	return false
 }
 
 // Helper function to determine if YAML error is due to incomplete data
@@ -210,8 +268,8 @@ func isIncompleteYAMLError(err error) bool {
 		strings.Contains(errStr, "mapping value is not allowed in this context")
 }
 
-// OutputConverter interface
-func (y *yamlOutputConverter) FromReader(reader io.Reader) error {
+// FromReader reads YAML data from an io.Reader into the target variable.
+func (y *YAMLOutputConverter) FromReader(reader io.Reader) error {
 	// Use yaml.Decoder for streaming decode
 	decoder := yaml.NewDecoder(reader)
 	if err := decoder.Decode(y.target); err != nil {

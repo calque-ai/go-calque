@@ -33,7 +33,7 @@ func createMockSearch() Tool {
 }
 
 func createErrorTool() Tool {
-	return HandlerFunc("error_tool", "Tool that always errors", func(req *calque.Request, res *calque.Response) error {
+	return HandlerFunc("error_tool", "Tool that always errors", func(_ *calque.Request, _ *calque.Response) error {
 		return errors.New("tool execution failed")
 	})
 }
@@ -53,7 +53,7 @@ func TestExecute(t *testing.T) {
 			name:    "no tool calls - pass through",
 			tools:   []Tool{calc, search},
 			input:   "This is just regular text with no tool calls.",
-			isError: true, //Should error execute assumes tool calls were detected already.
+			isError: true, // Should error execute assumes tool calls were detected already.
 		},
 		{
 			name:     "JSON tool call format",
@@ -371,11 +371,11 @@ func TestExecuteWithEmptyContext(t *testing.T) {
 
 func TestExecuteToolCallsConcurrency(t *testing.T) {
 	// Create tools with varying execution times to test concurrency
-	fastTool := Simple("fast", "Fast tool", func(args string) string {
+	fastTool := Simple("fast", "Fast tool", func(_ string) string {
 		return "fast_result"
 	})
-	
-	slowTool := Simple("slow", "Slow tool", func(args string) string {
+
+	slowTool := Simple("slow", "Slow tool", func(_ string) string {
 		time.Sleep(50 * time.Millisecond)
 		return "slow_result"
 	})
@@ -452,7 +452,7 @@ func TestExecuteToolCallsConcurrency(t *testing.T) {
 			// Execute with timeout to catch any deadlocks/hangs
 			done := make(chan []ToolResult, 1)
 			errChan := make(chan error, 1)
-			
+
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -475,7 +475,7 @@ func TestExecuteToolCallsConcurrency(t *testing.T) {
 			select {
 			case results := <-done:
 				elapsed := time.Since(start)
-				
+
 				if tt.expectError {
 					t.Error("Expected error but function completed successfully")
 					return
@@ -491,18 +491,18 @@ func TestExecuteToolCallsConcurrency(t *testing.T) {
 					if result.Error != "" {
 						t.Errorf("Tool call %d failed: %s", i, result.Error)
 					}
-					
+
 					expectedResult := "fast_result"
 					if toolCalls[i].Name == "slow" {
 						expectedResult = "slow_result"
 					}
-					
+
 					if string(result.Result) != expectedResult {
 						t.Errorf("Tool call %d result = %q, want %q", i, string(result.Result), expectedResult)
 					}
 				}
 
-				t.Logf("Completed %d tool calls in %v with max_concurrent=%d", 
+				t.Logf("Completed %d tool calls in %v with max_concurrent=%d",
 					tt.numToolCalls, elapsed, tt.config.MaxConcurrentTools)
 
 			case err := <-errChan:

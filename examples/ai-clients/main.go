@@ -1,3 +1,6 @@
+// Package main demonstrates AI client integration with the calque framework.
+// It showcases how to use different AI providers (Ollama and Gemini) with
+// various middleware components to build intelligent conversational workflows.
 package main
 
 import (

@@ -1,3 +1,6 @@
+// Package logger provides structured logging middleware for the calque framework.
+// It implements level-based logging with context support and adapters for various
+// logging backends to provide consistent logging across the application.
 package logger
 
 import (
@@ -18,23 +21,23 @@ func NewStandardAdapter(logger *log.Logger) *StandardAdapter {
 }
 
 // Log implements LoggerInterface - ignores level and context for standard log
-func (s *StandardAdapter) Log(ctx context.Context, level LogLevel, msg string, attrs ...Attribute) {
+func (s *StandardAdapter) Log(_ context.Context, _ LogLevel, msg string, attrs ...Attribute) {
 	if len(attrs) == 0 {
 		s.logger.Printf("%s", msg)
 		return
 	}
 
 	// Format fields as key=value pairs
-	var attrStrs []string
-	for _, attr := range attrs {
-		attrStrs = append(attrStrs, fmt.Sprintf("%s=%v", attr.Key, attr.Value))
+	attrStrs := make([]string, len(attrs))
+	for i, attr := range attrs {
+		attrStrs[i] = fmt.Sprintf("%s=%v", attr.Key, attr.Value)
 	}
 
 	s.logger.Printf("%s %s", msg, strings.Join(attrStrs, " "))
 }
 
 // IsLevelEnabled always returns true for standard log (no level filtering)
-func (s *StandardAdapter) IsLevelEnabled(ctx context.Context, level LogLevel) bool {
+func (s *StandardAdapter) IsLevelEnabled(_ context.Context, _ LogLevel) bool {
 	return true // Standard log doesn't have level filtering
 }
 

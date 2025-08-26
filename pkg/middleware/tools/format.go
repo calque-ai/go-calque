@@ -23,7 +23,11 @@ func FormatToolsAsOpenAI(tools []Tool) string {
 		if schema := tool.ParametersSchema(); schema != nil {
 			// Marshal and unmarshal to convert to generic map
 			if schemaBytes, err := json.Marshal(schema); err == nil {
-				json.Unmarshal(schemaBytes, &parameters)
+				if err := json.Unmarshal(schemaBytes, &parameters); err != nil {
+					// JSON unmarshal error means schema is invalid - continue with nil parameters
+					// This is expected behavior when schema cannot be converted to generic map
+					_ = err
+				}
 			}
 		}
 

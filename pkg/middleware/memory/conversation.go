@@ -167,7 +167,9 @@ func (cm *ConversationMemory) Input(key string) calque.Handler {
 			Role:    "user",
 			Content: []byte(currentInput),
 		}
-		updatedHistory := append(history, newMessage)
+		updatedHistory := make([]Message, len(history), len(history)+1)
+		copy(updatedHistory, history)
+		updatedHistory = append(updatedHistory, newMessage)
 
 		if err := cm.saveConversation(key, updatedHistory); err != nil {
 			return fmt.Errorf("failed to save conversation: %w", err)
@@ -219,7 +221,9 @@ func (cm *ConversationMemory) Output(key string) calque.Handler {
 				Role:    "assistant",
 				Content: responseBytes,
 			}
-			updatedHistory := append(history, newMessage)
+			updatedHistory := make([]Message, len(history), len(history)+1)
+			copy(updatedHistory, history)
+			updatedHistory = append(updatedHistory, newMessage)
 
 			if err := cm.saveConversation(key, updatedHistory); err != nil {
 				return fmt.Errorf("failed to save conversation: %w", err)

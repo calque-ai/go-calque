@@ -55,10 +55,10 @@ func createAgentFlow() *calque.Flow {
 
 	flow := calque.NewFlow(config)
 	flow.
-		Use(logger.Head("HTTP_REQUEST", 200)).                                    // Log incoming request
-		Use(text.Transform(func(s string) string { return strings.ToUpper(s) })). // Transform message to uppercase
-		Use(text.Transform(func(s string) string { return "Processed: " + s })).  // Add prefix
-		Use(logger.Head("PROCESSED_MESSAGE", 200))                                // Log processed result
+		Use(logger.Head("HTTP_REQUEST", 200)).                                   // Log incoming request
+		Use(text.Transform(strings.ToUpper)).                                    // Transform message to uppercase
+		Use(text.Transform(func(s string) string { return "Processed: " + s })). // Add prefix
+		Use(logger.Head("PROCESSED_MESSAGE", 200))                               // Log processed result
 
 	return flow
 }

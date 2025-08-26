@@ -8,35 +8,31 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/invopop/jsonschema"
 )
 
-// Input converter for structured data -> JSON with JSON Schema
-type jsonSchemaInputConverter struct {
+// SchemaInputConverter for structured data -> JSON Schema validated data
+type SchemaInputConverter struct {
 	data any
 }
 
-// Output converter for JSON Schema validated data -> structured data
-type jsonSchemaOutputConverter[T any] struct {
+// SchemaOutputConverter for JSON Schema validated data -> structured data
+type SchemaOutputConverter[T any] struct {
 	target any
 }
 
-// ToJsonSchema creates an input converter that embeds JSON Schema with structured data.
+// ToJSONSchema creates an input converter for transforming structured data to JSON streams.
 //
-// Input: struct with json and jsonschema tags, or JSON string
-// Output: *jsonSchemaInputConverter for pipeline input position
-// Behavior: BUFFERED - generates JSON Schema and embeds with data as single JSON object
+// Input: any data type (structs, maps, slices, JSON strings, JSON bytes)
+// Output: calque.InputConverter for pipeline input position
+// Behavior: STREAMING - uses json.Encoder for automatic streaming optimization
 //
-// Generates JSON Schema from struct definition using invopop/jsonschema library
-// and creates a combined JSON object containing both the data and schema.
-// This provides AI systems with both the data and its structural definition
-// for better context understanding and validation.
-//
-// The jsonschema struct tags define validation rules:
-// - required: field is mandatory
-// - enum: field must be one of specified values
-// - minimum/maximum: numeric constraints
-// - description: field documentation
+// Converts various data types to valid JSON format for pipeline processing:
+// - Structs/maps/slices: Marshaled using encoding/json
+// - JSON strings: Validated and passed through
+// - JSON bytes: Validated and passed through
+// - Other types: Attempted JSON marshaling
 //
 // Example usage:
 //
@@ -47,21 +43,21 @@ type jsonSchemaOutputConverter[T any] struct {
 //	}
 //
 //	task := Task{Type: "feature", Priority: "high", Hours: 8}
-//	err := pipeline.Run(ctx, convert.ToJsonSchema(task), &result)
-func ToJsonSchema(data any) *jsonSchemaInputConverter {
-	return &jsonSchemaInputConverter{
+//	err := pipeline.Run(ctx, convert.ToJSONSchema(task), &result)
+func ToJSONSchema(data any) calque.InputConverter {
+	return &SchemaInputConverter{
 		data: data,
 	}
 }
 
-// FromJsonSchema creates an output converter that validates JSON against schema.
+// FromJSONSchema creates an output converter that validates JSON against schema.
 //
 // Input: pointer to target variable for unmarshaling, generic type parameter for validation
-// Output: *jsonSchemaOutputConverter for pipeline output position
+// Output: calque.OutputConverter for pipeline output position
 // Behavior: BUFFERED - reads entire JSON stream, validates against schema, unmarshals to target
 //
 // Parses JSON data that may contain embedded schema information and unmarshals
-// to the specified target type. Handles both schema-embedded format (from ToJsonSchema)
+// to the specified target type. Handles both schema-embedded format (from ToJSONSchema)
 // and direct JSON format. Uses the generic type parameter to determine expected
 // structure and validation rules.
 //
@@ -79,26 +75,25 @@ func ToJsonSchema(data any) *jsonSchemaInputConverter {
 //	}
 //
 //	var task Task
-//	err := pipeline.Run(ctx, schemaInput, convert.FromJsonSchema[Task](&task))
+//	err := pipeline.Run(ctx, schemaInput, convert.FromJSONSchema[Task](&task))
 //	fmt.Printf("Task: %s priority, %d hours\n", task.Priority, task.Hours)
-func FromJsonSchema[T any](target any) *jsonSchemaOutputConverter[T] {
-	return &jsonSchemaOutputConverter[T]{
+func FromJSONSchema[T any](target any) calque.OutputConverter {
+	return &SchemaOutputConverter[T]{
 		target: target,
 	}
 }
 
-// InputConverter interface
-func (j *jsonSchemaInputConverter) ToReader() (io.Reader, error) {
+// ToReader implements inputConverter interface
+func (j *SchemaInputConverter) ToReader() (io.Reader, error) {
 	// Get the struct type and value
 	val := reflect.ValueOf(j.data)
 	typ := val.Type()
 
 	// Handle pointers
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return nil, fmt.Errorf("input is nil pointer")
 		}
-		val = val.Elem()
 		typ = typ.Elem()
 	}
 
@@ -130,8 +125,8 @@ func (j *jsonSchemaInputConverter) ToReader() (io.Reader, error) {
 	return bytes.NewReader(jsonBytes), nil
 }
 
-// OutputConverter interface
-func (j *jsonSchemaOutputConverter[T]) FromReader(reader io.Reader) error {
+// FromReader implements outputConverter interface
+func (j *SchemaOutputConverter[T]) FromReader(reader io.Reader) error {
 	// Buffer for fallback if direct decode fails
 	var buf bytes.Buffer
 	teeReader := io.TeeReader(reader, &buf)

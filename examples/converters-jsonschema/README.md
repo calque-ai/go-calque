@@ -10,15 +10,15 @@ This directory demonstrates how to use JSON Schema with Calque-Pipe AI agents fo
 - **Features Covered**:
   - Using `ai.WithSchema()` to enforce JSON structure
   - Automatic schema generation from Go structs with `jsonschema` tags
-  - Converting AI responses with `convert.FromJson()`
+  - Converting AI responses with `convert.FromJSON()`
   - Type-safe AI interactions without manual parsing
 
 ### JSON Schema Converters (`runExample2JsonSchemaConverters`)
 
 - **Context-Aware Processing**: Embedding schema information in AI prompts
 - **Features Covered**:
-  - `convert.ToJsonSchema()` - embeds schema with input data
-  - `convert.FromJsonSchema()` - validates output against schema
+  - `convert.ToJSONSchema()` - embeds schema with input data
+  - `convert.FromJSONSchema()` - validates output against schema
   - AI receives both data AND schema structure for better understanding
   - Schema-driven prompt engineering
 
@@ -26,8 +26,8 @@ This directory demonstrates how to use JSON Schema with Calque-Pipe AI agents fo
 
 - **Complex Workflows**: Combining approaches for sophisticated data processing
 - **Features Covered**:
-  - Stage 1: `WithSchema()` + `FromJson()` for initial data extraction
-  - Stage 2: `ToJsonSchema()` + `FromJsonSchema()` for context passing
+  - Stage 1: `WithSchema()` + `FromJSON()` for initial data extraction
+  - Stage 2: `ToJSONSchema()` + `FromJSONSchema()` for context passing
   - Retry middleware with `flow.Retry()`
   - Generic schema handling with `ai.WithSchemaFor[T]()`
   - Pipeline composition and data flow

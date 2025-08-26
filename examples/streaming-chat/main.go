@@ -106,7 +106,7 @@ func handleStreamingChat(client *ollama.Client, conversationMemory *memory.Conve
 }
 
 // serveHTML serves the embedded HTML chat interface
-func serveHTML(w http.ResponseWriter, r *http.Request) {
+func serveHTML(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(indexHTML)
 }

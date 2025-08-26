@@ -1,3 +1,6 @@
+// Package memory provides conversation and context memory middleware for the calque framework.
+// It implements sliding window memory with token-based trimming and pluggable storage
+// backends to maintain conversation history and context across multiple interactions.
 package memory
 
 import (
@@ -5,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
@@ -81,10 +85,7 @@ func approximateTokenCount(data []byte) int {
 
 	// Add tokens for punctuation and special chars
 	for _, char := range text {
-		if !((char >= 'a' && char <= 'z') ||
-			(char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') ||
-			char == ' ') {
+		if !unicode.IsLetter(char) && !unicode.IsDigit(char) && char != ' ' {
 			tokenCount += 0.5
 		}
 	}
