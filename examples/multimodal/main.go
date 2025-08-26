@@ -219,7 +219,7 @@ func analyzeImageOpenAI(imagePath string) {
 
 	// Run the flow
 	var result string
-	err = flow.Run(context.Background(), convert.ToJson(multimodalInput), &result)
+	err = flow.Run(context.Background(), convert.ToJSON(multimodalInput), &result)
 	if err != nil {
 		log.Printf("OpenAI analysis failed: %v", err)
 		return
