@@ -11,8 +11,7 @@
 //
 // Example usage:
 //
-//	client, err := openai.NewClient(&openai.Config{
-//		Model:       "gpt-5",
+//	client, err := openai.New("gpt-5", &openai.Config{
 //		Temperature: openai.Float32(0.7),
 //		Stream:      openai.Bool(true),
 //	})
@@ -30,6 +29,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/option"
@@ -201,10 +201,10 @@ func New(model string, opts ...Option) (*Client, error) {
 		clientOptions = append(clientOptions, option.WithBaseURL(config.BaseURL))
 	}
 
-	client := openai.NewClient(clientOptions...)
+	openaiClient := openai.NewClient(clientOptions...)
 
 	return &Client{
-		client: &client,
+		client: &openaiClient,
 		model:  shared.ChatModel(model),
 		config: config,
 	}, nil
@@ -371,25 +371,33 @@ func (c *Client) executeNonStreamingRequest(params openai.ChatCompletionNewParam
 		return fmt.Errorf("no response choices returned")
 	}
 
-	choice := response.Choices[0]
-
-	// Handle tool calls
-	if len(choice.Message.ToolCalls) > 0 {
-		// Convert union tool calls to function tool calls
-		var functionToolCalls []openai.ChatCompletionMessageFunctionToolCall
-		for _, toolCall := range choice.Message.ToolCalls {
-			fnToolCall := toolCall.AsFunction()
-			functionToolCalls = append(functionToolCalls, fnToolCall)
+	// Process all choices (handles N > 1 configurations)
+	for i, choice := range response.Choices {
+		// Handle tool calls first (they take precedence)
+		if len(choice.Message.ToolCalls) > 0 {
+			// Convert union tool calls to function tool calls
+			var functionToolCalls []openai.ChatCompletionMessageFunctionToolCall
+			for _, toolCall := range choice.Message.ToolCalls {
+				fnToolCall := toolCall.AsFunction()
+				functionToolCalls = append(functionToolCalls, fnToolCall)
+			}
+			if len(functionToolCalls) > 0 {
+				return c.writeOpenAIToolCalls(functionToolCalls, w)
+			}
 		}
-		if len(functionToolCalls) > 0 {
-			return c.writeOpenAIToolCalls(functionToolCalls, w)
-		}
-	}
 
-	// Handle content
-	if choice.Message.Content != "" {
-		_, err := w.Data.Write([]byte(choice.Message.Content))
-		return err
+		// Handle content
+		if choice.Message.Content != "" {
+			// Add separator between multiple choices
+			if i > 0 {
+				if _, err := w.Data.Write([]byte("\n\n--- Choice " + fmt.Sprintf("%d", i+1) + " ---\n\n")); err != nil {
+					return err
+				}
+			}
+			if _, err := w.Data.Write([]byte(choice.Message.Content)); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -431,24 +439,32 @@ func (c *Client) multimodalToMessages(multimodal *ai.MultimodalInput) ([]openai.
 				})
 			}
 		case "image":
-			var data []byte
+			var dataURL string
 			var err error
 
 			if part.Reader != nil {
-				// Read stream data (streaming approach)
-				data, err = io.ReadAll(part.Reader)
+				// Use streaming base64 encoder to avoid loading entire image into memory
+				var buf strings.Builder
+				buf.WriteString(fmt.Sprintf("data:%s;base64,", part.MimeType))
+
+				encoder := base64.NewEncoder(base64.StdEncoding, &buf)
+				_, err = io.Copy(encoder, part.Reader)
 				if err != nil {
-					return nil, fmt.Errorf("failed to read image data: %w", err)
+					return nil, fmt.Errorf("failed to encode image data: %w", err)
 				}
+
+				if closeErr := encoder.Close(); closeErr != nil {
+					return nil, fmt.Errorf("failed to finalize image encoding: %w", closeErr)
+				}
+
+				dataURL = buf.String()
 			} else if part.Data != nil {
-				// Use embedded data (simple approach)
-				data = part.Data
+				// Use embedded data (simple approach) - still efficient for small images
+				base64Data := base64.StdEncoding.EncodeToString(part.Data)
+				dataURL = fmt.Sprintf("data:%s;base64,%s", part.MimeType, base64Data)
 			}
 
-			if data != nil {
-				// Convert to base64 data URL
-				base64Data := base64.StdEncoding.EncodeToString(data)
-				dataURL := fmt.Sprintf("data:%s;base64,%s", part.MimeType, base64Data)
+			if dataURL != "" {
 				messageParts = append(messageParts, openai.ChatCompletionContentPartUnionParam{
 					OfImageURL: &openai.ChatCompletionContentPartImageParam{
 						Type: constant.ImageURL("").Default(),
@@ -566,12 +582,15 @@ func (c *Client) convertToOpenAITools(toolList []tools.Tool) ([]openai.ChatCompl
 		var parameters map[string]any
 		if schema := tool.ParametersSchema(); schema != nil {
 			// Marshal and unmarshal to convert to generic map
-			if schemaBytes, err := json.Marshal(schema); err == nil {
-				err := json.Unmarshal(schemaBytes, &parameters)
-				if err != nil {
-					return nil, fmt.Errorf("failed to convert tool parameters schema: %w", err)
-				}
+			schemaBytes, err := json.Marshal(schema)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal tool parameters schema: %w", err)
 			}
+			err = json.Unmarshal(schemaBytes, &parameters)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert tool parameters schema: %w", err)
+			}
+
 		}
 
 		openaiTools[i] = openai.ChatCompletionFunctionTool(
