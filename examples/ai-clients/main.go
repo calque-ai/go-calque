@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -113,17 +114,19 @@ func openaiExample() {
 
 	// Create an optional custom OpenAI configuration
 	config := &openai.Config{
-		Temperature: ai.Float32Ptr(0.8),
-		MaxTokens:   ai.IntPtr(150),
+		APIKey:           os.Getenv("OPENAI_API_KEY"), // Load from env
+		Temperature:      ai.Float32Ptr(1.0),
+		TopP:             ai.Float32Ptr(1.0),
+		N:                ai.IntPtr(1),
+		PresencePenalty:  ai.Float32Ptr(0.0),
+		FrequencyPenalty: ai.Float32Ptr(0.0),
+		MaxTokens:        ai.IntPtr(150),
 	}
 
 	// Create OpenAI client (reads OPENAI_API_KEY from env unless set in the config)
-	client, err := openai.New("gpt-5", openai.WithConfig(config))
+	client, err := openai.New("gpt-4o-mini", openai.WithConfig(config))
 	if err != nil {
-		log.Printf("Warning: Could not connect to OpenAI: %v", err)
-		log.Println("To run OpenAI example:")
-		log.Println("  1. Get API key from: https://platform.openai.com/api-keys")
-		log.Println("  2. Set: export OPENAI_API_KEY=your_api_key")
+		log.Printf("Could not connect to OpenAI: %v", err)
 		return
 	}
 
