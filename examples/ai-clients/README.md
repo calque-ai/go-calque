@@ -22,9 +22,20 @@ This directory demonstrates how to connect different AI providers to Calque-Pipe
   - Temperature control and model parameters
   - Prompt templating with `prompt.Template()`
 
+### OpenAI Integration (`openaiExample`)
+
+- **Cloud AI Provider**: OpenAI's GPT models integration
+- **Features Covered**:
+  - Creating OpenAI clients with `openai.New()`
+  - Custom configuration with `openai.Config`
+  - Model specification (e.g., `gpt-5`, `gpt-4`)
+  - Temperature and token control
+  - Timeout protection with `ctrl.Timeout()`
+  - Prompt templating with `prompt.Template()`
+
 ## Key AI Integration Concepts
 
-- **Provider Abstraction**: Both local (Ollama) and cloud (Gemini) providers use the same `ai.Client` interface
+- **Provider Abstraction**: Local (Ollama) and cloud (Gemini, OpenAI) providers use the same `ai.Client` interface
 - **Configuration Flexibility**: Each provider supports custom configuration options for fine-tuning behavior
 - **Timeout Management**: AI calls can be wrapped with timeouts to prevent hanging pipelines
 - **Prompt Engineering**: Different approaches for preparing input (direct transformation vs. template-based)
@@ -51,12 +62,19 @@ go run main.go
 - Create `.env` file with: `GOOGLE_API_KEY=your_api_key`
 - Ensure internet connectivity for API calls
 
+#### For OpenAI Example
+
+- Get API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+- Create `.env` file with: `OPENAI_API_KEY=your_api_key`
+- Ensure internet connectivity for API calls
+
 ## Example Output
 
 The examples demonstrate AI provider integration:
 
 - **Ollama**: Local model execution with input transformation and timeout protection
 - **Gemini**: Cloud API calls with custom configuration and prompt templating
+- **OpenAI**: Cloud API calls with GPT models, configuration options, and timeout management
 
 Both examples show:
 
