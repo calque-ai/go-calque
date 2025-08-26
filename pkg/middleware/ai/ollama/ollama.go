@@ -16,6 +16,7 @@ import (
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
@@ -89,20 +90,22 @@ type Option interface {
 // configOption implements Option
 type configOption struct{ config *Config }
 
-func (o configOption) Apply(opts *Config) { *opts = *o.config }
+func (o configOption) Apply(opts *Config) {
+	config.Merge(opts, o.config)
+}
 
 // WithConfig sets custom Ollama configuration.
 //
 // Input: *Config with Ollama settings
 // Output: Option for client creation
-// Behavior: Overrides default configuration
+// Behavior: Merges with default configuration (only non-zero/nil fields override defaults)
 //
 // Example:
 //
 //	config := &ollama.Config{Host: "http://remote:11434"}
 //	client, _ := ollama.New("llama3.2", ollama.WithConfig(config))
-func WithConfig(config *Config) Option {
-	return configOption{config: config}
+func WithConfig(cfg *Config) Option {
+	return configOption{config: cfg}
 }
 
 // DefaultConfig returns sensible defaults for Ollama.

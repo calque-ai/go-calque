@@ -38,6 +38,7 @@ import (
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
@@ -127,21 +128,21 @@ type configOption struct {
 }
 
 func (o configOption) Apply(opts *Config) {
-	*opts = *o.config
+	config.Merge(opts, o.config)
 }
 
 // WithConfig sets custom OpenAI configuration.
 //
 // Input: *Config with OpenAI settings
 // Output: Option for client creation
-// Behavior: Overrides default configuration
+// Behavior: Merges with default configuration (only non-zero/nil fields override defaults)
 //
 // Example:
 //
 //	config := &openai.Config{Temperature: ai.Float32Ptr(0.9)}
 //	client, _ := openai.New("gpt-4", openai.WithConfig(config))
-func WithConfig(config *Config) Option {
-	return configOption{config: config}
+func WithConfig(cfg *Config) Option {
+	return configOption{config: cfg}
 }
 
 // DefaultConfig returns sensible defaults for OpenAI.

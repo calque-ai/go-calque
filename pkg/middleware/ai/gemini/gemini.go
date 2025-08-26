@@ -14,6 +14,7 @@ import (
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
@@ -100,13 +101,15 @@ type Option interface {
 // configOption implements Option
 type configOption struct{ config *Config }
 
-func (o configOption) Apply(opts *Config) { *opts = *o.config }
+func (o configOption) Apply(opts *Config) {
+	config.Merge(opts, o.config)
+}
 
 // WithConfig sets custom Gemini configuration.
 //
 // Input: *Config with Gemini settings
 // Output: Option for client creation
-// Behavior: Overrides default configuration
+// Behavior: Merges with default configuration (only non-zero/nil fields override defaults)
 //
 // Example:
 //
