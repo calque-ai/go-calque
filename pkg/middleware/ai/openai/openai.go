@@ -1,12 +1,40 @@
+// Package openai provides a Calque middleware client for OpenAI's Chat Completions API.
+// It implements streaming and non-streaming chat completions with support for tools,
+// multimodal inputs, and structured response formats including JSON schema validation.
+//
+// The client supports:
+//   - Text and multimodal (image) chat completions
+//   - Function calling with tool integration
+//   - Streaming responses with Server-Sent Events
+//   - Structured outputs with JSON schema
+//   - Configurable model parameters (temperature, max tokens, etc.)
+//
+// Example usage:
+//
+//	client, err := openai.NewClient(&openai.Config{
+//		Model:       "gpt-5",
+//		Temperature: openai.Float32(0.7),
+//		Stream:      openai.Bool(true),
+//	})
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	// Use with Calque flow
+//	flow := calque.NewFlow().Use(client)
 package openai
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 
-	"github.com/sashabaranov/go-openai"
+	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go/v2/option"
+	"github.com/openai/openai-go/v2/shared"
+	"github.com/openai/openai-go/v2/shared/constant"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
@@ -20,11 +48,11 @@ import (
 //
 // Example:
 //
-//	client, _ := openai.New("gpt-5")
+//	client, _ := openai.New("gpt-4o")
 //	agent := ai.Agent(client)
 type Client struct {
 	client *openai.Client
-	model  string
+	model  shared.ChatModel
 	config *Config
 }
 
@@ -165,27 +193,21 @@ func New(model string, opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set or provided in config")
 	}
 
-	// Create OpenAI client configuration
-	clientConfig := openai.DefaultConfig(config.APIKey)
+	// Create client options
+	var clientOptions []option.RequestOption
+	clientOptions = append(clientOptions, option.WithAPIKey(config.APIKey))
+
 	if config.BaseURL != "" {
-		clientConfig.BaseURL = config.BaseURL
-	}
-	if config.OrgID != "" {
-		clientConfig.OrgID = config.OrgID
+		clientOptions = append(clientOptions, option.WithBaseURL(config.BaseURL))
 	}
 
-	client := openai.NewClientWithConfig(clientConfig)
+	client := openai.NewClient(clientOptions...)
 
 	return &Client{
-		client: client,
-		model:  model,
+		client: &client,
+		model:  shared.ChatModel(model),
 		config: config,
 	}, nil
-}
-
-// RequestConfig holds configuration for an OpenAI request
-type RequestConfig struct {
-	ChatRequest openai.ChatCompletionRequest
 }
 
 // Chat implements the Client interface with streaming support.
@@ -207,133 +229,140 @@ func (c *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 		return err
 	}
 
-	// Build request configuration based on input type
-	config, err := c.buildRequestConfig(input, ai.GetSchema(opts), ai.GetTools(opts))
+	// Build request parameters
+	params, err := c.buildChatParams(input, ai.GetSchema(opts), ai.GetTools(opts))
 	if err != nil {
 		return err
 	}
 
-	// Execute the request with the configured chat
-	return c.executeRequest(config, r, w)
+	// Execute the request
+	return c.executeRequest(params, r, w)
 }
 
-// buildRequestConfig creates configuration for the request
-func (c *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool) (*RequestConfig, error) {
-	// Create base chat request
-	req := openai.ChatCompletionRequest{
-		Model: c.model,
-	}
-
+// buildChatParams creates OpenAI chat completion parameters
+func (c *Client) buildChatParams(input *ai.ClassifiedInput, schema *ai.ResponseFormat, toolList []tools.Tool) (openai.ChatCompletionNewParams, error) {
 	// Convert input to messages
 	messages, err := c.inputToMessages(input)
 	if err != nil {
-		return nil, err
+		return openai.ChatCompletionNewParams{}, err
 	}
-	req.Messages = messages
+
+	// Create base parameters
+	params := openai.ChatCompletionNewParams{
+		Model:    c.model,
+		Messages: messages,
+	}
 
 	// Apply configuration
-	c.applyChatConfig(&req, schema)
+	c.applyChatConfig(&params, schema)
 
 	// Add tools if provided
-	if len(tools) > 0 {
-		req.Tools = c.convertToOpenAITools(tools)
-		req.ToolChoice = "auto"
+	if len(toolList) > 0 {
+		tools, err := c.convertToOpenAITools(toolList)
+		if err != nil {
+			return openai.ChatCompletionNewParams{}, err
+		}
+		params.Tools = tools
 	}
 
-	return &RequestConfig{
-		ChatRequest: req,
-	}, nil
+	return params, nil
 }
 
 // executeRequest executes the configured request
-func (c *Client) executeRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
+func (c *Client) executeRequest(params openai.ChatCompletionNewParams, r *calque.Request, w *calque.Response) error {
 	// Determine if we should stream
 	shouldStream := c.config.Stream == nil || *c.config.Stream
 
 	if shouldStream {
-		return c.executeStreamingRequest(config, r, w)
-	} else {
-		return c.executeNonStreamingRequest(config, r, w)
+		return c.executeStreamingRequest(params, r, w)
 	}
+
+	return c.executeNonStreamingRequest(params, r, w)
+
 }
 
 // executeStreamingRequest executes a streaming request
-func (c *Client) executeStreamingRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
-	// Enable streaming
-	config.ChatRequest.Stream = true
-
+func (c *Client) executeStreamingRequest(params openai.ChatCompletionNewParams, r *calque.Request, w *calque.Response) (err error) {
 	// Create streaming request
-	stream, err := c.client.CreateChatCompletionStream(r.Context, config.ChatRequest)
-	if err != nil {
-		return fmt.Errorf("failed to create chat completion stream: %w", err)
-	}
-	defer stream.Close()
+	stream := c.client.Chat.Completions.NewStreaming(r.Context, params)
+	defer func() {
+		if closeErr := stream.Close(); closeErr != nil && err == nil {
+			// Only set the error if no other error occurred
+			err = fmt.Errorf("failed to close stream: %w", closeErr)
+		}
+	}()
 
-	var toolCalls []openai.ToolCall
-	var functionCallName, functionCallArgs string
+	// Track multiple tool calls by ID
+	toolCalls := make(map[int]*openai.ChatCompletionMessageFunctionToolCall)
 
 	// Process streaming response
-	for {
-		response, err := stream.Recv()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("failed to receive stream response: %w", err)
+	for stream.Next() {
+		chunk := stream.Current()
+
+		if len(chunk.Choices) == 0 {
+			continue
 		}
 
-		if len(response.Choices) > 0 {
-			delta := response.Choices[0].Delta
+		delta := chunk.Choices[0].Delta
 
-			// Handle content streaming
-			if delta.Content != "" {
-				if _, writeErr := w.Data.Write([]byte(delta.Content)); writeErr != nil {
-					return writeErr
+		// Handle content streaming
+		if delta.Content != "" {
+			if _, writeErr := w.Data.Write([]byte(delta.Content)); writeErr != nil {
+				return writeErr
+			}
+		}
+
+		// Handle tool calls (streaming)
+		for _, toolCall := range delta.ToolCalls {
+			index := int(toolCall.Index)
+
+			// Initialize tool call if not exists
+			if toolCalls[index] == nil {
+				toolCalls[index] = &openai.ChatCompletionMessageFunctionToolCall{
+					ID: toolCall.ID,
+					Function: openai.ChatCompletionMessageFunctionToolCallFunction{
+						Name:      "",
+						Arguments: "",
+					},
 				}
 			}
 
-			// Handle tool calls (streaming)
-			if len(delta.ToolCalls) > 0 {
-				for _, toolCall := range delta.ToolCalls {
-					if toolCall.Function.Name != "" {
-						functionCallName = toolCall.Function.Name
-						functionCallArgs = ""
-					}
-					if toolCall.Function.Arguments != "" {
-						functionCallArgs += toolCall.Function.Arguments
-					}
-				}
+			// Accumulate function name and arguments
+			if toolCall.Function.Name != "" {
+				toolCalls[index].Function.Name = toolCall.Function.Name
+			}
+			if toolCall.Function.Arguments != "" {
+				toolCalls[index].Function.Arguments += toolCall.Function.Arguments
 			}
 		}
 	}
 
-	// If we accumulated a complete tool call, format it
-	if functionCallName != "" {
-		toolCall := openai.ToolCall{
-			Type: "function",
-			Function: openai.FunctionCall{
-				Name:      functionCallName,
-				Arguments: functionCallArgs,
-			},
-		}
-		toolCalls = append(toolCalls, toolCall)
+	if err := stream.Err(); err != nil {
+		return fmt.Errorf("failed to receive stream response: %w", err)
 	}
 
-	// Format tool calls if we have any
+	// If we have accumulated tool calls, format them
 	if len(toolCalls) > 0 {
-		return c.writeOpenAIToolCalls(toolCalls, w)
+		// Convert map to slice, maintaining order by index
+		var completedCalls []openai.ChatCompletionMessageFunctionToolCall
+		for i := 0; i < len(toolCalls); i++ {
+			if call, exists := toolCalls[i]; exists && call.Function.Name != "" {
+				completedCalls = append(completedCalls, *call)
+			}
+		}
+
+		if len(completedCalls) > 0 {
+			return c.writeOpenAIToolCalls(completedCalls, w)
+		}
 	}
 
 	return nil
 }
 
 // executeNonStreamingRequest executes a non-streaming request
-func (c *Client) executeNonStreamingRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
-	// Disable streaming
-	config.ChatRequest.Stream = false
-
+func (c *Client) executeNonStreamingRequest(params openai.ChatCompletionNewParams, r *calque.Request, w *calque.Response) error {
 	// Create request
-	response, err := c.client.CreateChatCompletion(r.Context, config.ChatRequest)
+	response, err := c.client.Chat.Completions.New(r.Context, params)
 	if err != nil {
 		return fmt.Errorf("failed to create chat completion: %w", err)
 	}
@@ -346,7 +375,15 @@ func (c *Client) executeNonStreamingRequest(config *RequestConfig, r *calque.Req
 
 	// Handle tool calls
 	if len(choice.Message.ToolCalls) > 0 {
-		return c.writeOpenAIToolCalls(choice.Message.ToolCalls, w)
+		// Convert union tool calls to function tool calls
+		var functionToolCalls []openai.ChatCompletionMessageFunctionToolCall
+		for _, toolCall := range choice.Message.ToolCalls {
+			fnToolCall := toolCall.AsFunction()
+			functionToolCalls = append(functionToolCalls, fnToolCall)
+		}
+		if len(functionToolCalls) > 0 {
+			return c.writeOpenAIToolCalls(functionToolCalls, w)
+		}
 	}
 
 	// Handle content
@@ -359,14 +396,11 @@ func (c *Client) executeNonStreamingRequest(config *RequestConfig, r *calque.Req
 }
 
 // inputToMessages converts classified input to OpenAI message format
-func (c *Client) inputToMessages(input *ai.ClassifiedInput) ([]openai.ChatCompletionMessage, error) {
+func (c *Client) inputToMessages(input *ai.ClassifiedInput) ([]openai.ChatCompletionMessageParamUnion, error) {
 	switch input.Type {
 	case ai.TextInput:
-		return []openai.ChatCompletionMessage{
-			{
-				Role:    openai.ChatMessageRoleUser,
-				Content: input.Text,
-			},
+		return []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(input.Text),
 		}, nil
 
 	case ai.MultimodalJSONInput, ai.MultimodalStreamingInput:
@@ -378,20 +412,22 @@ func (c *Client) inputToMessages(input *ai.ClassifiedInput) ([]openai.ChatComple
 }
 
 // multimodalToMessages converts multimodal input to OpenAI message format
-func (c *Client) multimodalToMessages(multimodal *ai.MultimodalInput) ([]openai.ChatCompletionMessage, error) {
+func (c *Client) multimodalToMessages(multimodal *ai.MultimodalInput) ([]openai.ChatCompletionMessageParamUnion, error) {
 	if multimodal == nil {
 		return nil, fmt.Errorf("multimodal input cannot be nil")
 	}
 
-	messageParts := make([]openai.ChatMessagePart, 0, len(multimodal.Parts))
+	messageParts := make([]openai.ChatCompletionContentPartUnionParam, 0, len(multimodal.Parts))
 
 	for _, part := range multimodal.Parts {
 		switch part.Type {
 		case "text":
 			if part.Text != "" {
-				messageParts = append(messageParts, openai.ChatMessagePart{
-					Type: openai.ChatMessagePartTypeText,
-					Text: part.Text,
+				messageParts = append(messageParts, openai.ChatCompletionContentPartUnionParam{
+					OfText: &openai.ChatCompletionContentPartTextParam{
+						Type: constant.Text("").Default(),
+						Text: part.Text,
+					},
 				})
 			}
 		case "image":
@@ -411,13 +447,15 @@ func (c *Client) multimodalToMessages(multimodal *ai.MultimodalInput) ([]openai.
 
 			if data != nil {
 				// Convert to base64 data URL
-				dataURL := fmt.Sprintf("data:%s;base64,%s", part.MimeType, string(data))
-				messageParts = append(messageParts, openai.ChatMessagePart{
-					Type: openai.ChatMessagePartTypeImageURL,
-					ImageURL: &openai.ChatMessageImageURL{
-						URL: dataURL,
-					},
-				})
+				base64Data := base64.StdEncoding.EncodeToString(data)
+				dataURL := fmt.Sprintf("data:%s;base64,%s", part.MimeType, base64Data)
+				messageParts = append(messageParts, openai.ChatCompletionContentPartUnionParam{
+					OfImageURL: &openai.ChatCompletionContentPartImageParam{
+						Type: constant.ImageURL("").Default(),
+						ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+							URL: dataURL,
+						},
+					}})
 			}
 		case "audio", "video":
 			// OpenAI doesn't support audio/video in chat completions yet
@@ -431,43 +469,40 @@ func (c *Client) multimodalToMessages(multimodal *ai.MultimodalInput) ([]openai.
 		return nil, fmt.Errorf("no valid content parts found in multimodal input")
 	}
 
-	return []openai.ChatCompletionMessage{
-		{
-			Role:         openai.ChatMessageRoleUser,
-			MultiContent: messageParts,
-		},
+	return []openai.ChatCompletionMessageParamUnion{
+		openai.UserMessage(messageParts),
 	}, nil
 }
 
 // applyChatConfig applies client configuration to the chat request
-func (c *Client) applyChatConfig(req *openai.ChatCompletionRequest, schema *ai.ResponseFormat) {
+func (c *Client) applyChatConfig(params *openai.ChatCompletionNewParams, schema *ai.ResponseFormat) {
 	// Apply client configuration
 	if c.config.Temperature != nil {
-		req.Temperature = *c.config.Temperature
+		params.Temperature = openai.Float(float64(*c.config.Temperature))
 	}
 	if c.config.TopP != nil {
-		req.TopP = *c.config.TopP
+		params.TopP = openai.Float(float64(*c.config.TopP))
 	}
 	if c.config.MaxTokens != nil {
-		req.MaxTokens = *c.config.MaxTokens
+		params.MaxCompletionTokens = openai.Int(int64(*c.config.MaxTokens))
 	}
 	if c.config.N != nil {
-		req.N = *c.config.N
+		params.N = openai.Int(int64(*c.config.N))
 	}
 	if len(c.config.Stop) > 0 {
-		req.Stop = c.config.Stop
+		params.Stop = openai.ChatCompletionNewParamsStopUnion{OfStringArray: c.config.Stop}
 	}
 	if c.config.PresencePenalty != nil {
-		req.PresencePenalty = *c.config.PresencePenalty
+		params.PresencePenalty = openai.Float(float64(*c.config.PresencePenalty))
 	}
 	if c.config.FrequencyPenalty != nil {
-		req.FrequencyPenalty = *c.config.FrequencyPenalty
+		params.FrequencyPenalty = openai.Float(float64(*c.config.FrequencyPenalty))
 	}
 	if c.config.User != "" {
-		req.User = c.config.User
+		params.User = openai.String(c.config.User)
 	}
 	if c.config.Seed != nil {
-		req.Seed = c.config.Seed
+		params.Seed = openai.Int(int64(*c.config.Seed))
 	}
 
 	// Apply response format - request override takes priority
@@ -479,41 +514,52 @@ func (c *Client) applyChatConfig(req *openai.ChatCompletionRequest, schema *ai.R
 	}
 
 	if responseFormat != nil {
-		switch responseFormat.Type {
-		case "json_object":
-			req.ResponseFormat = &openai.ChatCompletionResponseFormat{
-				Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-			}
-		case "json_schema":
-			if responseFormat.Schema != nil {
-				// Convert jsonschema.Schema to OpenAI format
-				schemaBytes, err := json.Marshal(responseFormat.Schema)
-				if err == nil {
-					var schemaObj any
-					if json.Unmarshal(schemaBytes, &schemaObj) == nil {
-						req.ResponseFormat = &openai.ChatCompletionResponseFormat{
-							Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
-							JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-								Name:   "response_schema",
-								Schema: json.RawMessage(schemaBytes),
-								Strict: true,
-							},
-						}
-					}
-				}
-			} else {
-				// Fallback to json_object if schema is nil
-				req.ResponseFormat = &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-				}
-			}
+		c.setResponseFormat(responseFormat, params)
+	}
+}
+
+// setResponseFormat applies the response format to OpenAI parameters
+func (c *Client) setResponseFormat(responseFormat *ai.ResponseFormat, params *openai.ChatCompletionNewParams) {
+	switch responseFormat.Type {
+	case "json_object":
+		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &shared.ResponseFormatJSONObjectParam{Type: constant.JSONObject("").Default()},
+		}
+
+	case "json_schema":
+		if responseFormat.Schema != nil {
+			c.setJSONSchemaFormat(responseFormat.Schema, params)
 		}
 	}
 }
 
+// setJSONSchemaFormat sets the JSON schema response format
+func (c *Client) setJSONSchemaFormat(schema any, params *openai.ChatCompletionNewParams) {
+	schemaBytes, err := json.Marshal(schema)
+	if err != nil {
+		// Fallback to json_object on error
+		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &shared.ResponseFormatJSONObjectParam{Type: constant.JSONObject("").Default()},
+		}
+		return
+	}
+
+	params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+		OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
+			Type: constant.JSONSchema("").Default(),
+			JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+				Name:        "response_schema",
+				Schema:      schemaBytes,
+				Strict:      openai.Bool(true),
+				Description: openai.String("Generated schema for structured response"),
+			},
+		},
+	}
+}
+
 // convertToOpenAITools converts our tool interface to OpenAI's tool format
-func (c *Client) convertToOpenAITools(toolList []tools.Tool) []openai.Tool {
-	openaiTools := make([]openai.Tool, len(toolList))
+func (c *Client) convertToOpenAITools(toolList []tools.Tool) ([]openai.ChatCompletionToolUnionParam, error) {
+	openaiTools := make([]openai.ChatCompletionToolUnionParam, len(toolList))
 
 	for i, tool := range toolList {
 		// Convert jsonschema.Schema to map for OpenAI parameters
@@ -521,25 +567,27 @@ func (c *Client) convertToOpenAITools(toolList []tools.Tool) []openai.Tool {
 		if schema := tool.ParametersSchema(); schema != nil {
 			// Marshal and unmarshal to convert to generic map
 			if schemaBytes, err := json.Marshal(schema); err == nil {
-				json.Unmarshal(schemaBytes, &parameters)
+				err := json.Unmarshal(schemaBytes, &parameters)
+				if err != nil {
+					return nil, fmt.Errorf("failed to convert tool parameters schema: %w", err)
+				}
 			}
 		}
 
-		openaiTools[i] = openai.Tool{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
+		openaiTools[i] = openai.ChatCompletionFunctionTool(
+			openai.FunctionDefinitionParam{
 				Name:        tool.Name(),
-				Description: tool.Description(),
+				Description: openai.String(tool.Description()),
 				Parameters:  parameters,
 			},
-		}
+		)
 	}
 
-	return openaiTools
+	return openaiTools, nil
 }
 
 // writeOpenAIToolCalls formats OpenAI tool calls for the agent framework
-func (c *Client) writeOpenAIToolCalls(toolCalls []openai.ToolCall, w *calque.Response) error {
+func (c *Client) writeOpenAIToolCalls(toolCalls []openai.ChatCompletionMessageFunctionToolCall, w *calque.Response) error {
 	// Convert to the expected format
 	formattedToolCalls := make([]map[string]any, len(toolCalls))
 
