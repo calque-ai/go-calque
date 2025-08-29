@@ -41,7 +41,7 @@ func TestToJSONSchema(t *testing.T) {
 	}
 
 	if converterInput.data == nil {
-			t.Error("ToJSONSchema() did not set data")
+		t.Error("ToJSONSchema() did not set data")
 	}
 }
 
