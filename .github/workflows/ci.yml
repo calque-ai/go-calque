@@ -136,6 +136,16 @@ jobs:
         uses: ./.github/actions/setup-go
         with:
           go-version: ${{ env.GO_VERSION }}
+          enable-cache: false
+
+      - name: Clean environment
+        run: |
+          # Clean any existing installations
+          rm -rf ~/go/bin/govulncheck || true
+          rm -rf /tmp/govulncheck* || true
+          
+          # Verify clean state
+          echo "Cleaning environment for security scan..."
 
       - name: Install govulncheck
         run: |
