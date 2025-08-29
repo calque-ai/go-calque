@@ -25,7 +25,7 @@ import (
 //	client, _ := mcp.NewStdio("python", []string{"server.py"})
 //	handler := client.Tool("search")
 //	flow.Use(handler) // Input: {"query": "golang"} → Output: search results
-func (c *Client) Tool(name string) calque.Handler {
+func (c *Client) Tool(name string, progressCallbacks ...func(*mcp.ProgressNotificationParams)) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Establish connection if needed
 		ctx := req.Context
@@ -60,6 +60,13 @@ func (c *Client) Tool(name string) calque.Handler {
 		result, err := c.session.CallTool(ctx, params)
 		if err != nil {
 			return c.handleError(fmt.Errorf("tool %s failed: %w", name, err))
+		}
+
+		// Register progress callbacks if provided
+		if len(progressCallbacks) > 0 && result.Meta != nil {
+			if progressToken, ok := result.Meta["progressToken"].(string); ok {
+				c.progressCallbacks[progressToken] = progressCallbacks
+			}
 		}
 
 		// Handle tool errors
@@ -271,5 +278,117 @@ func (c *Client) Prompt(name string) calque.Handler {
 		}
 
 		return calque.Write(res, output.String())
+	})
+}
+
+// SubscribeToResource creates a handler that subscribes to MCP resource changes.
+//
+// Input: Initial data (any content)
+// Output: Resource change notifications
+// Behavior: SUBSCRIBE - establishes subscription and forwards change notifications
+//
+// Subscribes to resource updates and calls the provided callback when changes occur.
+// The handler passes through the initial input and then monitors for resource updates.
+// Perfect for reactive flows that need to respond to external resource changes.
+//
+// Example:
+//
+//	client, _ := mcp.NewStdio("python", []string{"server.py"})
+//	handler := client.SubscribeToResource("file:///config.json", func(update *mcp.ResourceUpdatedNotificationParams) {
+//		log.Printf("Resource %s updated", update.URI)
+//	})
+//	flow.Use(handler)
+func (c *Client) SubscribeToResource(uri string, onChange func(*mcp.ResourceUpdatedNotificationParams)) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		// Establish connection if needed
+		ctx := req.Context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+
+		if err := c.connect(ctx); err != nil {
+			return c.handleError(fmt.Errorf("failed to connect for resource subscription %s: %w", uri, err))
+		}
+
+		// Register the subscription callback
+		c.subscriptions[uri] = onChange
+
+		// Subscribe to the resource
+		params := &mcp.SubscribeParams{
+			URI: uri,
+		}
+
+		err := c.session.Subscribe(ctx, params)
+		if err != nil {
+			delete(c.subscriptions, uri)
+			return c.handleError(fmt.Errorf("failed to subscribe to resource %s: %w", uri, err))
+		}
+
+		// Pass through the input
+		var input []byte
+		if err := calque.Read(req, &input); err != nil {
+			return c.handleError(fmt.Errorf("failed to read input: %w", err))
+		}
+
+		return calque.Write(res, input)
+	})
+}
+
+// Complete creates a handler that provides auto-completion for MCP prompt/resource arguments.
+//
+// Input: JSON completion request (e.g., {"ref": {"type": "ref/prompt", "name": "code_review"}, "argument": {"name": "language", "value": "go"}})
+// Output: Completion suggestions
+// Behavior: TRANSFORM - reads completion request, returns available options
+//
+// Provides auto-completion suggestions for prompt arguments and resource URIs.
+// Helps users discover valid parameter values and reduces input errors.
+// Requires completion capability to be enabled on the client.
+//
+// Example:
+//
+//	client, _ := mcp.NewStdio("python", []string{"server.py"}, mcp.WithCompletion(true))
+//	handler := client.Complete()
+//	flow.Use(handler) // Input: completion request → Output: suggestion list
+func (c *Client) Complete() calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		if !c.completionEnabled {
+			return c.handleError(fmt.Errorf("completion not enabled on client"))
+		}
+
+		// Establish connection if needed
+		ctx := req.Context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+
+		if err := c.connect(ctx); err != nil {
+			return c.handleError(fmt.Errorf("failed to connect for completion: %w", err))
+		}
+
+		// Read completion request
+		var requestJSON []byte
+		if err := calque.Read(req, &requestJSON); err != nil {
+			return c.handleError(fmt.Errorf("failed to read completion request: %w", err))
+		}
+
+		// Parse completion parameters
+		var params mcp.CompleteParams
+		if err := json.Unmarshal(requestJSON, &params); err != nil {
+			return c.handleError(fmt.Errorf("invalid completion request JSON: %w", err))
+		}
+
+		// Call completion
+		result, err := c.session.Complete(ctx, &params)
+		if err != nil {
+			return c.handleError(fmt.Errorf("completion failed: %w", err))
+		}
+
+		// Write completion results
+		resultJSON, err := json.Marshal(result)
+		if err != nil {
+			return c.handleError(fmt.Errorf("failed to marshal completion result: %w", err))
+		}
+
+		return calque.Write(res, resultJSON)
 	})
 }

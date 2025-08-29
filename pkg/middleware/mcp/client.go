@@ -20,13 +20,16 @@ import (
 //	client, _ := mcp.NewStdio("python", []string{"server.py"})
 //	flow.Use(client.Tool("search", map[string]any{"query": "golang"}))
 type Client struct {
-	session        *mcp.ClientSession
-	client         *mcp.Client
-	transport      mcp.Transport
-	onError        func(error)
-	capabilities   []string
-	timeout        time.Duration
-	implementation *mcp.Implementation
+	session           *mcp.ClientSession
+	client            *mcp.Client
+	transport         mcp.Transport
+	onError           func(error)
+	capabilities      []string
+	timeout           time.Duration
+	implementation    *mcp.Implementation
+	progressCallbacks map[string][]func(*mcp.ProgressNotificationParams)
+	subscriptions     map[string]func(*mcp.ResourceUpdatedNotificationParams)
+	completionEnabled bool
 }
 
 // defaultImplementation provides default client identification
@@ -40,10 +43,13 @@ func defaultImplementation() *mcp.Implementation {
 // newClient creates a Client with the given MCP client and options
 func newClient(mcpClient *mcp.Client, opts ...Option) (*Client, error) {
 	client := &Client{
-		client:         mcpClient,
-		timeout:        30 * time.Second,
-		implementation: defaultImplementation(),
-		capabilities:   []string{"tools", "resources", "prompts"},
+		client:            mcpClient,
+		timeout:           30 * time.Second,
+		implementation:    defaultImplementation(),
+		capabilities:      []string{"tools", "resources", "prompts"},
+		progressCallbacks: make(map[string][]func(*mcp.ProgressNotificationParams)),
+		subscriptions:     make(map[string]func(*mcp.ResourceUpdatedNotificationParams)),
+		completionEnabled: false,
 	}
 
 	for _, opt := range opts {
@@ -116,6 +122,24 @@ func (c *Client) handleError(err error) error {
 		return nil
 	}
 	return err
+}
+
+// handleProgressNotification processes progress notifications from MCP server
+func (c *Client) handleProgressNotification(params *mcp.ProgressNotificationParams) {
+	if progressToken, ok := params.ProgressToken.(string); ok {
+		if callbacks, exists := c.progressCallbacks[progressToken]; exists {
+			for _, callback := range callbacks {
+				callback(params)
+			}
+		}
+	}
+}
+
+// handleResourceUpdated processes resource update notifications from MCP server
+func (c *Client) handleResourceUpdated(params *mcp.ResourceUpdatedNotificationParams) {
+	if callback, exists := c.subscriptions[params.URI]; exists {
+		callback(params)
+	}
 }
 
 // Close closes the MCP session

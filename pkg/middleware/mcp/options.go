@@ -90,3 +90,23 @@ func WithOnError(callback func(error)) Option {
 		c.onError = callback
 	}
 }
+
+// WithCompletion enables auto-completion support for MCP operations.
+//
+// Input: boolean flag to enable/disable completion
+// Output: Option function
+// Behavior: Enables completion capability for prompt/resource arguments
+//
+// When enabled, the client can provide auto-completion suggestions for
+// prompt arguments and resource URIs. Helps users discover valid parameter
+// values and reduces input errors in interactive environments.
+//
+// Example:
+//
+//	client, _ := mcp.NewStdio("python", []string{"server.py"}, 
+//		mcp.WithCompletion(true))
+func WithCompletion(enabled bool) Option {
+	return func(c *Client) {
+		c.completionEnabled = enabled
+	}
+}

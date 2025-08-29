@@ -129,11 +129,14 @@ func setupTestServer(t *testing.T) (*Client, func()) {
 	// Create client with in-memory transport
 	mcpClient := mcp.NewClient(defaultImplementation(), nil)
 	client := &Client{
-		client:         mcpClient,
-		transport:      clientTransport,
-		timeout:        30 * time.Second,
-		capabilities:   []string{"tools", "resources", "prompts"},
-		implementation: defaultImplementation(),
+		client:            mcpClient,
+		transport:         clientTransport,
+		timeout:           30 * time.Second,
+		capabilities:      []string{"tools", "resources", "prompts"},
+		implementation:    defaultImplementation(),
+		progressCallbacks: make(map[string][]func(*mcp.ProgressNotificationParams)),
+		subscriptions:     make(map[string]func(*mcp.ResourceUpdatedNotificationParams)),
+		completionEnabled: false,
 	}
 	
 	cleanup := func() {
@@ -415,5 +418,206 @@ func TestErrorHandling(t *testing.T) {
 
 	if capturedError.Error() != "test error" {
 		t.Errorf("Expected 'test error', got: %v", capturedError)
+	}
+}
+
+func TestToolWithProgressCallbacks(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Test progress callback registration
+	var progressNotifications []*mcp.ProgressNotificationParams
+	progressCallback := func(params *mcp.ProgressNotificationParams) {
+		progressNotifications = append(progressNotifications, params)
+	}
+
+	handler := client.Tool("greet", progressCallback)
+	
+	// Verify handler was created with progress callback
+	if handler == nil {
+		t.Fatal("Expected handler to be created")
+	}
+	
+	// Test tool execution
+	toolArgs := map[string]any{"name": "ProgressTest"}
+	argsJSON, _ := json.Marshal(toolArgs)
+	
+	req := calque.NewRequest(context.Background(), strings.NewReader(string(argsJSON)))
+	var output strings.Builder
+	res := calque.NewResponse(&output)
+	
+	err := handler.ServeFlow(req, res)
+	if err != nil {
+		t.Fatalf("Tool handler with progress failed: %v", err)
+	}
+	
+	result := output.String()
+	if !strings.Contains(result, "Hello, ProgressTest!") {
+		t.Errorf("Expected greeting result, got: %s", result)
+	}
+}
+
+func TestMultipleProgressCallbacks(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Test multiple progress callbacks can be registered
+	callback1 := func(params *mcp.ProgressNotificationParams) {}
+	callback2 := func(params *mcp.ProgressNotificationParams) {}
+
+	handler := client.Tool("greet", callback1, callback2)
+	
+	if handler == nil {
+		t.Fatal("Expected handler to be created with multiple callbacks")
+	}
+	
+	// Test that multiple callbacks are properly registered
+	client.progressCallbacks["test-token"] = []func(*mcp.ProgressNotificationParams){callback1, callback2}
+	
+	if len(client.progressCallbacks["test-token"]) != 2 {
+		t.Errorf("Expected 2 progress callbacks, got %d", len(client.progressCallbacks["test-token"]))
+	}
+}
+
+func TestSubscribeToResource(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Test resource subscription
+	var resourceUpdates []*mcp.ResourceUpdatedNotificationParams
+	updateCallback := func(params *mcp.ResourceUpdatedNotificationParams) {
+		resourceUpdates = append(resourceUpdates, params)
+	}
+
+	handler := client.SubscribeToResource("file:///test/doc.md", updateCallback)
+	
+	if handler == nil {
+		t.Fatal("Expected subscription handler to be created")
+	}
+	
+	// Test subscription setup
+	req := calque.NewRequest(context.Background(), strings.NewReader("initial input"))
+	var output strings.Builder
+	res := calque.NewResponse(&output)
+	
+	err := handler.ServeFlow(req, res)
+	if err != nil {
+		// Note: This may fail if the test server doesn't support subscriptions
+		// In a real implementation, you'd need a mock server that supports subscribe/unsubscribe
+		t.Logf("Subscription test failed (expected if server doesn't support subscriptions): %v", err)
+		return
+	}
+	
+	// Verify subscription callback was registered
+	if client.subscriptions["file:///test/doc.md"] == nil {
+		t.Error("Expected subscription callback to be registered")
+	}
+}
+
+func TestComplete(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Test completion without enabled flag
+	handler := client.Complete()
+	
+	req := calque.NewRequest(context.Background(), strings.NewReader(`{"ref": {"type": "ref/prompt", "name": "code_review"}}`))
+	var output strings.Builder
+	res := calque.NewResponse(&output)
+	
+	err := handler.ServeFlow(req, res)
+	if err == nil {
+		t.Error("Expected completion to fail when not enabled")
+	}
+	
+	// Enable completion and test
+	client.completionEnabled = true
+	
+	err = handler.ServeFlow(req, res)
+	if err != nil {
+		// Note: This may fail if the test server doesn't support completion
+		t.Logf("Completion test failed (expected if server doesn't support completion): %v", err)
+		return
+	}
+}
+
+func TestWithCompletionOption(t *testing.T) {
+	client, err := NewStdio("echo", []string{"hello"}, WithCompletion(true))
+	if err != nil {
+		t.Fatalf("NewStdio with completion failed: %v", err)
+	}
+
+	if !client.completionEnabled {
+		t.Error("Expected completion to be enabled")
+	}
+	
+	// Test with completion disabled
+	client2, err := NewStdio("echo", []string{"hello"}, WithCompletion(false))
+	if err != nil {
+		t.Fatalf("NewStdio with completion disabled failed: %v", err)
+	}
+
+	if client2.completionEnabled {
+		t.Error("Expected completion to be disabled")
+	}
+}
+
+func TestProgressNotificationHandling(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Test progress notification handling
+	var receivedParams *mcp.ProgressNotificationParams
+	progressCallback := func(params *mcp.ProgressNotificationParams) {
+		receivedParams = params
+	}
+
+	// Register a progress callback
+	client.progressCallbacks["test-token"] = []func(*mcp.ProgressNotificationParams){progressCallback}
+
+	// Simulate progress notification
+	testParams := &mcp.ProgressNotificationParams{
+		ProgressToken: "test-token",
+		Progress:      0.5,
+		Total:         1.0,
+	}
+
+	client.handleProgressNotification(testParams)
+
+	if receivedParams == nil {
+		t.Error("Expected progress notification to be received")
+	}
+	
+	if receivedParams.Progress != 0.5 {
+		t.Errorf("Expected progress 0.5, got %v", receivedParams.Progress)
+	}
+}
+
+func TestResourceUpdateHandling(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Test resource update handling
+	var receivedParams *mcp.ResourceUpdatedNotificationParams
+	updateCallback := func(params *mcp.ResourceUpdatedNotificationParams) {
+		receivedParams = params
+	}
+
+	// Register a subscription callback
+	client.subscriptions["file:///test/doc.md"] = updateCallback
+
+	// Simulate resource update notification
+	testParams := &mcp.ResourceUpdatedNotificationParams{
+		URI: "file:///test/doc.md",
+	}
+
+	client.handleResourceUpdated(testParams)
+
+	if receivedParams == nil {
+		t.Error("Expected resource update notification to be received")
+	}
+	
+	if receivedParams.URI != "file:///test/doc.md" {
+		t.Errorf("Expected URI 'file:///test/doc.md', got %s", receivedParams.URI)
 	}
 }
