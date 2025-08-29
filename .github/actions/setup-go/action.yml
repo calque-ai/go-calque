@@ -1,5 +1,5 @@
 name: 'Setup Go Environment'
-description: 'Sets up Go environment'
+description: 'Sets up Go environment with common CI configuration'
 
 inputs:
   go-version:
@@ -10,6 +10,14 @@ inputs:
     description: 'Path to go.sum for cache key generation'
     required: false
     default: '**/go.sum'
+  enable-cache:
+    description: 'Enable Go module caching'
+    required: false
+    default: 'true'
+  ci-environment:
+    description: 'Set up CI environment variables'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
@@ -19,6 +27,45 @@ runs:
       with:
         go-version: ${{ inputs.go-version }}
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Clear cache and temporary files
+      if: ${{ inputs.enable-cache == 'false' }}
+      shell: bash
+      run: |
+        # Clean Go cache
+        rm -rf ~/.cache/go-build || true
+        rm -rf ~/go/pkg/mod/cache || true
+        rm -rf .golangci-lint-cache || true
+        
+        # Clean temporary files
+        rm -rf /tmp/golangci-lint-* || true
+        rm -rf /tmp/* || true
+        
+        # Clean any lock files
+        find . -name "*.lock" -delete || true
+        find . -name ".DS_Store" -delete || true
+        
+        # Ensure clean state
+        go clean -cache -modcache -testcache || true
+
+    - name: Cache Go modules
+      if: ${{ inputs.enable-cache == 'true' }}
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Set CI environment variables
+      if: ${{ inputs.ci-environment == 'true' }}
+      shell: bash
+      run: |
+        echo "CI=true" >> $GITHUB_ENV
+        echo "GITHUB_ACTIONS=true" >> $GITHUB_ENV
+        echo "NO_COLOR=1" >> $GITHUB_ENV
 
     - name: Download dependencies
       shell: bash

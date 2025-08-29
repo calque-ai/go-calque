@@ -14,9 +14,46 @@ env:
   GO_VERSION: "1.24.2"
 
 jobs:
-  ci:
-    name: CI Pipeline
+  # Linting and static analysis
+  lint:
+    name: Lint & Static Analysis
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go Environment
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          enable-cache: false
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run go fmt check
+        run: |
+          # Check if code is properly formatted
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "Code is not formatted. Run 'gofmt -s -w .' to fix formatting."
+            gofmt -s -l .
+            exit 1
+          fi
+          echo "Code formatting is correct."
+
+  # Build(ensures code compiles)
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint
 
     steps:
       - name: Checkout code
@@ -27,16 +64,29 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8
+      - name: Build
+        uses: ./.github/actions/build
+
+  # Unit tests with coverage
+  unit-tests:
+    name: Unit Tests & Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go Environment
+        uses: ./.github/actions/setup-go
         with:
-          version: latest
+          go-version: ${{ env.GO_VERSION }}
 
-      - name: Run vet
-        run: go vet ./...
-
-      - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out ./...
+      - name: Run tests with coverage
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./pkg/...
 
       - name: Generate coverage report
         run: go tool cover -html=coverage.out -o coverage.html
@@ -49,16 +99,67 @@ jobs:
           name: codecov-umbrella
           fail_ci_if_error: false
 
-      - name: Build main packages
-        run: go build -v ./...
+  # Integration tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: unit-tests
 
-      - name: Build examples
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go Environment
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run Integration Tests
+        uses: ./.github/actions/integration-tests
+        with:
+          script-path: examples/run_integration_tests.sh
+          parallel-jobs: 4
+          timeout: 30s
+
+  # Security scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go Environment
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install govulncheck
         run: |
-          for example in examples/*/; do
-            if [ -f "$example/main.go" ]; then
-              echo "Building $example"
-              cd "$example"
-              go build -v .
-              cd - > /dev/null
-            fi
-          done
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run security vulnerability scan
+        run: |
+          govulncheck ./... > security-report.txt 2>&1 || true
+          echo "Security scan completed"
+          
+          # Count vulnerabilities found
+          VULNS=$(grep -c "Vulnerability #" security-report.txt 2>/dev/null || echo "0")
+          echo "issues=$VULNS" >> $GITHUB_OUTPUT
+          echo "Found $VULNS security vulnerabilities"
+          
+          # Display report
+          if [ -f "security-report.txt" ]; then
+            echo "=== Security Scan Report ==="
+            cat security-report.txt
+          fi
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-report
+          path: security-report.txt

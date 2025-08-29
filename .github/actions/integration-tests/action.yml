@@ -1,0 +1,35 @@
+name: 'Run Integration Tests'
+description: 'Runs integration tests with configurable parallel jobs and timeout'
+
+inputs:
+  script-path:
+    description: 'Path to integration test script'
+    required: false
+    default: 'examples/run_integration_tests.sh'
+  parallel-jobs:
+    description: 'Number of parallel jobs for tests'
+    required: false
+    default: '4'
+  timeout:
+    description: 'Timeout for test execution'
+    required: false
+    default: '30s'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run integration tests
+      shell: bash
+      run: |
+        echo "🚀 Starting integration test execution..."
+        echo "📁 Current directory: $(pwd)"
+        echo "⚙️  Parallel jobs: ${{ inputs.parallel-jobs }}"
+        echo "⏱️  Timeout: ${{ inputs.timeout }}"
+        echo ""
+        
+        # Set environment variables for parallel execution
+        export PARALLEL_JOBS="${{ inputs.parallel-jobs }}"
+        export TIMEOUT="${{ inputs.timeout }}"
+        
+        # Run the integration test script
+        "${{ inputs.script-path }}"
