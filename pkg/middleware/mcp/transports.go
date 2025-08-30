@@ -25,10 +25,7 @@ import (
 func NewStdio(command string, args []string, opts ...Option) (*Client, error) {
 	mcpClient := mcp.NewClient(defaultImplementation(), nil)
 
-	client, err := newClient(mcpClient, opts...)
-	if err != nil {
-		return nil, err
-	}
+	client := newClient(mcpClient, opts...)
 
 	// Create CommandTransport following MCP SDK pattern
 	cmd := exec.Command(command, args...)
@@ -58,10 +55,7 @@ func NewStdio(command string, args []string, opts ...Option) (*Client, error) {
 func NewSSE(url string, opts ...Option) (*Client, error) {
 	mcpClient := mcp.NewClient(defaultImplementation(), nil)
 
-	client, err := newClient(mcpClient, opts...)
-	if err != nil {
-		return nil, err
-	}
+	client := newClient(mcpClient, opts...)
 
 	// Create SSEClientTransport following MCP SDK pattern
 	client.transport = &mcp.SSEClientTransport{

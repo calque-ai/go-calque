@@ -1,9 +1,15 @@
+// Package mcp provides Model Context Protocol (MCP) integration for calque flows.
+//
+// This package implements MCP client middleware that connects to MCP servers
+// to access tools, resources, and prompts through the standardized protocol.
+// Supports multiple transport types and configurable error handling.
 package mcp
 
 import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -30,6 +36,7 @@ type Client struct {
 	progressCallbacks map[string][]func(*mcp.ProgressNotificationParams)
 	subscriptions     map[string]func(*mcp.ResourceUpdatedNotificationParams)
 	completionEnabled bool
+	mu                sync.RWMutex
 }
 
 // defaultImplementation provides default client identification
@@ -41,7 +48,7 @@ func defaultImplementation() *mcp.Implementation {
 }
 
 // newClient creates a Client with the given MCP client and options
-func newClient(mcpClient *mcp.Client, opts ...Option) (*Client, error) {
+func newClient(mcpClient *mcp.Client, opts ...Option) *Client {
 	client := &Client{
 		client:            mcpClient,
 		timeout:           30 * time.Second,
@@ -56,7 +63,7 @@ func newClient(mcpClient *mcp.Client, opts ...Option) (*Client, error) {
 		opt(client)
 	}
 
-	return client, nil
+	return client
 }
 
 // connect establishes the MCP session if not already connected
@@ -81,7 +88,9 @@ func (c *Client) connect(ctx context.Context) error {
 
 	// Validate server capabilities match our requirements
 	if err := c.validateCapabilities(ctx); err != nil {
-		c.session.Close()
+		if closeErr := c.session.Close(); closeErr != nil {
+			return fmt.Errorf("capability validation failed: %w, and failed to close session: %v", err, closeErr)
+		}
 		c.session = nil
 		return fmt.Errorf("capability validation failed: %w", err)
 	}
@@ -127,7 +136,11 @@ func (c *Client) handleError(err error) error {
 // handleProgressNotification processes progress notifications from MCP server
 func (c *Client) handleProgressNotification(params *mcp.ProgressNotificationParams) {
 	if progressToken, ok := params.ProgressToken.(string); ok {
-		if callbacks, exists := c.progressCallbacks[progressToken]; exists {
+		c.mu.RLock()
+		callbacks, exists := c.progressCallbacks[progressToken]
+		c.mu.RUnlock()
+		
+		if exists {
 			for _, callback := range callbacks {
 				callback(params)
 			}
@@ -137,9 +150,27 @@ func (c *Client) handleProgressNotification(params *mcp.ProgressNotificationPara
 
 // handleResourceUpdated processes resource update notifications from MCP server
 func (c *Client) handleResourceUpdated(params *mcp.ResourceUpdatedNotificationParams) {
-	if callback, exists := c.subscriptions[params.URI]; exists {
+	c.mu.RLock()
+	callback, exists := c.subscriptions[params.URI]
+	c.mu.RUnlock()
+	
+	if exists {
 		callback(params)
 	}
+}
+
+// CleanupProgressCallback removes progress callbacks for completed operations
+func (c *Client) CleanupProgressCallback(progressToken string) {
+	c.mu.Lock()
+	delete(c.progressCallbacks, progressToken)
+	c.mu.Unlock()
+}
+
+// CleanupSubscription removes resource subscription callback
+func (c *Client) CleanupSubscription(uri string) {
+	c.mu.Lock()
+	delete(c.subscriptions, uri)
+	c.mu.Unlock()
 }
 
 // Close closes the MCP session

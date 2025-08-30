@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -65,7 +67,9 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*mcp.ProgressNotifi
 		// Register progress callbacks if provided
 		if len(progressCallbacks) > 0 && result.Meta != nil {
 			if progressToken, ok := result.Meta["progressToken"].(string); ok {
+				c.mu.Lock()
 				c.progressCallbacks[progressToken] = progressCallbacks
+				c.mu.Unlock()
 			}
 		}
 
@@ -74,23 +78,31 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*mcp.ProgressNotifi
 			return c.handleError(fmt.Errorf("tool %s returned error: %v", name, result.Content))
 		}
 
-		// Write tool result content
+		// Collect all content and write in one operation for efficiency
+		var output strings.Builder
+		
+		// Collect text content
 		for _, content := range result.Content {
 			if textContent, ok := content.(*mcp.TextContent); ok {
-				if err := calque.Write(res, textContent.Text); err != nil {
-					return err
-				}
+				output.WriteString(textContent.Text)
 			}
 		}
 
-		// Write structured content if available
+		// Add structured content if available
 		if result.StructuredContent != nil {
 			structuredJSON, err := json.Marshal(result.StructuredContent)
 			if err != nil {
 				return c.handleError(fmt.Errorf("failed to marshal structured content: %w", err))
 			}
+			
+			if output.Len() > 0 {
+				output.WriteString("\n")
+			}
+			output.Write(structuredJSON)
+		}
 
-			if err := calque.Write(res, structuredJSON); err != nil {
+		if output.Len() > 0 {
+			if err := calque.Write(res, output.String()); err != nil {
 				return err
 			}
 		}
@@ -173,7 +185,7 @@ func (c *Client) resourceHandler(getURI func([]byte) (string, error), descriptio
 //	handler := client.Resource("file:///docs/api.md")
 //	flow.Use(handler) // Input: "How do I use the API?" → Output: [API docs] + user query
 func (c *Client) Resource(uri string) calque.Handler {
-	return c.resourceHandler(func(input []byte) (string, error) {
+	return c.resourceHandler(func(_ []byte) (string, error) {
 		return uri, nil
 	}, fmt.Sprintf("resource %s", uri))
 }
@@ -203,10 +215,28 @@ func (c *Client) ResourceTemplate(uriTemplate string) calque.Handler {
 			}
 		}
 
-		// Resolve template URI (simple variable substitution)
+		// Resolve template URI with security validation
 		resolvedURI := uriTemplate
 		for key, value := range templateVars {
+			// Security: Clean path component to prevent traversal
+			cleanValue := filepath.Clean(value)
+			if cleanValue != value || strings.Contains(cleanValue, "..") {
+				return "", fmt.Errorf("invalid template variable %s: path traversal not allowed", key)
+			}
+			
+			// Security: Basic URI component validation
+			if strings.ContainsAny(value, "\n\r\t") {
+				return "", fmt.Errorf("invalid template variable %s: control characters not allowed", key)
+			}
+			
 			resolvedURI = strings.ReplaceAll(resolvedURI, "{"+key+"}", value)
+		}
+		
+		// Security: Validate final resolved URI
+		if parsedURI, err := url.Parse(resolvedURI); err != nil {
+			return "", fmt.Errorf("invalid resolved URI: %w", err)
+		} else if parsedURI.Scheme == "" {
+			return "", fmt.Errorf("resolved URI missing scheme: %s", resolvedURI)
 		}
 
 		return resolvedURI, nil
@@ -311,7 +341,9 @@ func (c *Client) SubscribeToResource(uri string, onChange func(*mcp.ResourceUpda
 		}
 
 		// Register the subscription callback
+		c.mu.Lock()
 		c.subscriptions[uri] = onChange
+		c.mu.Unlock()
 
 		// Subscribe to the resource
 		params := &mcp.SubscribeParams{
@@ -320,7 +352,9 @@ func (c *Client) SubscribeToResource(uri string, onChange func(*mcp.ResourceUpda
 
 		err := c.session.Subscribe(ctx, params)
 		if err != nil {
+			c.mu.Lock()
 			delete(c.subscriptions, uri)
+			c.mu.Unlock()
 			return c.handleError(fmt.Errorf("failed to subscribe to resource %s: %w", uri, err))
 		}
 

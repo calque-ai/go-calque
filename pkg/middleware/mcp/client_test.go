@@ -12,18 +12,13 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Test server implementation for unit tests
-type testServer struct {
-	server  *mcp.Server
-	session *mcp.ServerSession
-}
 
 // Test tool: simple greeting
 type GreetParams struct {
 	Name string `json:"name" jsonschema:"the name of the person to greet"`
 }
 
-func greetTool(ctx context.Context, req *mcp.CallToolRequest, args GreetParams) (*mcp.CallToolResult, any, error) {
+func greetTool(_ context.Context, _ *mcp.CallToolRequest, args GreetParams) (*mcp.CallToolResult, any, error) {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: "Hello, " + args.Name + "!"},
@@ -32,7 +27,7 @@ func greetTool(ctx context.Context, req *mcp.CallToolRequest, args GreetParams) 
 }
 
 // Test resource handler - handles both static and template-resolved resources
-func testResourceHandler(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+func testResourceHandler(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 	switch req.Params.URI {
 	case "file:///test/doc.md":
 		return &mcp.ReadResourceResult{
@@ -58,7 +53,7 @@ func testResourceHandler(ctx context.Context, req *mcp.ReadResourceRequest) (*mc
 }
 
 // Test prompt handler  
-func testPromptHandler(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+func testPromptHandler(_ context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	switch req.Params.Name {
 	case "code_review":
 		language := "unknown"
@@ -462,8 +457,8 @@ func TestMultipleProgressCallbacks(t *testing.T) {
 	defer cleanup()
 
 	// Test multiple progress callbacks can be registered
-	callback1 := func(params *mcp.ProgressNotificationParams) {}
-	callback2 := func(params *mcp.ProgressNotificationParams) {}
+	callback1 := func(_ *mcp.ProgressNotificationParams) {}
+	callback2 := func(_ *mcp.ProgressNotificationParams) {}
 
 	handler := client.Tool("greet", callback1, callback2)
 	
@@ -619,5 +614,93 @@ func TestResourceUpdateHandling(t *testing.T) {
 	
 	if receivedParams.URI != "file:///test/doc.md" {
 		t.Errorf("Expected URI 'file:///test/doc.md', got %s", receivedParams.URI)
+	}
+}
+
+func TestResourceTemplateSecurityValidation(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Test path traversal attack prevention
+	tests := []struct {
+		name        string
+		template    string
+		input       map[string]string
+		shouldFail  bool
+		expectedErr string
+	}{
+		{
+			name:        "path traversal with ../",
+			template:    "file:///{path}",
+			input:       map[string]string{"path": "../../../etc/passwd"},
+			shouldFail:  true,
+			expectedErr: "path traversal not allowed",
+		},
+		{
+			name:        "path traversal with ..",
+			template:    "file:///{path}",
+			input:       map[string]string{"path": "config/../secrets"},
+			shouldFail:  true,
+			expectedErr: "path traversal not allowed",
+		},
+		{
+			name:        "control characters",
+			template:    "file:///{path}",
+			input:       map[string]string{"path": "config\nfile"},
+			shouldFail:  true,
+			expectedErr: "control characters not allowed",
+		},
+		{
+			name:        "valid path",
+			template:    "file:///{path}",
+			input:       map[string]string{"path": "configs/app.json"},
+			shouldFail:  false,
+			expectedErr: "",
+		},
+		{
+			name:        "missing scheme after resolution",
+			template:    "{path}",
+			input:       map[string]string{"path": "just-a-path"},
+			shouldFail:  true,
+			expectedErr: "missing scheme",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := client.ResourceTemplate(tt.template)
+			
+			inputJSON, _ := json.Marshal(tt.input)
+			req := calque.NewRequest(context.Background(), strings.NewReader(string(inputJSON)))
+			var output strings.Builder
+			res := calque.NewResponse(&output)
+			
+			err := handler.ServeFlow(req, res)
+			
+			if tt.shouldFail {
+				validateExpectedFailure(t, err, tt.name, tt.expectedErr)
+			} else {
+				validateExpectedSuccess(t, err, tt.name)
+			}
+		})
+	}
+}
+
+func validateExpectedFailure(t *testing.T, err error, testName, expectedErr string) {
+	if err == nil {
+		t.Errorf("Expected test '%s' to fail but it succeeded", testName)
+	} else if !strings.Contains(err.Error(), expectedErr) {
+		t.Errorf("Expected error containing '%s', got: %v", expectedErr, err)
+	}
+}
+
+func validateExpectedSuccess(t *testing.T, err error, testName string) {
+	if err != nil {
+		// For valid path test, we expect URI validation to pass but resource might not exist
+		if testName == "valid path" && strings.Contains(err.Error(), "Resource not found") {
+			// This is expected - URI validation passed, resource just doesn't exist
+			return
+		}
+		t.Errorf("Expected test '%s' to succeed but got error: %v", testName, err)
 	}
 }
