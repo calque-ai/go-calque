@@ -50,14 +50,14 @@ func TestRead_String(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := NewRequest(context.Background(), strings.NewReader(tt.input))
 			var result string
-			
+
 			err := Read(req, &result)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Read() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if result != tt.expected {
 				t.Errorf("Read() = %q, want %q", result, tt.expected)
 			}
@@ -102,14 +102,14 @@ func TestRead_Bytes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := NewRequest(context.Background(), bytes.NewReader(tt.input))
 			var result []byte
-			
+
 			err := Read(req, &result)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Read() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !bytes.Equal(result, tt.expected) {
 				t.Errorf("Read() = %v, want %v", result, tt.expected)
 			}
@@ -160,14 +160,14 @@ func TestWrite_String(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			res := NewResponse(&buf)
-			
+
 			err := Write(res, tt.input)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Write() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			result := buf.String()
 			if result != tt.expected {
 				t.Errorf("Write() = %q, want %q", result, tt.expected)
@@ -213,14 +213,14 @@ func TestWrite_Bytes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			res := NewResponse(&buf)
-			
+
 			err := Write(res, tt.input)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Write() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			result := buf.Bytes()
 			if !bytes.Equal(result, tt.expected) {
 				t.Errorf("Write() = %v, want %v", result, tt.expected)
@@ -266,7 +266,7 @@ func TestReadWrite_RoundTrip(t *testing.T) {
 func BenchmarkRead_String_Small(b *testing.B) {
 	input := "hello world this is a small test string"
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		req := NewRequest(context.Background(), strings.NewReader(input))
 		var result string
@@ -279,7 +279,7 @@ func BenchmarkRead_String_Small(b *testing.B) {
 func BenchmarkRead_Bytes_Small(b *testing.B) {
 	input := []byte("hello world this is a small test string")
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		req := NewRequest(context.Background(), bytes.NewReader(input))
 		var result []byte
@@ -292,7 +292,7 @@ func BenchmarkRead_Bytes_Small(b *testing.B) {
 func BenchmarkWrite_String_Small(b *testing.B) {
 	input := "hello world this is a small test string"
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		res := NewResponse(&buf)
@@ -305,7 +305,7 @@ func BenchmarkWrite_String_Small(b *testing.B) {
 func BenchmarkWrite_Bytes_Small(b *testing.B) {
 	input := []byte("hello world this is a small test string")
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		res := NewResponse(&buf)
@@ -319,7 +319,7 @@ func BenchmarkWrite_Bytes_Small(b *testing.B) {
 func BenchmarkRead_String_Large(b *testing.B) {
 	input := strings.Repeat("hello world this is a test string with some content ", 1000)
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		req := NewRequest(context.Background(), strings.NewReader(input))
 		var result string
@@ -332,7 +332,7 @@ func BenchmarkRead_String_Large(b *testing.B) {
 func BenchmarkRead_Bytes_Large(b *testing.B) {
 	input := bytes.Repeat([]byte("hello world this is a test string with some content "), 1000)
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		req := NewRequest(context.Background(), bytes.NewReader(input))
 		var result []byte
@@ -345,7 +345,7 @@ func BenchmarkRead_Bytes_Large(b *testing.B) {
 func BenchmarkWrite_String_Large(b *testing.B) {
 	input := strings.Repeat("hello world this is a test string with some content ", 1000)
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		res := NewResponse(&buf)
@@ -358,7 +358,7 @@ func BenchmarkWrite_String_Large(b *testing.B) {
 func BenchmarkWrite_Bytes_Large(b *testing.B) {
 	input := bytes.Repeat([]byte("hello world this is a test string with some content "), 1000)
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		res := NewResponse(&buf)
@@ -376,7 +376,7 @@ func BenchmarkRead_ManySmall(b *testing.B) {
 		"car", "bike", "plane", "train", "boat", "ship", "truck", "bus",
 	}
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		input := inputs[i%len(inputs)]
 		req := NewRequest(context.Background(), strings.NewReader(input))
@@ -394,7 +394,7 @@ func BenchmarkWrite_ManySmall(b *testing.B) {
 		"car", "bike", "plane", "train", "boat", "ship", "truck", "bus",
 	}
 	b.ResetTimer()
-	
+
 	for i := 0; i < b.N; i++ {
 		input := inputs[i%len(inputs)]
 		var buf bytes.Buffer

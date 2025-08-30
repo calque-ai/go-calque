@@ -1,0 +1,42 @@
+name: 'Build'
+description: 'Builds main packages and examples'
+
+inputs:
+  build-main:
+    description: 'Build main packages'
+    required: false
+    default: 'true'
+  build-examples:
+    description: 'Build example applications'
+    required: false
+    default: 'true'
+  examples-path:
+    description: 'Path to examples directory'
+    required: false
+    default: 'examples'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Build main packages
+      if: ${{ inputs.build-main == 'true' }}
+      shell: bash
+      run: |
+        echo "🔨 Building main packages..."
+        go build -v ./...
+        echo "✅ Main packages built successfully"
+
+    - name: Build examples
+      if: ${{ inputs.build-examples == 'true' }}
+      shell: bash
+      run: |
+        echo "🔨 Building examples..."
+        for example in ${{ inputs.examples-path }}/*/; do
+          if [ -f "$example/main.go" ]; then
+            echo "Building $example"
+            cd "$example"
+            go build -v .
+            cd - > /dev/null
+          fi
+        done
+        echo "✅ Examples built successfully"

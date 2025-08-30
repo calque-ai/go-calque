@@ -147,10 +147,10 @@ func TestFormatToolsAsOpenAIJsonStructure(t *testing.T) {
 
 	// Should contain valid JSON structure
 	expectedStructure := []string{
-		"{",     // JSON object start
-		"}",     // JSON object end
-		"[",     // Array start for functions
-		"]",     // Array end for functions
+		"{",           // JSON object start
+		"}",           // JSON object end
+		"[",           // Array start for functions
+		"]",           // Array end for functions
 		`"functions"`, // functions key
 	}
 

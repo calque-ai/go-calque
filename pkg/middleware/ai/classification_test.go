@@ -150,7 +150,7 @@ func TestClassifyInput(t *testing.T) {
 			expectError:  false,
 		},
 		{
-			name:         "valid multimodal JSON with audio data", 
+			name:         "valid multimodal JSON with audio data",
 			input:        `{"parts": [{"type": "audio", "data": "aGVsbG8=", "mime_type": "audio/wav"}]}`,
 			opts:         nil,
 			expectedType: MultimodalJSONInput,

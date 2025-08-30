@@ -1,15 +1,15 @@
 name: 'Setup Go Environment'
-description: 'Sets up Go environment'
+description: 'Sets up Go environment with common CI configuration'
 
 inputs:
   go-version:
     description: 'Go version to set up'
     required: false
     default: '1.24.2'
-  cache-dependency-path:
-    description: 'Path to go.sum for cache key generation'
+  ci-environment:
+    description: 'Set up CI environment variables'
     required: false
-    default: '**/go.sum'
+    default: 'true'
 
 runs:
   using: 'composite'
@@ -18,7 +18,14 @@ runs:
       uses: actions/setup-go@v5
       with:
         go-version: ${{ inputs.go-version }}
-        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Set CI environment variables
+      if: ${{ inputs.ci-environment == 'true' }}
+      shell: bash
+      run: |
+        echo "CI=true" >> $GITHUB_ENV
+        echo "GITHUB_ACTIONS=true" >> $GITHUB_ENV
+        echo "NO_COLOR=1" >> $GITHUB_ENV
 
     - name: Download dependencies
       shell: bash

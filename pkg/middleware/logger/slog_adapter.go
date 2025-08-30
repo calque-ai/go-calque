@@ -18,13 +18,13 @@ func NewSlogAdapter(logger *slog.Logger) *SlogAdapter {
 // Log implements LoggerInterface for structured logging with slog
 func (s *SlogAdapter) Log(ctx context.Context, level LogLevel, msg string, attrs ...Attribute) {
 	slogLevel := logLevelToSlog(level)
-	
+
 	// Convert our Attributes to slog.Attr
 	slogAttrs := make([]slog.Attr, len(attrs))
 	for i, attr := range attrs {
 		slogAttrs[i] = slog.Any(attr.Key, attr.Value)
 	}
-	
+
 	// Use provided context for tracing/observability
 	s.logger.LogAttrs(ctx, slogLevel, msg, slogAttrs...)
 }
