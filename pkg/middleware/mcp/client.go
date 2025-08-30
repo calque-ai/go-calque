@@ -33,8 +33,8 @@ type Client struct {
 	capabilities      []string
 	timeout           time.Duration
 	implementation    *mcp.Implementation
-	progressCallbacks map[string][]func(*mcp.ProgressNotificationParams)
-	subscriptions     map[string]func(*mcp.ResourceUpdatedNotificationParams)
+	progressCallbacks map[string][]func(*ProgressNotificationParams)
+	subscriptions     map[string]func(*ResourceUpdatedNotificationParams)
 	completionEnabled bool
 	mu                sync.RWMutex
 }
@@ -54,8 +54,8 @@ func newClient(mcpClient *mcp.Client, opts ...Option) *Client {
 		timeout:           30 * time.Second,
 		implementation:    defaultImplementation(),
 		capabilities:      []string{"tools", "resources", "prompts"},
-		progressCallbacks: make(map[string][]func(*mcp.ProgressNotificationParams)),
-		subscriptions:     make(map[string]func(*mcp.ResourceUpdatedNotificationParams)),
+		progressCallbacks: make(map[string][]func(*ProgressNotificationParams)),
+		subscriptions:     make(map[string]func(*ResourceUpdatedNotificationParams)),
 		completionEnabled: false,
 	}
 
@@ -134,7 +134,7 @@ func (c *Client) handleError(err error) error {
 }
 
 // handleProgressNotification processes progress notifications from MCP server
-func (c *Client) handleProgressNotification(params *mcp.ProgressNotificationParams) {
+func (c *Client) handleProgressNotification(params *ProgressNotificationParams) {
 	if progressToken, ok := params.ProgressToken.(string); ok {
 		c.mu.RLock()
 		callbacks, exists := c.progressCallbacks[progressToken]
@@ -149,7 +149,7 @@ func (c *Client) handleProgressNotification(params *mcp.ProgressNotificationPara
 }
 
 // handleResourceUpdated processes resource update notifications from MCP server
-func (c *Client) handleResourceUpdated(params *mcp.ResourceUpdatedNotificationParams) {
+func (c *Client) handleResourceUpdated(params *ResourceUpdatedNotificationParams) {
 	c.mu.RLock()
 	callback, exists := c.subscriptions[params.URI]
 	c.mu.RUnlock()

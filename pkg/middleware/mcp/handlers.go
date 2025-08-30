@@ -27,7 +27,7 @@ import (
 //	client, _ := mcp.NewStdio("python", []string{"server.py"})
 //	handler := client.Tool("search")
 //	flow.Use(handler) // Input: {"query": "golang"} → Output: search results
-func (c *Client) Tool(name string, progressCallbacks ...func(*mcp.ProgressNotificationParams)) calque.Handler {
+func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificationParams)) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Establish connection if needed
 		ctx := req.Context
@@ -324,11 +324,11 @@ func (c *Client) Prompt(name string) calque.Handler {
 // Example:
 //
 //	client, _ := mcp.NewStdio("python", []string{"server.py"})
-//	handler := client.SubscribeToResource("file:///config.json", func(update *mcp.ResourceUpdatedNotificationParams) {
+//	handler := client.SubscribeToResource("file:///config.json", func(update *ResourceUpdatedNotificationParams) {
 //		log.Printf("Resource %s updated", update.URI)
 //	})
 //	flow.Use(handler)
-func (c *Client) SubscribeToResource(uri string, onChange func(*mcp.ResourceUpdatedNotificationParams)) calque.Handler {
+func (c *Client) SubscribeToResource(uri string, onChange func(*ResourceUpdatedNotificationParams)) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Establish connection if needed
 		ctx := req.Context
