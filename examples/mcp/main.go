@@ -48,10 +48,10 @@ func runRealisticExample() {
 	fmt.Println("1. Using search tool...")
 	searchFlow := calque.NewFlow()
 	searchFlow.Use(client.Tool("search"))
-	
+
 	searchInput := `{"query": "golang", "limit": 3}`
 	var searchOutput string
-	
+
 	if err := searchFlow.Run(context.Background(), searchInput, &searchOutput); err != nil {
 		log.Printf("Search failed: %v", err)
 	} else {
@@ -62,10 +62,10 @@ func runRealisticExample() {
 	fmt.Println("2. Fetching API documentation resource...")
 	resourceFlow := calque.NewFlow()
 	resourceFlow.Use(client.Resource("file:///api-docs"))
-	
+
 	resourceInput := "I need to understand the API endpoints"
 	var resourceOutput string
-	
+
 	if err := resourceFlow.Run(context.Background(), resourceInput, &resourceOutput); err != nil {
 		log.Printf("Resource fetch failed: %v", err)
 	} else {
@@ -76,10 +76,10 @@ func runRealisticExample() {
 	fmt.Println("3. Using resource template for config...")
 	templateFlow := calque.NewFlow()
 	templateFlow.Use(client.ResourceTemplate("file:///configs/{name}"))
-	
+
 	templateInput := `{"name": "database.json"}`
 	var templateOutput string
-	
+
 	if err := templateFlow.Run(context.Background(), templateInput, &templateOutput); err != nil {
 		log.Printf("Resource template failed: %v", err)
 	} else {
@@ -101,10 +101,10 @@ func runAdvancedExample() {
 	fmt.Println("1. Using prompt template...")
 	promptFlow := calque.NewFlow()
 	promptFlow.Use(client.Prompt("code_review"))
-	
+
 	promptInput := `{"language": "go", "style": "security"}`
 	var promptOutput string
-	
+
 	if err := promptFlow.Run(context.Background(), promptInput, &promptOutput); err != nil {
 		log.Printf("Prompt failed: %v", err)
 	} else {
@@ -114,17 +114,17 @@ func runAdvancedExample() {
 	// 2. Tool with progress tracking
 	fmt.Println("2. Tool with progress tracking...")
 	progressFlow := calque.NewFlow()
-	
+
 	var progressUpdates []string
 	progressCallback := func(params *mcp.ProgressNotificationParams) {
 		progressUpdates = append(progressUpdates, fmt.Sprintf("Progress: %.0f%%", params.Progress*100))
 	}
-	
+
 	progressFlow.Use(client.Tool("progress_demo", progressCallback))
-	
+
 	progressInput := `{"steps": 5}`
 	var progressOutput string
-	
+
 	if err := progressFlow.Run(context.Background(), progressInput, &progressOutput); err != nil {
 		log.Printf("Progress tool failed: %v", err)
 	} else {

@@ -45,22 +45,22 @@ type SearchParams struct {
 func searchTool(_ context.Context, _ *mcp.CallToolRequest, args SearchParams) (*mcp.CallToolResult, any, error) {
 	results := []string{
 		"Go programming tutorial - Learn Go basics",
-		"Advanced Go patterns and best practices", 
+		"Advanced Go patterns and best practices",
 		"Go concurrency with goroutines and channels",
 		"Building web APIs in Go",
 		"Go testing frameworks and strategies",
 	}
-	
+
 	if args.Limit > 0 && args.Limit < len(results) {
 		results = results[:args.Limit]
 	}
-	
+
 	var output strings.Builder
 	output.WriteString(fmt.Sprintf("Search results for '%s':\n", args.Query))
 	for i, result := range results {
 		output.WriteString(fmt.Sprintf("%d. %s\n", i+1, result))
 	}
-	
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: output.String()},
@@ -82,7 +82,7 @@ func readFileTool(_ context.Context, _ *mcp.CallToolRequest, args FileParams) (*
 			},
 		}, nil, nil
 	}
-	
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: string(content)},
@@ -96,14 +96,14 @@ type ProgressParams struct {
 
 func progressTool(_ context.Context, _ *mcp.CallToolRequest, args ProgressParams) (*mcp.CallToolResult, any, error) {
 	progressToken := fmt.Sprintf("progress-%d", time.Now().Unix())
-	
+
 	// Simulate work with progress updates
 	for i := 0; i < args.Steps; i++ {
 		// Note: In a real implementation, you'd send progress notifications here
 		// For this example, we'll just simulate the work
 		time.Sleep(100 * time.Millisecond)
 	}
-	
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: fmt.Sprintf("Completed %d steps", args.Steps)},
@@ -141,7 +141,7 @@ func docResourceHandler(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.R
 
 func configResourceHandler(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 	path := strings.TrimPrefix(req.Params.URI, "file:///configs/")
-	
+
 	switch path {
 	case "database.json":
 		return &mcp.ReadResourceResult{
@@ -169,7 +169,7 @@ func configResourceHandler(_ context.Context, req *mcp.ReadResourceRequest) (*mc
 func codeReviewPromptHandler(_ context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	language := "unknown"
 	style := "standard"
-	
+
 	if req.Params.Arguments != nil {
 		if lang, ok := req.Params.Arguments["language"]; ok {
 			language = lang
@@ -178,19 +178,19 @@ func codeReviewPromptHandler(_ context.Context, req *mcp.GetPromptRequest) (*mcp
 			style = s
 		}
 	}
-	
+
 	promptText := fmt.Sprintf("Please review this %s code using %s review criteria. Focus on:", language, style)
 	if style == "security" {
 		promptText += "\n- Security vulnerabilities\n- Input validation\n- Authentication/authorization"
 	} else {
 		promptText += "\n- Code quality\n- Best practices\n- Performance"
 	}
-	
+
 	return &mcp.GetPromptResult{
 		Description: "Code review prompt template",
 		Messages: []*mcp.PromptMessage{
 			{
-				Role: "user",
+				Role:    "user",
 				Content: &mcp.TextContent{Text: promptText},
 			},
 		},

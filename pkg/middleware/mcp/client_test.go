@@ -12,7 +12,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-
 // Test tool: simple greeting
 type GreetParams struct {
 	Name string `json:"name" jsonschema:"the name of the person to greet"`
@@ -52,7 +51,7 @@ func testResourceHandler(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.
 	}
 }
 
-// Test prompt handler  
+// Test prompt handler
 func testPromptHandler(_ context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	switch req.Params.Name {
 	case "code_review":
@@ -62,7 +61,7 @@ func testPromptHandler(_ context.Context, req *mcp.GetPromptRequest) (*mcp.GetPr
 				language = lang
 			}
 		}
-		
+
 		return &mcp.GetPromptResult{
 			Description: "Code review prompt template",
 			Messages: []*mcp.PromptMessage{
@@ -82,45 +81,45 @@ func testPromptHandler(_ context.Context, req *mcp.GetPromptRequest) (*mcp.GetPr
 // setupTestServer creates a test server with in-memory transport
 func setupTestServer(t *testing.T) (*Client, func()) {
 	ctx := context.Background()
-	
+
 	// Create in-memory transports
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	
+
 	// Create and configure server
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
-	
+
 	// Add test tool
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "greet", 
+		Name:        "greet",
 		Description: "Greet a person by name",
 	}, greetTool)
-	
+
 	// Add test resource
 	server.AddResource(&mcp.Resource{
 		URI:         "file:///test/doc.md",
-		Name:        "Test Documentation", 
+		Name:        "Test Documentation",
 		Description: "Test API documentation",
 	}, testResourceHandler)
-	
-	// Add test resource template  
+
+	// Add test resource template
 	server.AddResourceTemplate(&mcp.ResourceTemplate{
 		URITemplate: "file:///configs/{name}",
 		Name:        "Configuration Files",
 		Description: "Dynamic access to config files",
 	}, testResourceHandler)
-	
+
 	// Add test prompt
 	server.AddPrompt(&mcp.Prompt{
 		Name:        "code_review",
 		Description: "Code review prompt template",
 	}, testPromptHandler)
-	
+
 	// Start server session
 	serverSession, err := server.Connect(ctx, serverTransport, nil)
 	if err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
-	
+
 	// Create client with in-memory transport
 	mcpClient := mcp.NewClient(defaultImplementation(), nil)
 	client := &Client{
@@ -133,14 +132,14 @@ func setupTestServer(t *testing.T) (*Client, func()) {
 		subscriptions:     make(map[string]func(*mcp.ResourceUpdatedNotificationParams)),
 		completionEnabled: false,
 	}
-	
+
 	cleanup := func() {
 		if client.session != nil {
 			client.session.Close()
 		}
 		serverSession.Close()
 	}
-	
+
 	return client, cleanup
 }
 
@@ -223,20 +222,20 @@ func TestToolHandler(t *testing.T) {
 
 	// Test tool handler with real MCP server
 	handler := client.Tool("greet")
-	
+
 	// Input: tool arguments as JSON
 	toolArgs := map[string]any{"name": "Alice"}
 	argsJSON, _ := json.Marshal(toolArgs)
-	
+
 	req := calque.NewRequest(context.Background(), strings.NewReader(string(argsJSON)))
 	var output strings.Builder
 	res := calque.NewResponse(&output)
-	
+
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Fatalf("Tool handler failed: %v", err)
 	}
-	
+
 	result := output.String()
 	if !strings.Contains(result, "Hello, Alice!") {
 		t.Errorf("Expected greeting result, got: %s", result)
@@ -258,13 +257,13 @@ func TestResourceHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resource handler failed: %v", err)
 	}
-	
+
 	result := output.String()
 	if !strings.Contains(result, "=== User Query ===") {
 		t.Errorf("Expected user query section, got: %s", result)
 	}
 	if !strings.Contains(result, "=== Resource 1 ===") {
-		t.Errorf("Expected resource section, got: %s", result) 
+		t.Errorf("Expected resource section, got: %s", result)
 	}
 	if !strings.Contains(result, "Test Documentation") {
 		t.Errorf("Expected resource content, got: %s", result)
@@ -293,7 +292,7 @@ func TestPromptHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Prompt handler failed: %v", err)
 	}
-	
+
 	result := output.String()
 	if !strings.Contains(result, "user: Please review this go code") {
 		t.Errorf("Expected prompt template result, got: %s", result)
@@ -306,20 +305,20 @@ func TestToolIntegration(t *testing.T) {
 
 	// Test tool handler with real MCP server
 	handler := client.Tool("greet")
-	
+
 	// Input: tool arguments as JSON
 	toolArgs := map[string]any{"name": "World"}
 	argsJSON, _ := json.Marshal(toolArgs)
-	
+
 	req := calque.NewRequest(context.Background(), strings.NewReader(string(argsJSON)))
 	var output strings.Builder
 	res := calque.NewResponse(&output)
-	
+
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Fatalf("Tool handler failed: %v", err)
 	}
-	
+
 	result := output.String()
 	if !strings.Contains(result, "Hello, World!") {
 		t.Errorf("Expected greeting result, got: %s", result)
@@ -345,13 +344,13 @@ func TestResourceTemplateHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resource template handler failed: %v", err)
 	}
-	
+
 	result := output.String()
 	if !strings.Contains(result, "=== User Query ===") {
 		t.Errorf("Expected user query section, got: %s", result)
 	}
 	if !strings.Contains(result, "=== Resource 1 ===") {
-		t.Errorf("Expected resolved resource section, got: %s", result) 
+		t.Errorf("Expected resolved resource section, got: %s", result)
 	}
 	if !strings.Contains(result, "test-app") {
 		t.Errorf("Expected resolved resource content, got: %s", result)
@@ -362,25 +361,25 @@ func TestCapabilityValidation(t *testing.T) {
 	// Test client with limited capabilities
 	client, cleanup := setupTestServer(t)
 	defer cleanup()
-	
+
 	// Override capabilities to test validation
 	client.capabilities = []string{"tools"} // Only tools, no resources
-	
+
 	// Force reconnection to trigger validation
 	if client.session != nil {
 		client.session.Close()
 		client.session = nil
 	}
-	
+
 	// This should work - tools are supported
 	toolHandler := client.Tool("greet")
 	toolArgs := map[string]any{"name": "Test"}
 	argsJSON, _ := json.Marshal(toolArgs)
-	
+
 	req := calque.NewRequest(context.Background(), strings.NewReader(string(argsJSON)))
 	var output strings.Builder
 	res := calque.NewResponse(&output)
-	
+
 	err := toolHandler.ServeFlow(req, res)
 	if err != nil {
 		t.Fatalf("Tool should work with tools capability: %v", err)
@@ -427,25 +426,25 @@ func TestToolWithProgressCallbacks(t *testing.T) {
 	}
 
 	handler := client.Tool("greet", progressCallback)
-	
+
 	// Verify handler was created with progress callback
 	if handler == nil {
 		t.Fatal("Expected handler to be created")
 	}
-	
+
 	// Test tool execution
 	toolArgs := map[string]any{"name": "ProgressTest"}
 	argsJSON, _ := json.Marshal(toolArgs)
-	
+
 	req := calque.NewRequest(context.Background(), strings.NewReader(string(argsJSON)))
 	var output strings.Builder
 	res := calque.NewResponse(&output)
-	
+
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		t.Fatalf("Tool handler with progress failed: %v", err)
 	}
-	
+
 	result := output.String()
 	if !strings.Contains(result, "Hello, ProgressTest!") {
 		t.Errorf("Expected greeting result, got: %s", result)
@@ -461,14 +460,14 @@ func TestMultipleProgressCallbacks(t *testing.T) {
 	callback2 := func(_ *mcp.ProgressNotificationParams) {}
 
 	handler := client.Tool("greet", callback1, callback2)
-	
+
 	if handler == nil {
 		t.Fatal("Expected handler to be created with multiple callbacks")
 	}
-	
+
 	// Test that multiple callbacks are properly registered
 	client.progressCallbacks["test-token"] = []func(*mcp.ProgressNotificationParams){callback1, callback2}
-	
+
 	if len(client.progressCallbacks["test-token"]) != 2 {
 		t.Errorf("Expected 2 progress callbacks, got %d", len(client.progressCallbacks["test-token"]))
 	}
@@ -485,16 +484,16 @@ func TestSubscribeToResource(t *testing.T) {
 	}
 
 	handler := client.SubscribeToResource("file:///test/doc.md", updateCallback)
-	
+
 	if handler == nil {
 		t.Fatal("Expected subscription handler to be created")
 	}
-	
+
 	// Test subscription setup
 	req := calque.NewRequest(context.Background(), strings.NewReader("initial input"))
 	var output strings.Builder
 	res := calque.NewResponse(&output)
-	
+
 	err := handler.ServeFlow(req, res)
 	if err != nil {
 		// Note: This may fail if the test server doesn't support subscriptions
@@ -502,7 +501,7 @@ func TestSubscribeToResource(t *testing.T) {
 		t.Logf("Subscription test failed (expected if server doesn't support subscriptions): %v", err)
 		return
 	}
-	
+
 	// Verify subscription callback was registered
 	if client.subscriptions["file:///test/doc.md"] == nil {
 		t.Error("Expected subscription callback to be registered")
@@ -515,19 +514,19 @@ func TestComplete(t *testing.T) {
 
 	// Test completion without enabled flag
 	handler := client.Complete()
-	
+
 	req := calque.NewRequest(context.Background(), strings.NewReader(`{"ref": {"type": "ref/prompt", "name": "code_review"}}`))
 	var output strings.Builder
 	res := calque.NewResponse(&output)
-	
+
 	err := handler.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Expected completion to fail when not enabled")
 	}
-	
+
 	// Enable completion and test
 	client.completionEnabled = true
-	
+
 	err = handler.ServeFlow(req, res)
 	if err != nil {
 		// Note: This may fail if the test server doesn't support completion
@@ -545,7 +544,7 @@ func TestWithCompletionOption(t *testing.T) {
 	if !client.completionEnabled {
 		t.Error("Expected completion to be enabled")
 	}
-	
+
 	// Test with completion disabled
 	client2, err := NewStdio("echo", []string{"hello"}, WithCompletion(false))
 	if err != nil {
@@ -582,7 +581,7 @@ func TestProgressNotificationHandling(t *testing.T) {
 	if receivedParams == nil {
 		t.Error("Expected progress notification to be received")
 	}
-	
+
 	if receivedParams.Progress != 0.5 {
 		t.Errorf("Expected progress 0.5, got %v", receivedParams.Progress)
 	}
@@ -611,7 +610,7 @@ func TestResourceUpdateHandling(t *testing.T) {
 	if receivedParams == nil {
 		t.Error("Expected resource update notification to be received")
 	}
-	
+
 	if receivedParams.URI != "file:///test/doc.md" {
 		t.Errorf("Expected URI 'file:///test/doc.md', got %s", receivedParams.URI)
 	}
@@ -669,14 +668,14 @@ func TestResourceTemplateSecurityValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := client.ResourceTemplate(tt.template)
-			
+
 			inputJSON, _ := json.Marshal(tt.input)
 			req := calque.NewRequest(context.Background(), strings.NewReader(string(inputJSON)))
 			var output strings.Builder
 			res := calque.NewResponse(&output)
-			
+
 			err := handler.ServeFlow(req, res)
-			
+
 			if tt.shouldFail {
 				validateExpectedFailure(t, err, tt.name, tt.expectedErr)
 			} else {
