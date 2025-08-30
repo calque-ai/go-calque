@@ -80,7 +80,7 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 
 		// Collect all content and write in one operation for efficiency
 		var output strings.Builder
-		
+
 		// Collect text content
 		for _, content := range result.Content {
 			if textContent, ok := content.(*mcp.TextContent); ok {
@@ -94,7 +94,7 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 			if err != nil {
 				return c.handleError(fmt.Errorf("failed to marshal structured content: %w", err))
 			}
-			
+
 			if output.Len() > 0 {
 				output.WriteString("\n")
 			}
@@ -148,7 +148,7 @@ func (c *Client) resourceHandler(getURI func([]byte) (string, error), descriptio
 
 		// Build augmented output: input + resource contents (RAG pattern)
 		var output strings.Builder
-		
+
 		// Add user input first
 		output.WriteString("=== User Query ===\n")
 		output.Write(input)
@@ -223,15 +223,15 @@ func (c *Client) ResourceTemplate(uriTemplate string) calque.Handler {
 			if cleanValue != value || strings.Contains(cleanValue, "..") {
 				return "", fmt.Errorf("invalid template variable %s: path traversal not allowed", key)
 			}
-			
+
 			// Security: Basic URI component validation
 			if strings.ContainsAny(value, "\n\r\t") {
 				return "", fmt.Errorf("invalid template variable %s: control characters not allowed", key)
 			}
-			
+
 			resolvedURI = strings.ReplaceAll(resolvedURI, "{"+key+"}", value)
 		}
-		
+
 		// Security: Validate final resolved URI
 		if parsedURI, err := url.Parse(resolvedURI); err != nil {
 			return "", fmt.Errorf("invalid resolved URI: %w", err)

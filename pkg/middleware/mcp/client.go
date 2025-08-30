@@ -139,7 +139,7 @@ func (c *Client) handleProgressNotification(params *ProgressNotificationParams) 
 		c.mu.RLock()
 		callbacks, exists := c.progressCallbacks[progressToken]
 		c.mu.RUnlock()
-		
+
 		if exists {
 			for _, callback := range callbacks {
 				callback(params)
@@ -153,7 +153,7 @@ func (c *Client) handleResourceUpdated(params *ResourceUpdatedNotificationParams
 	c.mu.RLock()
 	callback, exists := c.subscriptions[params.URI]
 	c.mu.RUnlock()
-	
+
 	if exists {
 		callback(params)
 	}

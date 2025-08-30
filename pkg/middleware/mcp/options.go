@@ -20,7 +20,7 @@ type Option func(*Client)
 //
 // Example:
 //
-//	client, _ := mcp.NewStdio("python", []string{"server.py"}, 
+//	client, _ := mcp.NewStdio("python", []string{"server.py"},
 //		mcp.WithCapabilities("tools", "resources"))
 func WithCapabilities(caps ...string) Option {
 	return func(c *Client) {
@@ -31,7 +31,7 @@ func WithCapabilities(caps ...string) Option {
 // WithTimeout sets the request timeout for MCP operations.
 //
 // Input: time.Duration for timeout
-// Output: Option function  
+// Output: Option function
 // Behavior: Sets timeout for all MCP requests
 //
 // Configures how long to wait for MCP server responses before timing out.
@@ -39,7 +39,7 @@ func WithCapabilities(caps ...string) Option {
 //
 // Example:
 //
-//	client, _ := mcp.NewStdio("python", []string{"server.py"}, 
+//	client, _ := mcp.NewStdio("python", []string{"server.py"},
 //		mcp.WithTimeout(45*time.Second))
 func WithTimeout(timeout time.Duration) Option {
 	return func(c *Client) {
@@ -58,7 +58,7 @@ func WithTimeout(timeout time.Duration) Option {
 //
 // Example:
 //
-//	client, _ := mcp.NewStdio("python", []string{"server.py"}, 
+//	client, _ := mcp.NewStdio("python", []string{"server.py"},
 //		mcp.WithImplementation("my-app", "v1.2.0"))
 func WithImplementation(name, version string) Option {
 	return func(c *Client) {
@@ -81,9 +81,9 @@ func WithImplementation(name, version string) Option {
 //
 // Example:
 //
-//	client, _ := mcp.NewStdio("python", []string{"server.py"}, 
-//		mcp.WithOnError(func(err error) { 
-//			log.Printf("MCP error: %v", err) 
+//	client, _ := mcp.NewStdio("python", []string{"server.py"},
+//		mcp.WithOnError(func(err error) {
+//			log.Printf("MCP error: %v", err)
 //		}))
 func WithOnError(callback func(error)) Option {
 	return func(c *Client) {
@@ -103,7 +103,7 @@ func WithOnError(callback func(error)) Option {
 //
 // Example:
 //
-//	client, _ := mcp.NewStdio("python", []string{"server.py"}, 
+//	client, _ := mcp.NewStdio("python", []string{"server.py"},
 //		mcp.WithCompletion(true))
 func WithCompletion(enabled bool) Option {
 	return func(c *Client) {
