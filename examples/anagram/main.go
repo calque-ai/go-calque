@@ -89,7 +89,7 @@ func Baseline(words []string) map[string]map[string]struct{} {
 		return nil
 	}
 	seed := swa[0]
-	for i := range swa[1:] {
+	for i := 1; i < len(swa); i++ {
 		seed = accumulate(seed, swa[i])
 	}
 	return seed
@@ -104,9 +104,7 @@ func moreThanOneChar(word string) bool {
 func singleWordToMap(word string) Anagrams {
 	// Sort the characters in the word to create the key
 	chars := []rune(word)
-	sort.Slice(chars, func(i, j int) bool {
-		return chars[i] < chars[j]
-	})
+	slices.Sort(chars)
 	key := string(chars)
 
 	// Create the anagram map
@@ -158,9 +156,9 @@ func accumulateAnagrams() calque.Handler {
 		}
 
 		result := make(Anagrams)
-		lines := strings.SplitSeq(string(input), "\n")
+		lines := strings.Split(string(input), "\n")
 
-		for line := range lines {
+		for _, line := range lines {
 			line = strings.TrimSpace(line)
 			if line == "" {
 				continue
@@ -196,9 +194,9 @@ func accumulateAnagrams() calque.Handler {
 // parseAnagramOutput converts the flow output back to Anagrams
 func parseAnagramOutput(output string) map[string]map[string]struct{} {
 	result := make(Anagrams)
-	lines := strings.SplitSeq(output, "\n")
+	lines := strings.Split(output, "\n")
 
-	for line := range lines {
+	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
