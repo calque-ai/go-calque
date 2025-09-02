@@ -45,7 +45,7 @@ func (m *MockMCPClient) Tool(name string) calque.Handler {
 }
 
 func (m *MockMCPClient) Resource(uri string) calque.Handler {
-	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
+	return calque.HandlerFunc(func(_ *calque.Request, w *calque.Response) error {
 		if content, exists := m.resources[uri]; exists {
 			return calque.Write(w, content)
 		}
@@ -73,7 +73,7 @@ func (m *MockMCPClient) ResourceTemplate(template string) calque.Handler {
 		// Simple template replacement for testing
 		uri := template
 		for key, value := range templateVars {
-			uri = strings.Replace(uri, "{"+key+"}", value, -1)
+			uri = strings.ReplaceAll(uri, "{"+key+"}", value)
 		}
 
 		if content, exists := m.resources[uri]; exists {
@@ -84,7 +84,7 @@ func (m *MockMCPClient) ResourceTemplate(template string) calque.Handler {
 }
 
 func (m *MockMCPClient) Prompt(name string) calque.Handler {
-	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
+	return calque.HandlerFunc(func(_ *calque.Request, w *calque.Response) error {
 		if prompt, exists := m.prompts[name]; exists {
 			return calque.Write(w, prompt)
 		}
@@ -104,7 +104,7 @@ func TestBasicMCPToolCalling(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register a multiply tool
-	mockClient.tools["multiply"] = func(input interface{}) (string, error) {
+	mockClient.tools["multiply"] = func(_ interface{}) (string, error) {
 		// Simple mock implementation that returns "42" for any input
 		return "42", nil
 	}
@@ -219,7 +219,7 @@ func TestMCPToolWithProgress(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register a progress tool
-	mockClient.tools["progress_demo"] = func(input interface{}) (string, error) {
+	mockClient.tools["progress_demo"] = func(_ interface{}) (string, error) { //nolint:unparam
 		// Simulate some work
 		time.Sleep(10 * time.Millisecond)
 		return "Completed 5 steps", nil
@@ -251,7 +251,7 @@ func TestMCPConcurrentToolCalls(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register a search tool
-	mockClient.tools["search"] = func(input interface{}) (string, error) {
+	mockClient.tools["search"] = func(_ interface{}) (string, error) {
 		return "Search results for query", nil
 	}
 
@@ -260,7 +260,7 @@ func TestMCPConcurrentToolCalls(t *testing.T) {
 	results := make(chan error, numRequests)
 
 	for i := 0; i < numRequests; i++ {
-		go func(id int) {
+		go func(_ int) {
 			flow := calque.NewFlow()
 			flow.Use(mockClient.Tool("search"))
 
@@ -289,7 +289,7 @@ func TestMCPErrorHandling(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register a tool that returns an error
-	mockClient.tools["error_tool"] = func(input interface{}) (string, error) {
+	mockClient.tools["error_tool"] = func(_ interface{}) (string, error) {
 		return "", fmt.Errorf("mock error")
 	}
 
@@ -297,10 +297,10 @@ func TestMCPErrorHandling(t *testing.T) {
 	flow := calque.NewFlow()
 	flow.Use(mockClient.Tool("nonexistent_tool"))
 
-	input := "test input"
+	const testInput = "test input"
 	var output string
 
-	err := flow.Run(context.Background(), input, &output)
+	err := flow.Run(context.Background(), testInput, &output)
 	if err != nil {
 		t.Fatalf("Expected error but got none")
 	}
@@ -318,11 +318,11 @@ func TestMCPComplexPipeline(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register multiple tools
-	mockClient.tools["search"] = func(input interface{}) (string, error) {
+	mockClient.tools["search"] = func(_ interface{}) (string, error) {
 		return "search results", nil
 	}
 
-	mockClient.tools["analyze"] = func(input interface{}) (string, error) {
+	mockClient.tools["analyze"] = func(_ interface{}) (string, error) {
 		return "analysis complete", nil
 	}
 
@@ -358,10 +358,10 @@ func TestMCPResourceNotFound(t *testing.T) {
 	flow := calque.NewFlow()
 	flow.Use(mockClient.Resource("file:///nonexistent"))
 
-	input := "test input"
+	const testInput = "test input"
 	var output string
 
-	err := flow.Run(context.Background(), input, &output)
+	err := flow.Run(context.Background(), testInput, &output)
 	if err != nil {
 		t.Fatalf("Resource fetch failed: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestMCPPerformanceCharacteristics(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register a fast tool
-	mockClient.tools["fast_tool"] = func(input interface{}) (string, error) {
+	mockClient.tools["fast_tool"] = func(_ interface{}) (string, error) {
 		return "fast result", nil
 	}
 
@@ -416,10 +416,10 @@ func TestMCPPerformanceCharacteristics(t *testing.T) {
 	// Measure processing time
 	start := time.Now()
 
-	input := "test input"
+	const testInput = "test input"
 	var output string
 
-	err := flow.Run(context.Background(), input, &output)
+	err := flow.Run(context.Background(), testInput, &output)
 	if err != nil {
 		t.Fatalf("Tool call failed: %v", err)
 	}
