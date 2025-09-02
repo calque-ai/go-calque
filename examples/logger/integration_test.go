@@ -50,9 +50,7 @@ func TestSlogLogging(t *testing.T) {
 	flow := calque.NewFlow()
 	flow.
 		Use(logger.Head("INPUT", 40)).
-		Use(text.Transform(func(s string) string {
-			return strings.ToLower(s)
-		})).
+		Use(text.Transform(strings.ToLower)).
 		Use(logger.Print("STREAM_SAMPLING")).
 		Use(logger.HeadTail("RESULT", 20, 10))
 
@@ -194,9 +192,7 @@ func TestLoggingPipeline(t *testing.T) {
 	flow.
 		Use(logger.Print("START_PIPELINE")).
 		Use(logger.Head("INPUT_ANALYSIS", 40)).
-		Use(text.Transform(func(s string) string {
-			return strings.ToUpper(s)
-		})).
+		Use(text.Transform(strings.ToUpper)).
 		Use(logger.Print("TRANSFORM_LOG")).
 		Use(text.Transform(func(s string) string {
 			return "Final: " + s
