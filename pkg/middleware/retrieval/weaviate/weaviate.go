@@ -11,6 +11,7 @@ import (
 //
 // Implements the retrieval.VectorStore interface for Weaviate operations.
 // Provides vector similarity search, document storage, and embedding capabilities.
+// Also implements RerankingProvider for native cross-encoder reranking support.
 type Client struct {
 	url         string
 	className   string
@@ -66,6 +67,59 @@ func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retr
 		Total:     0,
 		Threshold: query.Threshold,
 	}, fmt.Errorf("weaviate search not yet implemented - add weaviate-go-client dependency")
+}
+
+// SearchWithReranking performs search with native cross-encoder reranking.
+//
+// Weaviate provides built-in cross-encoder reranking capabilities for improved
+// relevance scoring. This implementation uses Weaviate's native reranking
+// modules when available.
+//
+// Example:
+//
+//	opts := retrieval.RerankingOptions{
+//	    Model: "rerank-multilingual-v2.0",  // Cohere reranking model
+//	    Query: "machine learning basics",   // Query for relevance scoring
+//	    TopK:  50,                          // Rerank top 50 candidates
+//	}
+//	result, err := client.SearchWithReranking(ctx, query, opts)
+func (c *Client) SearchWithReranking(ctx context.Context, query retrieval.SearchQuery, opts retrieval.RerankingOptions) (*retrieval.SearchResult, error) {
+	// TODO: Implement actual Weaviate reranking search
+	// Example GraphQL query with reranking:
+	// {
+	//   Get {
+	//     Document(
+	//       nearText: {
+	//         concepts: ["query text"]
+	//       }
+	//       rerank: {
+	//         property: "content"
+	//         query: "reranking query text"
+	//         model: "rerank-multilingual-v2.0"
+	//       }
+	//       limit: 10
+	//     ) {
+	//       content
+	//       _additional {
+	//         score
+	//         rerank(
+	//           property: "content"
+	//           query: "reranking query text"
+	//           model: "rerank-multilingual-v2.0"
+	//         ) {
+	//           score
+	//         }
+	//       }
+	//     }
+	//   }
+	// }
+	
+	return &retrieval.SearchResult{
+		Documents: []retrieval.Document{},
+		Query:     query.Text,
+		Total:     0,
+		Threshold: query.Threshold,
+	}, fmt.Errorf("weaviate reranking search not yet implemented - add weaviate-go-client dependency")
 }
 
 // Store adds documents to the Weaviate vector database with embeddings.

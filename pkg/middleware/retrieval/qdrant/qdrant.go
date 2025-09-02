@@ -11,6 +11,7 @@ import (
 //
 // Implements the retrieval.VectorStore interface for Qdrant operations.
 // Provides vector similarity search, document storage, and collection management.
+// Also implements DiversificationProvider for native MMR support.
 type Client struct {
 	// TODO: Add actual Qdrant client when dependency is added
 	// client       *qdrant.Client
@@ -102,6 +103,44 @@ func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retr
 		Total:     0,
 		Threshold: query.Threshold,
 	}, fmt.Errorf("qdrant search not yet implemented - add qdrant-go client dependency")
+}
+
+// SearchWithDiversification performs search with native MMR diversification.
+//
+// Qdrant provides built-in MMR (Maximum Marginal Relevance) support for balancing
+// relevance and diversity in search results. This implementation uses Qdrant's
+// native MMR capabilities when available.
+//
+// Example:
+//
+//	opts := retrieval.DiversificationOptions{
+//	    Diversity: 0.5,        // 50% diversity, 50% relevance
+//	    CandidatesLimit: 100,  // Consider top 100 candidates
+//	    Strategy: "mmr",       // Use MMR algorithm
+//	}
+//	result, err := client.SearchWithDiversification(ctx, query, opts)
+func (c *Client) SearchWithDiversification(ctx context.Context, query retrieval.SearchQuery, opts retrieval.DiversificationOptions) (*retrieval.SearchResult, error) {
+	// TODO: Implement actual Qdrant MMR search
+	// Example search request with MMR:
+	// searchRequest := &qdrant.SearchRequest{
+	//     CollectionName: c.collectionName,
+	//     Vector:         query.Vector,
+	//     Limit:          uint64(query.Limit),
+	//     ScoreThreshold: &query.Threshold,
+	//     MMR: &qdrant.MMR{
+	//         Diversity:       opts.Diversity,        // 0.0-1.0 relevance to diversity
+	//         CandidatesLimit: uint64(opts.CandidatesLimit), // Candidates to consider
+	//     },
+	//     Filter: buildQdrantFilter(query.Filter),
+	// }
+	// searchResult, err := c.client.Search(ctx, searchRequest)
+	
+	return &retrieval.SearchResult{
+		Documents: []retrieval.Document{},
+		Query:     query.Text,
+		Total:     0,
+		Threshold: query.Threshold,
+	}, fmt.Errorf("qdrant MMR search not yet implemented - add qdrant-go client dependency")
 }
 
 // Store adds documents to the Qdrant collection with vector embeddings.
