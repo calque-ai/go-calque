@@ -27,11 +27,11 @@ func TestNew(t *testing.T) {
 
 func TestNewFlow_Configuration(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         *FlowConfig
-		expectSemNil   bool
-		expectSemCap   int
-		description    string
+		name         string
+		config       *FlowConfig
+		expectSemNil bool
+		expectSemCap int
+		description  string
 	}{
 		{
 			name:         "default_no_config",
@@ -117,7 +117,7 @@ func TestNewFlow_Configuration(t *testing.T) {
 				if flow.sem == nil {
 					t.Errorf("%s: expected non-nil semaphore but got nil", tt.description)
 				} else if cap(flow.sem) != tt.expectSemCap {
-					t.Errorf("%s: expected semaphore capacity %d but got %d", 
+					t.Errorf("%s: expected semaphore capacity %d but got %d",
 						tt.description, tt.expectSemCap, cap(flow.sem))
 				}
 			}
