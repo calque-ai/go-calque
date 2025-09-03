@@ -118,23 +118,23 @@ func TestSlogAdapter_Log(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create buffer to capture slog output
 			var buf bytes.Buffer
-			
+
 			// Create slog logger with text handler for easier testing
 			handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{
 				Level: slog.LevelDebug, // Enable all levels for testing
 			})
 			slogger := slog.New(handler)
-			
+
 			// Create adapter
 			adapter := NewSlogAdapter(slogger)
-			
+
 			// Call Log method
 			ctx := context.Background()
 			adapter.Log(ctx, tt.level, tt.msg, tt.attrs...)
-			
+
 			// Get output
 			output := buf.String()
-			
+
 			if tt.skipContent {
 				// Just verify some basic content is present
 				if !strings.Contains(output, tt.wantLevel) {
@@ -142,17 +142,17 @@ func TestSlogAdapter_Log(t *testing.T) {
 				}
 				return
 			}
-			
+
 			// Verify level is present
 			if !strings.Contains(output, tt.wantLevel) {
 				t.Errorf("Expected level %s in output, got: %s", tt.wantLevel, output)
 			}
-			
+
 			// Verify message is present
 			if !strings.Contains(output, tt.wantMsg) {
 				t.Errorf("Expected message %q in output, got: %s", tt.wantMsg, output)
 			}
-			
+
 			// Verify all attributes are present
 			for _, wantAttr := range tt.wantAttrs {
 				if !strings.Contains(output, wantAttr) {
@@ -165,64 +165,64 @@ func TestSlogAdapter_Log(t *testing.T) {
 
 func TestSlogAdapter_IsLevelEnabled(t *testing.T) {
 	tests := []struct {
-		name        string
+		name         string
 		handlerLevel slog.Level
-		testLevel   LogLevel
-		want        bool
+		testLevel    LogLevel
+		want         bool
 	}{
 		{
-			name:        "debug enabled when handler at debug",
+			name:         "debug enabled when handler at debug",
 			handlerLevel: slog.LevelDebug,
-			testLevel:   DebugLevel,
-			want:        true,
+			testLevel:    DebugLevel,
+			want:         true,
 		},
 		{
-			name:        "debug disabled when handler at info",
+			name:         "debug disabled when handler at info",
 			handlerLevel: slog.LevelInfo,
-			testLevel:   DebugLevel,
-			want:        false,
+			testLevel:    DebugLevel,
+			want:         false,
 		},
 		{
-			name:        "info enabled when handler at debug",
+			name:         "info enabled when handler at debug",
 			handlerLevel: slog.LevelDebug,
-			testLevel:   InfoLevel,
-			want:        true,
+			testLevel:    InfoLevel,
+			want:         true,
 		},
 		{
-			name:        "info enabled when handler at info",
+			name:         "info enabled when handler at info",
 			handlerLevel: slog.LevelInfo,
-			testLevel:   InfoLevel,
-			want:        true,
+			testLevel:    InfoLevel,
+			want:         true,
 		},
 		{
-			name:        "info disabled when handler at warn",
+			name:         "info disabled when handler at warn",
 			handlerLevel: slog.LevelWarn,
-			testLevel:   InfoLevel,
-			want:        false,
+			testLevel:    InfoLevel,
+			want:         false,
 		},
 		{
-			name:        "warn enabled when handler at warn",
+			name:         "warn enabled when handler at warn",
 			handlerLevel: slog.LevelWarn,
-			testLevel:   WarnLevel,
-			want:        true,
+			testLevel:    WarnLevel,
+			want:         true,
 		},
 		{
-			name:        "warn disabled when handler at error",
+			name:         "warn disabled when handler at error",
 			handlerLevel: slog.LevelError,
-			testLevel:   WarnLevel,
-			want:        false,
+			testLevel:    WarnLevel,
+			want:         false,
 		},
 		{
-			name:        "error enabled when handler at error",
+			name:         "error enabled when handler at error",
 			handlerLevel: slog.LevelError,
-			testLevel:   ErrorLevel,
-			want:        true,
+			testLevel:    ErrorLevel,
+			want:         true,
 		},
 		{
-			name:        "error enabled when handler at debug",
+			name:         "error enabled when handler at debug",
 			handlerLevel: slog.LevelDebug,
-			testLevel:   ErrorLevel,
-			want:        true,
+			testLevel:    ErrorLevel,
+			want:         true,
 		},
 	}
 
@@ -234,14 +234,14 @@ func TestSlogAdapter_IsLevelEnabled(t *testing.T) {
 				Level: tt.handlerLevel,
 			})
 			slogger := slog.New(handler)
-			
+
 			// Create adapter
 			adapter := NewSlogAdapter(slogger)
-			
+
 			// Test IsLevelEnabled
 			ctx := context.Background()
 			got := adapter.IsLevelEnabled(ctx, tt.testLevel)
-			
+
 			if got != tt.want {
 				t.Errorf("IsLevelEnabled() = %v, want %v", got, tt.want)
 			}
@@ -296,16 +296,16 @@ func TestSlogAdapter_Printf(t *testing.T) {
 				Level: slog.LevelDebug,
 			})
 			slogger := slog.New(handler)
-			
+
 			// Create adapter
 			adapter := NewSlogAdapter(slogger)
-			
+
 			// Call Printf
 			adapter.Printf(tt.format, tt.args...)
-			
+
 			// Get output and verify expected content is present
 			output := buf.String()
-			
+
 			// Note: slog's Info() method treats the format as a message key, not a format string
 			// So we need to verify the format string appears as the message and args as attributes
 			if len(tt.args) == 0 {
@@ -323,7 +323,7 @@ func TestSlogAdapter_Printf(t *testing.T) {
 					t.Errorf("Expected args as !BADKEY in output, got: %s", output)
 				}
 			}
-			
+
 			// Verify it was logged at INFO level (as per implementation)
 			if !strings.Contains(output, "INFO") {
 				t.Errorf("Expected INFO level in Printf output, got: %s", output)
@@ -380,23 +380,23 @@ func TestNewSlogAdapter(t *testing.T) {
 		var buf bytes.Buffer
 		handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{})
 		slogger := slog.New(handler)
-		
+
 		adapter := NewSlogAdapter(slogger)
-		
+
 		if adapter == nil {
 			t.Fatal("NewSlogAdapter returned nil")
 		}
-		
+
 		if adapter.logger != slogger {
 			t.Error("NewSlogAdapter did not store the provided logger")
 		}
 	})
-	
+
 	t.Run("adapter implements Adapter interface", func(_ *testing.T) {
 		var buf bytes.Buffer
 		handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{})
 		slogger := slog.New(handler)
-		
+
 		var _ Adapter = NewSlogAdapter(slogger)
 	})
 }
@@ -409,20 +409,20 @@ func TestSlogAdapter_Integration(t *testing.T) {
 		})
 		slogger := slog.New(handler)
 		adapter := NewSlogAdapter(slogger)
-		
+
 		// Test with context containing values using proper typed key
 		type contextKey string
 		traceIDKey := contextKey("trace_id")
 		ctx := context.WithValue(context.Background(), traceIDKey, "abc-123")
-		
+
 		// Log with various levels and attributes
-		adapter.Log(ctx, InfoLevel, "test message", 
+		adapter.Log(ctx, InfoLevel, "test message",
 			Attr("key1", "value1"),
 			Attr("key2", 42),
 		)
-		
+
 		output := buf.String()
-		
+
 		// Verify basic structure
 		if !strings.Contains(output, "INFO") {
 			t.Error("Expected INFO level in output")
@@ -448,13 +448,13 @@ func BenchmarkSlogAdapter_Log(b *testing.B) {
 	slogger := slog.New(handler)
 	adapter := NewSlogAdapter(slogger)
 	ctx := context.Background()
-	
+
 	attrs := []Attribute{
 		{Key: "user_id", Value: "12345"},
 		{Key: "action", Value: "login"},
 		{Key: "success", Value: true},
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		adapter.Log(ctx, InfoLevel, "user performed action", attrs...)
@@ -469,7 +469,7 @@ func BenchmarkSlogAdapter_IsLevelEnabled(b *testing.B) {
 	slogger := slog.New(handler)
 	adapter := NewSlogAdapter(slogger)
 	ctx := context.Background()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		adapter.IsLevelEnabled(ctx, InfoLevel)
