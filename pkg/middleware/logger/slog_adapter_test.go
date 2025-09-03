@@ -392,7 +392,7 @@ func TestNewSlogAdapter(t *testing.T) {
 		}
 	})
 	
-	t.Run("adapter implements Adapter interface", func(t *testing.T) {
+	t.Run("adapter implements Adapter interface", func(_ *testing.T) {
 		var buf bytes.Buffer
 		handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{})
 		slogger := slog.New(handler)
@@ -410,8 +410,10 @@ func TestSlogAdapter_Integration(t *testing.T) {
 		slogger := slog.New(handler)
 		adapter := NewSlogAdapter(slogger)
 		
-		// Test with context containing values
-		ctx := context.WithValue(context.Background(), "trace_id", "abc-123")
+		// Test with context containing values using proper typed key
+		type contextKey string
+		traceIDKey := contextKey("trace_id")
+		ctx := context.WithValue(context.Background(), traceIDKey, "abc-123")
 		
 		// Log with various levels and attributes
 		adapter.Log(ctx, InfoLevel, "test message", 

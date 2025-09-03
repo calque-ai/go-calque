@@ -129,19 +129,29 @@ type mockHandler struct {
 	err       error
 	callCount int
 	lastInput string
+	mu        sync.Mutex // protects callCount and lastInput
 }
 
 func (m *mockHandler) ServeFlow(r *calque.Request, w *calque.Response) error {
+	m.mu.Lock()
 	m.callCount++
 	if r.Data != nil {
 		input, _ := io.ReadAll(r.Data)
 		m.lastInput = string(input)
 	}
+	m.mu.Unlock()
+
 	if m.err != nil {
 		return m.err
 	}
 	_, err := w.Data.Write([]byte(m.response))
 	return err
+}
+
+func (m *mockHandler) getCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.callCount
 }
 
 func TestNewCache(t *testing.T) {
@@ -313,8 +323,8 @@ func TestMemory_Cache_WithRealStore(t *testing.T) {
 
 			// For cache hit test, verify handler was called only once
 			if tt.name == "cache_hit_success" {
-				if mockHandler.callCount != 1 {
-					t.Errorf("%s: expected handler to be called once, got %d calls", tt.description, mockHandler.callCount)
+				if mockHandler.getCallCount() != 1 {
+					t.Errorf("%s: expected handler to be called once, got %d calls", tt.description, mockHandler.getCallCount())
 				}
 			}
 
@@ -613,8 +623,8 @@ func TestMemory_Cache_TTLExpiration(t *testing.T) {
 	if err1 != nil {
 		t.Fatalf("First request failed: %v", err1)
 	}
-	if handler.callCount != 1 {
-		t.Errorf("Expected 1 handler call, got %d", handler.callCount)
+	if handler.getCallCount() != 1 {
+		t.Errorf("Expected 1 handler call, got %d", handler.getCallCount())
 	}
 
 	// Wait for TTL to expire
@@ -629,8 +639,8 @@ func TestMemory_Cache_TTLExpiration(t *testing.T) {
 	if err2 != nil {
 		t.Fatalf("Second request failed: %v", err2)
 	}
-	if handler.callCount != 2 {
-		t.Errorf("Expected 2 handler calls after expiration, got %d", handler.callCount)
+	if handler.getCallCount() != 2 {
+		t.Errorf("Expected 2 handler calls after expiration, got %d", handler.getCallCount())
 	}
 }
 

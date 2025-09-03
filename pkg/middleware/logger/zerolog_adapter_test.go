@@ -218,52 +218,65 @@ func compareValues(got, want interface{}) bool {
 		return false
 	}
 	
-	// For slices, convert to comparable format
-	if wantSlice, ok := want.([]string); ok {
-		if gotSlice, ok := got.([]interface{}); ok {
-			if len(gotSlice) != len(wantSlice) {
-				return false
-			}
-			for i, v := range gotSlice {
-				if v != wantSlice[i] {
-					return false
-				}
-			}
-			return true
-		}
-		return false
-	}
-	
-	// Handle []interface{} from JSON unmarshaling
-	if _, ok := want.([]interface{}); ok {
+	return compareTypedValues(got, want)
+}
+
+// compareTypedValues handles different type comparisons
+func compareTypedValues(got, want interface{}) bool {
+	switch wantVal := want.(type) {
+	case []string:
+		return compareStringSlice(got, wantVal)
+	case []interface{}:
 		// Skip comparison for complex slice types that can't be compared
 		return true
+	case map[string]int:
+		return compareStringIntMap(got, wantVal)
+	case map[string]interface{}:
+		// Skip comparison for complex map types that can't be compared
+		return true
+	default:
+		// Default comparison
+		return got == want
 	}
-	
-	// For maps, compare recursively
-	if wantMap, ok := want.(map[string]int); ok {
-		if gotMap, ok := got.(map[string]interface{}); ok {
-			if len(gotMap) != len(wantMap) {
-				return false
-			}
-			for k, v := range wantMap {
-				if gotVal, exists := gotMap[k]; !exists || gotVal != float64(v) {
-					return false
-				}
-			}
-			return true
-		}
+}
+
+// compareStringSlice compares a string slice with JSON unmarshaled interface slice
+func compareStringSlice(got interface{}, wantSlice []string) bool {
+	gotSlice, ok := got.([]interface{})
+	if !ok {
 		return false
 	}
 	
-	// Handle map[string]interface{} from JSON unmarshaling
-	if _, ok := want.(map[string]interface{}); ok {
-		// Skip comparison for complex map types that can't be compared
-		return true
+	if len(gotSlice) != len(wantSlice) {
+		return false
 	}
 	
-	// Default comparison
-	return got == want
+	for i, v := range gotSlice {
+		if v != wantSlice[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// compareStringIntMap compares a string-int map with JSON unmarshaled interface map
+func compareStringIntMap(got interface{}, wantMap map[string]int) bool {
+	gotMap, ok := got.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	
+	if len(gotMap) != len(wantMap) {
+		return false
+	}
+	
+	for k, v := range wantMap {
+		gotVal, exists := gotMap[k]
+		if !exists || gotVal != float64(v) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestZerologAdapter_IsLevelEnabled(t *testing.T) {
@@ -473,7 +486,7 @@ func TestNewZerologAdapter(t *testing.T) {
 		}
 	})
 	
-	t.Run("adapter implements Adapter interface", func(t *testing.T) {
+	t.Run("adapter implements Adapter interface", func(_ *testing.T) {
 		var buf bytes.Buffer
 		logger := zerolog.New(&buf)
 		
@@ -487,8 +500,10 @@ func TestZerologAdapter_Integration(t *testing.T) {
 		logger := zerolog.New(&buf).Level(zerolog.DebugLevel)
 		adapter := NewZerologAdapter(logger)
 		
-		// Test with context containing values
-		ctx := context.WithValue(context.Background(), "trace_id", "abc-123")
+		// Test with context containing values using proper typed key
+		type contextKey string
+		traceIDKey := contextKey("trace_id")
+		ctx := context.WithValue(context.Background(), traceIDKey, "abc-123")
 		
 		// Log with various levels and attributes
 		adapter.Log(ctx, InfoLevel, "test message", 

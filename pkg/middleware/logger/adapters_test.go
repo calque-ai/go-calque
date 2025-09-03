@@ -301,7 +301,7 @@ func TestNewStandardAdapter(t *testing.T) {
 		}
 	})
 	
-	t.Run("adapter implements Adapter interface", func(t *testing.T) {
+	t.Run("adapter implements Adapter interface", func(_ *testing.T) {
 		var buf bytes.Buffer
 		stdLogger := log.New(&buf, "", 0)
 		
@@ -360,9 +360,13 @@ func TestStandardAdapter_Integration(t *testing.T) {
 		stdLogger := log.New(&buf, "", 0)
 		adapter := NewStandardAdapter(stdLogger)
 		
-		// Create context with values
-		ctx := context.WithValue(context.Background(), "trace_id", "abc-123")
-		ctx = context.WithValue(ctx, "user_id", "user-456")
+		// Create context with values using proper typed keys
+		type contextKey string
+		traceIDKey := contextKey("trace_id")
+		userIDKey := contextKey("user_id")
+		
+		ctx := context.WithValue(context.Background(), traceIDKey, "abc-123")
+		ctx = context.WithValue(ctx, userIDKey, "user-456")
 		
 		adapter.Log(ctx, InfoLevel, "test message", Attr("key", "value"))
 		
