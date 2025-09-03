@@ -10,6 +10,8 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
+const yamlTestConstant = "test"
+
 func TestYaml(t *testing.T) {
 	tests := []struct {
 		name string
@@ -69,12 +71,12 @@ func TestYAMLInputConverter_ToReader(t *testing.T) {
 	}{
 		{
 			name: "map[string]any",
-			data: map[string]any{"name": "test", "value": 42},
+			data: map[string]any{"name": yamlTestConstant, "value": 42},
 			want: "name: test\nvalue: 42\n",
 		},
 		{
 			name: "map[any]any",
-			data: map[any]any{"name": "test", 123: "number"},
+			data: map[any]any{"name": yamlTestConstant, 123: "number"},
 			want: "\"123\": number\nname: test\n",
 		},
 		{
@@ -174,7 +176,7 @@ func TestOutputConverter_FromReader(t *testing.T) {
 			input: `name: test
 value: 42`,
 			target:   &map[string]any{},
-			expected: map[string]any{"name": "test", "value": uint64(42)},
+			expected: map[string]any{"name": yamlTestConstant, "value": uint64(42)},
 		},
 		{
 			name: "unmarshal to slice",
@@ -195,7 +197,7 @@ value: 42`,
 			expected: struct {
 				Name  string `yaml:"name"`
 				Value int    `yaml:"value"`
-			}{"test", 42},
+			}{yamlTestConstant, 42},
 		},
 		{
 			name: "YAML with comments",
@@ -203,7 +205,7 @@ value: 42`,
 name: test
 value: 42`,
 			target:   &map[string]any{},
-			expected: map[string]any{"name": "test", "value": uint64(42)},
+			expected: map[string]any{"name": yamlTestConstant, "value": uint64(42)},
 		},
 		{
 			name: "nested YAML",
@@ -215,7 +217,7 @@ value: 42`,
 			target: &map[string]any{},
 			expected: map[string]any{
 				"person": map[string]any{
-					"name": "test",
+					"name": yamlTestConstant,
 					"details": map[string]any{
 						"age":  uint64(30),
 						"city": "NYC",
@@ -674,8 +676,8 @@ func TestYamlIntegration(t *testing.T) {
 		}
 
 		// Verify roundtrip
-		if result["name"] != "test" {
-			t.Errorf("name = %v, want test", result["name"])
+		if result["name"] != yamlTestConstant {
+			t.Errorf("name = %v, want %s", result["name"], yamlTestConstant)
 		}
 		if result["value"] != uint64(42) {
 			t.Errorf("value = %v, want 42", result["value"])
@@ -809,8 +811,8 @@ array: [1, 2, 3]`
 		}
 
 		// Verify roundtrip
-		if result["name"] != "test" {
-			t.Errorf("name = %v, want test", result["name"])
+		if result["name"] != yamlTestConstant {
+			t.Errorf("name = %v, want %s", result["name"], yamlTestConstant)
 		}
 		if result["value"] != uint64(42) {
 			t.Errorf("value = %v, want 42", result["value"])
