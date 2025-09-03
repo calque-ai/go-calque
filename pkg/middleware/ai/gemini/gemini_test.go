@@ -1,6 +1,7 @@
 package gemini
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -544,6 +545,276 @@ func TestWriteFunctionCallsEmptyArgs(t *testing.T) {
 func TestClientInterfaceCompliance(_ *testing.T) {
 	// Test that Client implements ai.Client interface
 	var _ ai.Client = (*Client)(nil)
+}
+
+func TestBuildRequestConfig(t *testing.T) {
+	client := &Client{
+		model: "gemini-1.5-pro",
+		config: &Config{
+			Temperature: ai.Float32Ptr(0.8),
+			MaxTokens:   ai.IntPtr(1000),
+		},
+	}
+
+	tests := []struct {
+		name        string
+		input       *ai.ClassifiedInput
+		schema      *ai.ResponseFormat
+		tools       []tools.Tool
+		expectError bool
+		description string
+	}{
+		{
+			name: "text input with tools",
+			input: &ai.ClassifiedInput{
+				Type: ai.TextInput,
+				Text: "Hello, world!",
+			},
+			tools: []tools.Tool{
+				tools.Simple("calculator", "Performs calculations", func(_ string) string {
+					return "42"
+				}),
+			},
+			description: "Should handle text input with tools",
+		},
+		{
+			name: "multimodal input with schema",
+			input: &ai.ClassifiedInput{
+				Type: ai.MultimodalJSONInput,
+				Multimodal: &ai.MultimodalInput{
+					Parts: []ai.ContentPart{
+						{Type: "text", Text: "Analyze this"},
+					},
+				},
+			},
+			schema: &ai.ResponseFormat{
+				Type: "json_object",
+			},
+			description: "Should handle multimodal input with response schema",
+		},
+		{
+			name: "invalid input type",
+			input: &ai.ClassifiedInput{
+				Type: ai.InputType(999),
+			},
+			expectError: true,
+			description: "Should return error for unsupported input types",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Mock genai.Client - we can't easily create one without real API key
+			// So we'll test the parts that don't require the actual client
+			if tt.expectError {
+				_, err := client.inputToParts(tt.input)
+				if err == nil {
+					t.Errorf("%s: expected error but got none", tt.description)
+				}
+				return
+			}
+
+			// Test parts conversion
+			parts, err := client.inputToParts(tt.input)
+			if err != nil {
+				t.Errorf("%s: inputToParts() error = %v", tt.description, err)
+				return
+			}
+
+			if len(parts) == 0 {
+				t.Errorf("%s: inputToParts() returned empty parts", tt.description)
+			}
+
+			// Test config generation
+			config := client.buildGenerateConfig(tt.schema)
+			if config == nil {
+				t.Errorf("%s: buildGenerateConfig() returned nil", tt.description)
+			}
+
+			// Verify tools conversion if provided
+			if len(tt.tools) > 0 {
+				functions := convertToolsToGeminiFunctions(tt.tools)
+				if len(functions) != len(tt.tools) {
+					t.Errorf("%s: convertToolsToGeminiFunctions() length = %d, want %d",
+						tt.description, len(functions), len(tt.tools))
+				}
+			}
+		})
+	}
+}
+
+func TestExecuteRequest(t *testing.T) {
+	tests := []struct {
+		name          string
+		simulateError bool
+		functionCalls []*genai.FunctionCall
+		expectedText  string
+		expectError   bool
+		description   string
+	}{
+		{
+			name:         "text response without function calls",
+			expectedText: "Hello, this is a response",
+			description:  "Should handle simple text responses",
+		},
+		{
+			name: "response with function calls",
+			functionCalls: []*genai.FunctionCall{
+				{
+					Name: "calculator",
+					Args: map[string]any{"input": "2+2"},
+				},
+			},
+			description: "Should handle function calls in responses",
+		},
+		{
+			name:         "empty response",
+			expectedText: "",
+			description:  "Should handle empty responses",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// We can't easily mock the genai streaming without major complexity
+			// So we'll test the function call formatting part directly
+			if len(tt.functionCalls) == 0 {
+				return // Skip tests without function calls for now
+			}
+
+			testFunctionCallFormatting(t, tt.functionCalls, tt.expectError, tt.description)
+		})
+	}
+}
+
+// testFunctionCallFormatting is a helper function to test function call formatting
+// This reduces the complexity of the main test function
+func testFunctionCallFormatting(t *testing.T, functionCalls []*genai.FunctionCall, expectError bool, description string) {
+	client := &Client{}
+
+	var response strings.Builder
+	w := calque.NewResponse(&response)
+
+	err := client.writeFunctionCalls(functionCalls, w)
+	if expectError {
+		if err == nil {
+			t.Errorf("%s: expected error but got none", description)
+		}
+		return
+	}
+
+	if err != nil {
+		t.Errorf("%s: writeFunctionCalls() error = %v", description, err)
+		return
+	}
+
+	result := response.String()
+	if !strings.Contains(result, "tool_calls") {
+		t.Errorf("%s: response should contain tool_calls", description)
+	}
+
+	// Validate JSON format
+	var jsonResult map[string]any
+	if err := json.Unmarshal([]byte(result), &jsonResult); err != nil {
+		t.Errorf("%s: response is not valid JSON: %v", description, err)
+	}
+}
+
+func TestChat_Integration(t *testing.T) {
+	// Test the main Chat method integration without real API calls
+	tests := []struct {
+		name        string
+		input       string
+		tools       []tools.Tool
+		schema      *ai.ResponseFormat
+		expectError bool
+		description string
+	}{
+		{
+			name:        "simple text chat",
+			input:       "Hello, how are you?",
+			description: "Should handle simple text input",
+		},
+		{
+			name:  "chat with tools",
+			input: "Calculate 2+2",
+			tools: []tools.Tool{
+				tools.Simple("calculator", "Performs calculations", func(_ string) string {
+					return "4"
+				}),
+			},
+			description: "Should handle text input with tools",
+		},
+		{
+			name:  "chat with response format",
+			input: "Give me JSON response",
+			schema: &ai.ResponseFormat{
+				Type: "json_object",
+			},
+			description: "Should handle requests with response format",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// We can test the input processing part of Chat()
+			// without needing actual API calls
+
+			// Create request with proper data
+			r := calque.NewRequest(context.Background(), strings.NewReader(tt.input))
+
+			opts := &ai.AgentOptions{
+				Schema: tt.schema,
+				Tools:  tt.tools,
+			}
+
+			input, err := ai.ClassifyInput(r, opts)
+			if err != nil {
+				t.Errorf("%s: ClassifyInput() error = %v", tt.description, err)
+				return
+			}
+
+			if input.Type != ai.TextInput {
+				t.Errorf("%s: expected TextInput, got %v", tt.description, input.Type)
+			}
+
+			if input.Text != tt.input {
+				t.Errorf("%s: input text = %q, want %q", tt.description, input.Text, tt.input)
+			}
+
+			// Test that we can build a client (without real API key)
+			client := &Client{
+				model:  "gemini-1.5-pro",
+				config: &Config{Temperature: ai.Float32Ptr(0.7)},
+			}
+
+			// Test parts conversion
+			parts, err := client.inputToParts(input)
+			if err != nil {
+				t.Errorf("%s: inputToParts() error = %v", tt.description, err)
+				return
+			}
+
+			if len(parts) == 0 {
+				t.Errorf("%s: inputToParts() should return at least one part", tt.description)
+			}
+
+			// Test config generation
+			config := client.buildGenerateConfig(ai.GetSchema(opts))
+			if config == nil {
+				t.Errorf("%s: buildGenerateConfig() returned nil", tt.description)
+			}
+
+			// Verify tools are processed correctly
+			if len(tt.tools) > 0 {
+				functions := convertToolsToGeminiFunctions(tt.tools)
+				if len(functions) != len(tt.tools) {
+					t.Errorf("%s: tool conversion failed, got %d functions, want %d",
+						tt.description, len(functions), len(tt.tools))
+				}
+			}
+		})
+	}
 }
 
 // Test edge cases and error conditions

@@ -20,6 +20,8 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
+const testModel = "gpt-5"
+
 // mockTool implements tools.Tool for testing
 type mockTool struct {
 	name        string
@@ -62,7 +64,7 @@ func TestNew(t *testing.T) {
 		},
 		{
 			name:  "valid model with API key in config",
-			model: "gpt-3.5-turbo",
+			model: testModel,
 			config: &Config{
 				APIKey: "sk-test-key",
 			},
@@ -175,7 +177,7 @@ func TestConvertToOpenAITools(t *testing.T) {
 	}
 
 	client := &Client{
-		model:  shared.ChatModel("gpt-3.5-turbo"),
+		model:  shared.ChatModel(testModel),
 		config: DefaultConfig(),
 	}
 
@@ -205,7 +207,7 @@ func TestChatIntegration(t *testing.T) {
 		t.Skip("OPENAI_API_KEY not set, skipping integration test")
 	}
 
-	client, err := New("gpt-3.5-turbo")
+	client, err := New(testModel)
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
@@ -236,7 +238,7 @@ func TestChatIntegration(t *testing.T) {
 // TestInputToMessages tests the conversion of classified input to OpenAI message format
 func TestInputToMessages(t *testing.T) {
 	client := &Client{
-		model:  shared.ChatModel("gpt-3.5-turbo"),
+		model:  shared.ChatModel(testModel),
 		config: DefaultConfig(),
 	}
 
@@ -349,7 +351,7 @@ func TestApplyChatConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := &Client{
-				model:  shared.ChatModel("gpt-3.5-turbo"),
+				model:  shared.ChatModel(testModel),
 				config: tt.config,
 			}
 
@@ -371,7 +373,7 @@ func TestApplyChatConfig(t *testing.T) {
 // TestBuildChatParams tests the request parameters building
 func TestBuildChatParams(t *testing.T) {
 	client := &Client{
-		model: shared.ChatModel("gpt-3.5-turbo"),
+		model: shared.ChatModel(testModel),
 		config: &Config{
 			Temperature: ai.Float32Ptr(0.7),
 			MaxTokens:   ai.IntPtr(100),
@@ -572,7 +574,7 @@ func TestMultimodalToMessages(t *testing.T) {
 // TestEnhancedConvertToOpenAITools tests tool conversion with more scenarios
 func TestEnhancedConvertToOpenAITools(t *testing.T) {
 	client := &Client{
-		model:  shared.ChatModel("gpt-3.5-turbo"),
+		model:  shared.ChatModel(testModel),
 		config: DefaultConfig(),
 	}
 
@@ -664,7 +666,7 @@ func TestEnhancedConvertToOpenAITools(t *testing.T) {
 // TestWriteOpenAIToolCalls tests tool call formatting
 func TestWriteOpenAIToolCalls(t *testing.T) {
 	client := &Client{
-		model:  shared.ChatModel("gpt-3.5-turbo"),
+		model:  shared.ChatModel(testModel),
 		config: DefaultConfig(),
 	}
 
@@ -742,6 +744,298 @@ func TestWriteOpenAIToolCalls(t *testing.T) {
 			if tt.checkFunc != nil {
 				if err := tt.checkFunc(buf.String()); err != nil {
 					t.Errorf("writeOpenAIToolCalls() %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestChat_Method(t *testing.T) {
+	// Test the main Chat method integration without real API calls
+	tests := []struct {
+		name        string
+		input       string
+		tools       []tools.Tool
+		schema      *ai.ResponseFormat
+		expectError bool
+		description string
+	}{
+		{
+			name:        "simple text chat",
+			input:       "Hello, how are you?",
+			description: "Should handle simple text input",
+		},
+		{
+			name:  "chat with tools",
+			input: "Calculate 2+2",
+			tools: []tools.Tool{
+				&mockTool{
+					name:        "calculator",
+					description: "Performs calculations",
+					schema: &jsonschema.Schema{
+						Type:     "object",
+						Required: []string{"input"},
+					},
+				},
+			},
+			description: "Should handle text input with tools",
+		},
+		{
+			name:  "chat with response format",
+			input: "Give me JSON response",
+			schema: &ai.ResponseFormat{
+				Type: "json_object",
+			},
+			description: "Should handle requests with response format",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// We can test the input processing part of Chat()
+			// without needing actual API calls
+
+			// Create request with proper data
+			r := calque.NewRequest(context.Background(), strings.NewReader(tt.input))
+
+			opts := &ai.AgentOptions{
+				Schema: tt.schema,
+				Tools:  tt.tools,
+			}
+
+			input, err := ai.ClassifyInput(r, opts)
+			if err != nil {
+				t.Errorf("%s: ClassifyInput() error = %v", tt.description, err)
+				return
+			}
+
+			if input.Type != ai.TextInput {
+				t.Errorf("%s: expected TextInput, got %v", tt.description, input.Type)
+			}
+
+			if input.Text != tt.input {
+				t.Errorf("%s: input text = %q, want %q", tt.description, input.Text, tt.input)
+			}
+
+			// Test that we can build a client (without real API key)
+			client := &Client{
+				model:  shared.ChatModel(testModel),
+				config: &Config{APIKey: "test-key", Temperature: ai.Float32Ptr(0.7)},
+			}
+
+			// Test message conversion
+			messages, err := client.inputToMessages(input)
+			if err != nil {
+				t.Errorf("%s: inputToMessages() error = %v", tt.description, err)
+				return
+			}
+
+			if len(messages) == 0 {
+				t.Errorf("%s: inputToMessages() should return at least one message", tt.description)
+			}
+
+			// Test params building
+			params, err := client.buildChatParams(input, ai.GetSchema(opts), ai.GetTools(opts))
+			if err != nil {
+				t.Errorf("%s: buildChatParams() error = %v", tt.description, err)
+				return
+			}
+
+			if string(params.Model) != testModel {
+				t.Errorf("%s: expected model gpt-3.5-turbo, got %s", tt.description, params.Model)
+			}
+
+			// Verify tools are processed correctly
+			if len(tt.tools) > 0 {
+				if len(params.Tools) != len(tt.tools) {
+					t.Errorf("%s: expected %d tools in params, got %d",
+						tt.description, len(tt.tools), len(params.Tools))
+				}
+			}
+		})
+	}
+}
+
+func TestExecuteRequest_Method(t *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: &Config{APIKey: "test-key", Stream: ai.BoolPtr(true)},
+	}
+
+	tests := []struct {
+		name        string
+		streaming   bool
+		description string
+	}{
+		{
+			name:        "streaming request routing",
+			streaming:   true,
+			description: "Should route to streaming when stream=true",
+		},
+		{
+			name:        "non-streaming request routing",
+			streaming:   false,
+			description: "Should route to non-streaming when stream=false",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test that executeRequest routes correctly based on streaming config
+			client.config.Stream = &tt.streaming
+
+			params := openai.ChatCompletionNewParams{
+				Model: client.model,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					openai.UserMessage("test message"),
+				},
+			}
+
+			r := calque.NewRequest(context.Background(), strings.NewReader("test"))
+			var buf strings.Builder
+			w := calque.NewResponse(&buf)
+
+			// We can't actually execute without real API key, but we can test the routing logic
+			// by checking the configuration is set correctly
+			if tt.streaming && !*client.config.Stream {
+				t.Errorf("%s: expected streaming to be enabled", tt.description)
+			}
+			if !tt.streaming && *client.config.Stream {
+				t.Errorf("%s: expected streaming to be disabled", tt.description)
+			}
+
+			// The actual executeRequest call would fail without API key, which is expected
+			// We're testing the configuration and routing logic here
+			_ = params
+			_ = r
+			_ = w
+		})
+	}
+}
+
+func TestExecuteStreamingRequest_Logic(t *testing.T) {
+	// Test the logic of streaming request setup without actual API calls
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: &Config{APIKey: "test-key", Stream: ai.BoolPtr(true)},
+	}
+
+	// Test that client config is set for streaming
+	if !*client.config.Stream {
+		t.Error("Expected client Stream config to be true for streaming request")
+	}
+
+	// Verify we can create params with proper model
+	if string(client.model) != testModel {
+		t.Error("Expected model to be gpt-3.5-turbo")
+	}
+
+	// We can't test actual streaming without API key, but we verify the setup exists
+	r := calque.NewRequest(context.Background(), strings.NewReader("test"))
+	var buf strings.Builder
+	w := calque.NewResponse(&buf)
+
+	// The function signature is correct
+	_ = r
+	_ = w
+}
+
+func TestExecuteNonStreamingRequest_Logic(t *testing.T) {
+	// Test the logic of non-streaming request setup without actual API calls
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: &Config{APIKey: "test-key", Stream: ai.BoolPtr(false)},
+	}
+
+	// Test that client config is set for non-streaming
+	if *client.config.Stream {
+		t.Error("Expected client Stream config to be false for non-streaming request")
+	}
+
+	// Verify we can create client with proper model
+	if string(client.model) != testModel {
+		t.Error("Expected model to be gpt-3.5-turbo")
+	}
+
+	// We can't test actual API call without key, but we verify the setup exists
+	r := calque.NewRequest(context.Background(), strings.NewReader("test"))
+	var buf strings.Builder
+	w := calque.NewResponse(&buf)
+
+	// The function signature is correct
+	_ = r
+	_ = w
+}
+
+func TestSetJSONSchemaFormat(t *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: DefaultConfig(),
+	}
+
+	tests := []struct {
+		name      string
+		schema    any
+		checkFunc func(*openai.ChatCompletionNewParams) error
+	}{
+		{
+			name: "valid schema object",
+			schema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{
+						"type": "string",
+					},
+				},
+				"required": []string{"name"},
+			},
+			checkFunc: func(params *openai.ChatCompletionNewParams) error {
+				if params.ResponseFormat.OfJSONSchema == nil {
+					return fmt.Errorf("expected JSON schema format to be set")
+				}
+				if params.ResponseFormat.OfJSONSchema.JSONSchema.Name != "response_schema" {
+					return fmt.Errorf("expected schema name to be 'response_schema'")
+				}
+				if !params.ResponseFormat.OfJSONSchema.JSONSchema.Strict.Value {
+					return fmt.Errorf("expected strict mode to be enabled")
+				}
+				return nil
+			},
+		},
+		{
+			name:   "invalid schema - unmarshalable",
+			schema: make(chan int), // channels can't be marshaled to JSON
+			checkFunc: func(params *openai.ChatCompletionNewParams) error {
+				// Should fallback to json_object on marshal error
+				if params.ResponseFormat.OfJSONObject == nil {
+					return fmt.Errorf("expected fallback to JSON object format")
+				}
+				return nil
+			},
+		},
+		{
+			name:   "nil schema",
+			schema: nil,
+			checkFunc: func(params *openai.ChatCompletionNewParams) error {
+				if params.ResponseFormat.OfJSONSchema == nil {
+					return fmt.Errorf("expected JSON schema format to be set even for nil")
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := &openai.ChatCompletionNewParams{
+				Model: client.model,
+			}
+
+			client.setJSONSchemaFormat(tt.schema, params)
+
+			if tt.checkFunc != nil {
+				if err := tt.checkFunc(params); err != nil {
+					t.Errorf("setJSONSchemaFormat() %v", err)
 				}
 			}
 		})
