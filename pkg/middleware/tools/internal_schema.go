@@ -99,13 +99,13 @@ func convertPropertyToInternal(prop *jsonschema.Schema) *InternalProperty {
 
 	// Convert numeric constraints
 	if prop.Minimum != "" {
-		if min, err := prop.Minimum.Float64(); err == nil {
-			internal.Minimum = &min
+		if minVal, err := prop.Minimum.Float64(); err == nil {
+			internal.Minimum = &minVal
 		}
 	}
 	if prop.Maximum != "" {
-		if max, err := prop.Maximum.Float64(); err == nil {
-			internal.Maximum = &max
+		if maxVal, err := prop.Maximum.Float64(); err == nil {
+			internal.Maximum = &maxVal
 		}
 	}
 	if prop.MinLength != nil {

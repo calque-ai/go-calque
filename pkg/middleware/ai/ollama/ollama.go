@@ -15,10 +15,10 @@ import (
 	"github.com/ollama/ollama/api"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"github.com/calque-ai/go-calque/pkg/utils"
 )
 
 // Client implements the Client interface for Ollama.
@@ -45,7 +45,7 @@ type Client struct {
 //
 //	config := &ollama.Config{
 //		Host: "http://192.168.1.100:11434",
-//		Temperature: utils.Float32Ptr(0.8),
+//		Temperature: helpers.Float32Ptr(0.8),
 //	}
 type Config struct {
 	// Optional. Ollama server host (defaults to localhost:11434 or OLLAMA_HOST env)
@@ -120,13 +120,13 @@ func WithConfig(cfg *Config) Option {
 // Example:
 //
 //	config := ollama.DefaultConfig()
-//	config.MaxTokens = utils.IntPtr(2000)
+//	config.MaxTokens = helpers.IntPtr(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		Host:        "", // Will use ClientFromEnvironment() default
-		Temperature: utils.Float32Ptr(0.7),
+		Temperature: helpers.Float32Ptr(0.7),
 		KeepAlive:   "5m",
-		Stream:      utils.BoolPtr(true), // Ollama streams by default
+		Stream:      helpers.BoolPtr(true), // Ollama streams by default
 	}
 }
 

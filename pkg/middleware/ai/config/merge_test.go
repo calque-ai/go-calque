@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/calque-ai/go-calque/pkg/utils"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 )
 
 // TestConfig represents a typical AI client config for testing
@@ -30,23 +30,23 @@ func TestMerge(t *testing.T) {
 			name: "partial_config_merge",
 			target: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: utils.Float32Ptr(0.7),
-				MaxTokens:   utils.IntPtr(1000),
+				Temperature: helpers.Float32Ptr(0.7),
+				MaxTokens:   helpers.IntPtr(1000),
 				Host:        "default-host",
-				Stream:      utils.BoolPtr(true),
+				Stream:      helpers.BoolPtr(true),
 				Stop:        []string{"default"},
 				Options:     map[string]interface{}{"default": "value"},
 			},
 			source: &TestConfig{
-				Temperature: utils.Float32Ptr(0.9),
-				MaxTokens:   utils.IntPtr(2000),
+				Temperature: helpers.Float32Ptr(0.9),
+				MaxTokens:   helpers.IntPtr(2000),
 			},
 			expectedResult: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: utils.Float32Ptr(0.9),
-				MaxTokens:   utils.IntPtr(2000),
+				Temperature: helpers.Float32Ptr(0.9),
+				MaxTokens:   helpers.IntPtr(2000),
 				Host:        "default-host",
-				Stream:      utils.BoolPtr(true),
+				Stream:      helpers.BoolPtr(true),
 				Stop:        []string{"default"},
 				Options:     map[string]interface{}{"default": "value"},
 			},
@@ -56,21 +56,21 @@ func TestMerge(t *testing.T) {
 			name: "empty_fields_preserve_defaults",
 			target: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: utils.Float32Ptr(0.7),
-				MaxTokens:   utils.IntPtr(1000),
+				Temperature: helpers.Float32Ptr(0.7),
+				MaxTokens:   helpers.IntPtr(1000),
 				Host:        "default-host",
 			},
 			source: &TestConfig{
-				APIKey:      "",                 // Empty string - should not override
-				Temperature: nil,                // Nil pointer - should not override
-				MaxTokens:   utils.IntPtr(2000), // Set value - should override
-				Host:        "",                 // Empty string - should not override
+				APIKey:      "",                   // Empty string - should not override
+				Temperature: nil,                  // Nil pointer - should not override
+				MaxTokens:   helpers.IntPtr(2000), // Set value - should override
+				Host:        "",                   // Empty string - should not override
 			},
 			expectedResult: &TestConfig{
-				APIKey:      "default-key",         // Preserved
-				Temperature: utils.Float32Ptr(0.7), // Preserved
-				MaxTokens:   utils.IntPtr(2000),    // Overridden
-				Host:        "default-host",        // Preserved
+				APIKey:      "default-key",           // Preserved
+				Temperature: helpers.Float32Ptr(0.7), // Preserved
+				MaxTokens:   helpers.IntPtr(2000),    // Overridden
+				Host:        "default-host",          // Preserved
 			},
 			description: "Empty/nil fields should not override defaults",
 		},
@@ -78,24 +78,24 @@ func TestMerge(t *testing.T) {
 			name: "complete_config_override",
 			target: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: utils.Float32Ptr(0.7),
-				MaxTokens:   utils.IntPtr(1000),
+				Temperature: helpers.Float32Ptr(0.7),
+				MaxTokens:   helpers.IntPtr(1000),
 			},
 			source: &TestConfig{
 				APIKey:      "new-key",
-				Temperature: utils.Float32Ptr(1.0),
-				MaxTokens:   utils.IntPtr(3000),
+				Temperature: helpers.Float32Ptr(1.0),
+				MaxTokens:   helpers.IntPtr(3000),
 				Host:        "new-host",
-				Stream:      utils.BoolPtr(false),
+				Stream:      helpers.BoolPtr(false),
 				Stop:        []string{"new"},
 				Options:     map[string]interface{}{"new": "value"},
 			},
 			expectedResult: &TestConfig{
 				APIKey:      "new-key",
-				Temperature: utils.Float32Ptr(1.0),
-				MaxTokens:   utils.IntPtr(3000),
+				Temperature: helpers.Float32Ptr(1.0),
+				MaxTokens:   helpers.IntPtr(3000),
 				Host:        "new-host",
-				Stream:      utils.BoolPtr(false),
+				Stream:      helpers.BoolPtr(false),
 				Stop:        []string{"new"},
 				Options:     map[string]interface{}{"new": "value"},
 			},
@@ -105,14 +105,14 @@ func TestMerge(t *testing.T) {
 			name: "nil_source_no_change",
 			target: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: utils.Float32Ptr(0.7),
-				MaxTokens:   utils.IntPtr(1000),
+				Temperature: helpers.Float32Ptr(0.7),
+				MaxTokens:   helpers.IntPtr(1000),
 			},
 			source: nil,
 			expectedResult: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: utils.Float32Ptr(0.7),
-				MaxTokens:   utils.IntPtr(1000),
+				Temperature: helpers.Float32Ptr(0.7),
+				MaxTokens:   helpers.IntPtr(1000),
 			},
 			description: "Nil source should not modify target",
 		},
@@ -120,21 +120,21 @@ func TestMerge(t *testing.T) {
 			name: "zero_values_override",
 			target: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: utils.Float32Ptr(0.7),
-				MaxTokens:   utils.IntPtr(1000),
-				Stream:      utils.BoolPtr(true),
+				Temperature: helpers.Float32Ptr(0.7),
+				MaxTokens:   helpers.IntPtr(1000),
+				Stream:      helpers.BoolPtr(true),
 			},
 			source: &TestConfig{
 				APIKey:      "zero-key",
-				Temperature: utils.Float32Ptr(0.0), // Zero value - should override
-				MaxTokens:   utils.IntPtr(0),       // Zero value - should override
-				Stream:      utils.BoolPtr(false),  // Zero value - should override
+				Temperature: helpers.Float32Ptr(0.0), // Zero value - should override
+				MaxTokens:   helpers.IntPtr(0),       // Zero value - should override
+				Stream:      helpers.BoolPtr(false),  // Zero value - should override
 			},
 			expectedResult: &TestConfig{
 				APIKey:      "zero-key",
-				Temperature: utils.Float32Ptr(0.0),
-				MaxTokens:   utils.IntPtr(0),
-				Stream:      utils.BoolPtr(false),
+				Temperature: helpers.Float32Ptr(0.0),
+				MaxTokens:   helpers.IntPtr(0),
+				Stream:      helpers.BoolPtr(false),
 			},
 			description: "Zero values should override defaults (not treated as empty)",
 		},
@@ -226,17 +226,17 @@ func TestConfigMerger(t *testing.T) {
 			name: "merger_instance_works",
 			target: &TestConfig{
 				APIKey:      "default",
-				Temperature: utils.Float32Ptr(0.7),
-				MaxTokens:   utils.IntPtr(1000),
+				Temperature: helpers.Float32Ptr(0.7),
+				MaxTokens:   helpers.IntPtr(1000),
 			},
 			source: &TestConfig{
-				Temperature: utils.Float32Ptr(0.9),
-				MaxTokens:   utils.IntPtr(2000),
+				Temperature: helpers.Float32Ptr(0.9),
+				MaxTokens:   helpers.IntPtr(2000),
 			},
 			expectedResult: &TestConfig{
 				APIKey:      "default",
-				Temperature: utils.Float32Ptr(0.9),
-				MaxTokens:   utils.IntPtr(2000),
+				Temperature: helpers.Float32Ptr(0.9),
+				MaxTokens:   helpers.IntPtr(2000),
 			},
 			description: "Merger instance should work same as package function",
 		},

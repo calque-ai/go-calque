@@ -1,5 +1,5 @@
-// Package utils provides common utility functions used across the project.
-package utils
+// Package helpers provides common utility functions used across the project.
+package helpers
 
 // IntPtr creates a pointer to an int value.
 //
@@ -9,7 +9,7 @@ package utils
 //
 // Example:
 //
-//	config.MaxTokens = utils.IntPtr(1500)
+//	config.MaxTokens = helpers.IntPtr(1500)
 func IntPtr(i int) *int { return &i }
 
 // Int32Ptr creates a pointer to an int32 value.
@@ -20,7 +20,7 @@ func IntPtr(i int) *int { return &i }
 //
 // Example:
 //
-//	config.Seed = utils.Int32Ptr(1500)
+//	config.Seed = helpers.Int32Ptr(1500)
 func Int32Ptr(i int32) *int32 { return &i }
 
 // Int64Ptr creates a pointer to an int64 value.
@@ -31,7 +31,7 @@ func Int32Ptr(i int32) *int32 { return &i }
 //
 // Example:
 //
-//	config.MaxTokens = utils.Int64Ptr(1500)
+//	config.MaxTokens = helpers.Int64Ptr(1500)
 func Int64Ptr(i int64) *int64 { return &i }
 
 // UintPtr creates a pointer to a uint value.
@@ -42,7 +42,7 @@ func Int64Ptr(i int64) *int64 { return &i }
 //
 // Example:
 //
-//	config.MaxLength = utils.UintPtr(100)
+//	config.MaxLength = helpers.UintPtr(100)
 func UintPtr(u uint) *uint { return &u }
 
 // Uint32Ptr creates a pointer to a uint32 value.
@@ -53,7 +53,7 @@ func UintPtr(u uint) *uint { return &u }
 //
 // Example:
 //
-//	config.MaxLength = utils.Uint32Ptr(100)
+//	config.MaxLength = helpers.Uint32Ptr(100)
 func Uint32Ptr(u uint32) *uint32 { return &u }
 
 // Uint64Ptr creates a pointer to a uint64 value.
@@ -64,7 +64,7 @@ func Uint32Ptr(u uint32) *uint32 { return &u }
 //
 // Example:
 //
-//	config.MaxLength = utils.Uint64Ptr(100)
+//	config.MaxLength = helpers.Uint64Ptr(100)
 func Uint64Ptr(u uint64) *uint64 { return &u }
 
 // Float32Ptr creates a pointer to a float32 value.
@@ -75,7 +75,7 @@ func Uint64Ptr(u uint64) *uint64 { return &u }
 //
 // Example:
 //
-//	config.Temperature = utils.Float32Ptr(0.9)
+//	config.Temperature = helpers.Float32Ptr(0.9)
 func Float32Ptr(f float32) *float32 { return &f }
 
 // Float64Ptr creates a pointer to a float64 value.
@@ -86,7 +86,7 @@ func Float32Ptr(f float32) *float32 { return &f }
 //
 // Example:
 //
-//	config.Temperature = utils.Float64Ptr(0.9)
+//	config.Temperature = helpers.Float64Ptr(0.9)
 func Float64Ptr(f float64) *float64 { return &f }
 
 // BoolPtr creates a pointer to a bool value.
@@ -97,7 +97,7 @@ func Float64Ptr(f float64) *float64 { return &f }
 //
 // Example:
 //
-//	config.Streaming = utils.BoolPtr(false)
+//	config.Streaming = helpers.BoolPtr(false)
 func BoolPtr(b bool) *bool { return &b }
 
 // StringPtr creates a pointer to a string value.
@@ -108,5 +108,5 @@ func BoolPtr(b bool) *bool { return &b }
 //
 // Example:
 //
-//	config.Name = utils.StringPtr("default")
+//	config.Name = helpers.StringPtr("default")
 func StringPtr(s string) *string { return &s }

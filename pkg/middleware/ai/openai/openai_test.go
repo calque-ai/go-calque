@@ -16,9 +16,9 @@ import (
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"github.com/calque-ai/go-calque/pkg/utils"
 )
 
 const testModel = "gpt-5"
@@ -143,8 +143,8 @@ func TestDefaultConfig(t *testing.T) {
 func TestWithConfig(t *testing.T) {
 	config := &Config{
 		APIKey:      "test-key",
-		Temperature: utils.Float32Ptr(0.9),
-		MaxTokens:   utils.IntPtr(1000),
+		Temperature: helpers.Float32Ptr(0.9),
+		MaxTokens:   helpers.IntPtr(1000),
 	}
 
 	option := WithConfig(config)
@@ -309,15 +309,15 @@ func TestApplyChatConfig(t *testing.T) {
 		{
 			name: "basic config",
 			config: &Config{
-				Temperature:      utils.Float32Ptr(0.8),
-				TopP:             utils.Float32Ptr(0.9),
-				MaxTokens:        utils.IntPtr(1500),
-				N:                utils.IntPtr(2),
+				Temperature:      helpers.Float32Ptr(0.8),
+				TopP:             helpers.Float32Ptr(0.9),
+				MaxTokens:        helpers.IntPtr(1500),
+				N:                helpers.IntPtr(2),
 				Stop:             []string{"END", "STOP"},
-				PresencePenalty:  utils.Float32Ptr(0.5),
-				FrequencyPenalty: utils.Float32Ptr(0.3),
+				PresencePenalty:  helpers.Float32Ptr(0.5),
+				FrequencyPenalty: helpers.Float32Ptr(0.3),
 				User:             "test-user",
-				Seed:             utils.IntPtr(42),
+				Seed:             helpers.IntPtr(42),
 			},
 			check: func(params *openai.ChatCompletionNewParams) error {
 				if math.Abs(params.Temperature.Value-0.8) > 0.001 {
@@ -376,8 +376,8 @@ func TestBuildChatParams(t *testing.T) {
 	client := &Client{
 		model: shared.ChatModel(testModel),
 		config: &Config{
-			Temperature: utils.Float32Ptr(0.7),
-			MaxTokens:   utils.IntPtr(100),
+			Temperature: helpers.Float32Ptr(0.7),
+			MaxTokens:   helpers.IntPtr(100),
 		},
 	}
 
