@@ -7,7 +7,7 @@ import (
 // VectorStore interface for basic vector database operations.
 //
 // Defines the core interface that all vector database implementations must satisfy.
-// Supports similarity search, document storage, and embedding operations.
+// Additional embedding capabilities are provided through separate capability interfaces.
 //
 // Example:
 //
@@ -16,21 +16,65 @@ import (
 type VectorStore interface {
 	// Search performs similarity search against the vector database
 	Search(ctx context.Context, query SearchQuery) (*SearchResult, error)
-	
-	// Store adds documents to the vector database with embeddings
+
+	// Store adds documents to the vector database
+	// For external embedding providers: expects vectors in Document.Vector field or metadata
+	// For auto-embedding providers: generates embeddings from Document.Content automatically
 	Store(ctx context.Context, documents []Document) error
-	
+
 	// Delete removes documents from the vector database
 	Delete(ctx context.Context, ids []string) error
-	
-	// GetEmbedding generates embeddings for text content
-	GetEmbedding(ctx context.Context, text string) (EmbeddingVector, error)
-	
+
 	// Health checks if the vector store is available
 	Health(ctx context.Context) error
-	
+
 	// Close releases any resources held by the client
 	Close() error
+}
+
+// EmbeddingCapable indicates that a vector store can generate embeddings externally.
+//
+// Providers like Qdrant and PGVector that require pre-computed embeddings
+// should implement this interface to provide embedding generation capabilities.
+//
+// Example:
+//
+//	if embedder, ok := store.(retrieval.EmbeddingCapable); ok {
+//	    vector, err := embedder.GetEmbedding(ctx, text)
+//	}
+type EmbeddingCapable interface {
+	// GetEmbedding generates embeddings for text content using external services
+	GetEmbedding(ctx context.Context, text string) (EmbeddingVector, error)
+}
+
+// AutoEmbeddingCapable indicates that a vector store handles embeddings automatically.
+//
+// Providers like Weaviate with built-in text2vec modules should implement this
+// to signal they don't need external embedding providers and handle vectorization internally.
+//
+// Example:
+//
+//	if autoEmbedder, ok := store.(retrieval.AutoEmbeddingCapable); ok {
+//	    if autoEmbedder.SupportsAutoEmbedding() {
+//	        // No need for external EmbeddingProvider
+//	        config := autoEmbedder.GetEmbeddingConfig()
+//	    }
+//	}
+type AutoEmbeddingCapable interface {
+	// SupportsAutoEmbedding returns true if the provider handles embeddings automatically
+	// This is used by middleware to detect capability and adapt behavior
+	SupportsAutoEmbedding() bool
+	
+	// GetEmbeddingConfig returns information about the auto-embedding configuration
+	// Such as the embedding model being used, vector dimensions, etc.
+	GetEmbeddingConfig() EmbeddingConfig
+}
+
+// EmbeddingConfig describes auto-embedding capabilities
+type EmbeddingConfig struct {
+	Model      string `json:"model"`       // Embedding model name (e.g., "text2vec-openai")
+	Dimensions int    `json:"dimensions"`  // Vector dimensions
+	Provider   string `json:"provider"`    // Provider name (e.g., "openai", "cohere")
 }
 
 // DiversificationProvider interface for native diversification capabilities.
@@ -78,7 +122,7 @@ type RerankingProvider interface {
 type TokenEstimator interface {
 	// EstimateTokens returns the estimated token count for the given text
 	EstimateTokens(text string) int
-	
+
 	// EstimateTokensBatch returns token counts for multiple texts efficiently
 	EstimateTokensBatch(texts []string) []int
 }
@@ -88,10 +132,10 @@ type DiversificationOptions struct {
 	// Diversity controls the relevance vs diversity tradeoff
 	// 0.0 = pure relevance, 1.0 = pure diversity
 	Diversity float64 `json:"diversity"`
-	
+
 	// CandidatesLimit is the number of candidates to consider for diversification
 	CandidatesLimit int `json:"candidates_limit,omitempty"`
-	
+
 	// Strategy specifies the diversification algorithm (e.g., "mmr", "clustering")
 	Strategy string `json:"strategy,omitempty"`
 }
@@ -100,10 +144,10 @@ type DiversificationOptions struct {
 type RerankingOptions struct {
 	// Model specifies the reranking model to use
 	Model string `json:"model,omitempty"`
-	
+
 	// Query is the text query for relevance scoring
 	Query string `json:"query,omitempty"`
-	
+
 	// TopK limits reranking to top K candidates for performance
 	TopK int `json:"top_k,omitempty"`
 }

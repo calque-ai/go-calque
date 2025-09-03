@@ -108,7 +108,7 @@ func loadFromURL(url string) ([]Document, error) {
 		ID:      url,
 		Content: string(content),
 		Metadata: map[string]any{
-			"source":      url,
+			"source":       url,
 			"content_type": resp.Header.Get("Content-Type"),
 		},
 		Created: time.Now(),
@@ -131,7 +131,7 @@ func loadFromFilePattern(pattern string) ([]Document, error) {
 		matches = []string{pattern}
 	}
 
-	var documents []Document
+	documents := make([]Document, 0, len(matches))
 	for _, path := range matches {
 		// Check if it's a file (skip directories)
 		info, err := os.Stat(path)

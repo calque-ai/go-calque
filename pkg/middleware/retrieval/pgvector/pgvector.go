@@ -22,10 +22,10 @@ type Config struct {
 	// Database connection string (PostgreSQL format)
 	// Example: "postgres://user:password@localhost/dbname?sslmode=disable"
 	ConnectionString string
-	
+
 	// Table name for storing documents and vectors
 	TableName string
-	
+
 	// Vector dimension (must match embedding model output)
 	VectorDimension int
 }
@@ -75,12 +75,12 @@ func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retr
 	// Example pgx query:
 	// rows, err := c.conn.Query(ctx,
 	//     `SELECT id, content, metadata, 1 - (embedding <=> $1) as similarity
-	//      FROM documents 
+	//      FROM documents
 	//      WHERE 1 - (embedding <=> $1) > $2
 	//      ORDER BY embedding <=> $1
 	//      LIMIT $3`,
 	//     pgvector.NewVector(query.Vector), query.Threshold, query.Limit)
-	
+
 	return &retrieval.SearchResult{
 		Documents: []retrieval.Document{},
 		Query:     query.Text,
@@ -98,12 +98,12 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 	//     batch.Queue(
 	//         `INSERT INTO documents (id, content, metadata, embedding, created_at, updated_at)
 	//          VALUES ($1, $2, $3, $4, $5, $6)`,
-	//         doc.ID, doc.Content, doc.Metadata, 
+	//         doc.ID, doc.Content, doc.Metadata,
 	//         pgvector.NewVector(doc.Embedding), doc.Created, doc.Updated)
 	// }
 	// results := c.conn.SendBatch(ctx, batch)
 	// defer results.Close()
-	
+
 	return fmt.Errorf("pgvector store not yet implemented - add github.com/jackc/pgx and github.com/pgvector/pgvector-go dependencies")
 }
 
@@ -111,15 +111,17 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 func (c *Client) Delete(ctx context.Context, ids []string) error {
 	// TODO: Implement actual deletion with pgx
 	// _, err := c.conn.Exec(ctx, "DELETE FROM documents WHERE id = ANY($1)", ids)
-	
+
 	return fmt.Errorf("pgvector delete not yet implemented - add github.com/jackc/pgx dependency")
 }
 
-// GetEmbedding generates embeddings for text content.
-// Note: pgvector doesn't generate embeddings, this would typically use an external service.
+// GetEmbedding generates embeddings for text content using an external service.
+// This implements the EmbeddingCapable interface for PGVector.
+// Note: PGVector doesn't generate embeddings internally, so this uses an external service.
 func (c *Client) GetEmbedding(ctx context.Context, text string) (retrieval.EmbeddingVector, error) {
 	// TODO: Integrate with embedding service (OpenAI, Ollama, etc.)
-	return nil, fmt.Errorf("pgvector embedding not yet implemented - integrate with embedding service")
+	// For now, return an error indicating this needs configuration
+	return nil, fmt.Errorf("pgvector embedding not yet implemented - please configure an external embedding service (OpenAI, Ollama, etc.)")
 }
 
 // Health checks if the PostgreSQL database is available and pgvector extension is loaded.
@@ -132,7 +134,7 @@ func (c *Client) Health(ctx context.Context) error {
 	// }
 	//
 	// var extExists bool
-	// err = c.conn.QueryRow(ctx, 
+	// err = c.conn.QueryRow(ctx,
 	//     "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')").Scan(&extExists)
 	// if err != nil {
 	//     return fmt.Errorf("extension check failed: %w", err)
@@ -140,7 +142,7 @@ func (c *Client) Health(ctx context.Context) error {
 	// if !extExists {
 	//     return fmt.Errorf("pgvector extension not installed")
 	// }
-	
+
 	return fmt.Errorf("pgvector health check not yet implemented - add github.com/jackc/pgx dependency")
 }
 
@@ -174,13 +176,13 @@ func (c *Client) ensureSchema(vectorDimension int) error {
 	// }
 	//
 	// createIndexSQL := fmt.Sprintf(`
-	//     CREATE INDEX IF NOT EXISTS %s_embedding_idx ON %s 
+	//     CREATE INDEX IF NOT EXISTS %s_embedding_idx ON %s
 	//     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`,
 	//     c.tableName, c.tableName)
 	// _, err = c.conn.Exec(ctx, createIndexSQL)
 	// if err != nil {
 	//     return fmt.Errorf("failed to create vector index: %w", err)
 	// }
-	
+
 	return fmt.Errorf("pgvector schema creation not yet implemented")
 }

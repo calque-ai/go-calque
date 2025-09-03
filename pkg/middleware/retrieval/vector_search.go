@@ -51,13 +51,9 @@ func VectorSearch(store VectorStore, opts *SearchOptions) calque.Handler {
 			Filter:    opts.Filter,
 		}
 
-		// Use custom embedding if provided
-		if opts.EmbeddingProvider != nil {
-			embedding, err := opts.EmbeddingProvider.Embed(r.Context, queryText)
-			if err != nil {
-				return err
-			}
-			query.Vector = embedding
+		// Handle embedding generation based on store capabilities
+		if err := handleEmbeddingForQuery(r.Context, store, &query, opts); err != nil {
+			return err
 		}
 
 		// Perform search using db native capabilities when strategy is specified
@@ -94,34 +90,85 @@ func strategySearch(ctx context.Context, store VectorStore, query SearchQuery, o
 		return result, false, err
 	}
 
-	// Check if we can use native diversification during search
-	if *opts.Strategy == StrategyDiverse {
-		if diversifier, ok := store.(DiversificationProvider); ok {
-			diversityOpts := DiversificationOptions{
-				Diversity:       0.5,             // Balance relevance and diversity
-				CandidatesLimit: query.Limit * 2, // Consider 2x candidates
-				Strategy:        "mmr",
-			}
-			result, err := diversifier.SearchWithDiversification(ctx, query, diversityOpts)
-			return result, true, err // Native diversification was used
+	processingMode := opts.GetStrategyProcessing()
+
+	// Handle StrategyPost - skip native processing entirely
+	if processingMode == StrategyPost {
+		result, err := store.Search(ctx, query)
+		return result, false, err
+	}
+
+	// Handle StrategyNative - only use native, fail if not available
+	if processingMode == StrategyNative {
+		nativeResult, err := tryNativeStrategy(ctx, store, query, opts)
+		if err != nil {
+			return nil, false, fmt.Errorf("native strategy processing failed: %w", err)
+		}
+		if nativeResult != nil {
+			return nativeResult, true, nil
+		}
+		return nil, false, fmt.Errorf("native strategy processing not available for %s", *opts.Strategy)
+	}
+
+	// Handle StrategyAuto and StrategyBoth - try native first
+	nativeResult, err := tryNativeStrategy(ctx, store, query, opts)
+	if err != nil {
+		// For StrategyBoth, native failure should not stop the process
+		if processingMode != StrategyBoth {
+			return nil, false, err
 		}
 	}
 
-	// Check if we can use native reranking during search (only for StrategyRelevant)
-	if *opts.Strategy == StrategyRelevant {
-		if reranker, ok := store.(RerankingProvider); ok {
-			rerankOpts := RerankingOptions{
-				Query: query.Text,
-				TopK:  query.Limit * 2, // Rerank 2x candidates
-			}
-			result, err := reranker.SearchWithReranking(ctx, query, rerankOpts)
-			return result, true, err // Native reranking was used
+	// For StrategyBoth, we always do post-search processing even if native succeeded
+	// For StrategyAuto, we only do post-search if native failed
+	if processingMode == StrategyBoth || (processingMode == StrategyAuto && nativeResult == nil) {
+		// Use regular search, will apply post-processing in buildContext
+		result, err := store.Search(ctx, query)
+		if processingMode == StrategyBoth && nativeResult != nil {
+			// Combine native and regular results? For now, prefer native results
+			// This could be enhanced to merge results intelligently
+			return nativeResult, true, err
 		}
+		return result, false, err
+	}
+
+	// StrategyAuto with successful native processing
+	if nativeResult != nil {
+		return nativeResult, true, nil
 	}
 
 	// Fall back to regular search
 	result, err := store.Search(ctx, query)
 	return result, false, err
+}
+
+// tryNativeStrategy attempts to use native database strategy processing
+func tryNativeStrategy(ctx context.Context, store VectorStore, query SearchQuery, opts *SearchOptions) (*SearchResult, error) {
+	// Try native diversification for StrategyDiverse
+	if *opts.Strategy == StrategyDiverse {
+		if diversifier, ok := store.(DiversificationProvider); ok {
+			diversityOpts := DiversificationOptions{
+				Diversity:       opts.GetDiversityLambda(),
+				CandidatesLimit: int(float64(query.Limit) * opts.GetCandidatesMultiplier()),
+				Strategy:        opts.GetDiversityStrategy(),
+			}
+			return diversifier.SearchWithDiversification(ctx, query, diversityOpts)
+		}
+	}
+
+	// Try native reranking for StrategyRelevant
+	if *opts.Strategy == StrategyRelevant {
+		if reranker, ok := store.(RerankingProvider); ok {
+			rerankOpts := RerankingOptions{
+				Query: query.Text,
+				TopK:  int(float64(query.Limit) * opts.GetRerankMultiplier()),
+			}
+			return reranker.SearchWithReranking(ctx, query, rerankOpts)
+		}
+	}
+
+	// No native support available
+	return nil, nil
 }
 
 // buildContext assembles documents using native store capabilities when available
@@ -145,10 +192,7 @@ func buildContext(documents []Document, opts *SearchOptions, store VectorStore, 
 	}
 
 	// Build final context string using native token estimation if available
-	separator := opts.Separator
-	if separator == "" {
-		separator = "\n\n---\n\n" // Default separator
-	}
+	separator := opts.GetSeparator()
 
 	contextParts := make([]string, 0, len(selectedDocs))
 	currentTokens := 0
@@ -163,7 +207,7 @@ func buildContext(documents []Document, opts *SearchOptions, store VectorStore, 
 			docTokens = tokenEstimator.EstimateTokens(doc.Content)
 		} else {
 			// Fall back to rough estimation
-			docTokens = estimateTokens(doc.Content)
+			docTokens = estimateTokens(doc.Content, opts)
 		}
 
 		if opts.MaxTokens > 0 && currentTokens+docTokens > opts.MaxTokens {
@@ -211,10 +255,10 @@ func applyStrategy(documents []Document, opts *SearchOptions) ([]Document, error
 		})
 	case StrategyDiverse:
 		// If native diversification wasn't used during search, apply local implementation
-		docs = selectDiverse(docs)
+		docs = selectDiverse(docs, opts)
 	case StrategySummary:
 		// For now, just truncate long documents (could integrate with summarization later)
-		docs = truncateDocuments(docs, 500) // 500 words max per doc
+		docs = truncateDocuments(docs, opts.GetSummaryWordLimit())
 	default:
 		return nil, fmt.Errorf("unknown context strategy: %s", *opts.Strategy)
 	}
@@ -223,32 +267,31 @@ func applyStrategy(documents []Document, opts *SearchOptions) ([]Document, error
 }
 
 // selectDiverse implements Maximum Marginal Relevance (MMR) algorithm for diversity selection
-func selectDiverse(documents []Document) []Document {
+func selectDiverse(documents []Document, opts *SearchOptions) []Document {
 	if len(documents) <= 1 {
 		return documents
 	}
 
 	// MMR algorithm: balance relevance and diversity
-	// λ = 0.5 gives equal weight to relevance and diversity
-	lambda := 0.5
-	maxResults := min(len(documents), 10) // Limit to reasonable number
-	
+	lambda := opts.GetDiversityLambda()
+	maxResults := min(len(documents), opts.GetMaxDiverseResults())
+
 	var selected []Document
 	remaining := make([]Document, len(documents))
 	copy(remaining, documents)
-	
+
 	// Start with highest scoring document
 	selected = append(selected, remaining[0])
 	remaining = remaining[1:]
-	
+
 	for len(selected) < maxResults && len(remaining) > 0 {
 		var bestIdx int
 		var bestScore float64 = -1
-		
+
 		for i, candidate := range remaining {
 			// Calculate MMR score: λ * relevance - (1-λ) * max_similarity_to_selected
 			relevanceScore := candidate.Score
-			
+
 			// Find maximum similarity to any selected document
 			maxSimilarity := 0.0
 			for _, selected := range selected {
@@ -257,21 +300,21 @@ func selectDiverse(documents []Document) []Document {
 					maxSimilarity = similarity
 				}
 			}
-			
+
 			// MMR formula
 			mmrScore := lambda*relevanceScore - (1-lambda)*maxSimilarity
-			
+
 			if mmrScore > bestScore {
 				bestScore = mmrScore
 				bestIdx = i
 			}
 		}
-		
+
 		// Add best candidate to selected and remove from remaining
 		selected = append(selected, remaining[bestIdx])
 		remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
 	}
-	
+
 	return selected
 }
 
@@ -299,9 +342,44 @@ func truncateDocuments(documents []Document, maxWords int) []Document {
 }
 
 // estimateTokens provides a rough token count estimation (fallback)
-func estimateTokens(text string) int {
+func estimateTokens(text string, opts *SearchOptions) int {
 	words := strings.Fields(text)
-	// Rough approximation: 1 token per 0.75 words
-	return int(float64(len(words)) * 1.33)
+	ratio := opts.GetTokenEstimationRatio()
+	return int(float64(len(words)) * ratio)
 }
 
+// handleEmbeddingForQuery determines how to handle embedding generation based on store capabilities
+func handleEmbeddingForQuery(ctx context.Context, store VectorStore, query *SearchQuery, opts *SearchOptions) error {
+	// Check if store supports auto-embedding (like Weaviate)
+	if autoEmbedder, ok := store.(AutoEmbeddingCapable); ok && autoEmbedder.SupportsAutoEmbedding() {
+		// Store handles embeddings automatically - no vector needed in query
+		// The store will generate embeddings from query.Text internally
+		return nil
+	}
+
+	// Check if store can generate embeddings (like Qdrant with external service)
+	if embedder, ok := store.(EmbeddingCapable); ok {
+		// Use store's embedding capability
+		vector, err := embedder.GetEmbedding(ctx, query.Text)
+		if err != nil {
+			return fmt.Errorf("failed to generate embedding using store capability: %w", err)
+		}
+		query.Vector = vector
+		return nil
+	}
+
+	// Check if user provided custom embedding provider in options
+	if opts.EmbeddingProvider != nil {
+		// Use custom embedding provider
+		vector, err := opts.EmbeddingProvider.Embed(ctx, query.Text)
+		if err != nil {
+			return fmt.Errorf("failed to generate embedding using custom provider: %w", err)
+		}
+		query.Vector = vector
+		return nil
+	}
+
+	// No embedding capability available - let store handle text-based search if supported
+	// Some stores might support text search without embeddings
+	return nil
+}

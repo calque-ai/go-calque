@@ -10,8 +10,8 @@ import (
 
 // SemanticFilterOptions configures semantic filtering behavior.
 type SemanticFilterOptions struct {
-	TargetEmbeddings []EmbeddingVector `json:"target_embeddings"`  // Target concept embeddings
-	Threshold        float64           `json:"threshold"`          // Similarity threshold (0-1)
+	TargetEmbeddings  []EmbeddingVector `json:"target_embeddings"` // Target concept embeddings
+	Threshold         float64           `json:"threshold"`         // Similarity threshold (0-1)
 	EmbeddingProvider EmbeddingProvider `json:"-"`                 // Provider for generating embeddings
 }
 
