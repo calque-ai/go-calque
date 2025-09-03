@@ -18,6 +18,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
+	"github.com/calque-ai/go-calque/pkg/utils"
 )
 
 // Client implements the Client interface for Ollama.
@@ -44,7 +45,7 @@ type Client struct {
 //
 //	config := &ollama.Config{
 //		Host: "http://192.168.1.100:11434",
-//		Temperature: ai.Float32Ptr(0.8),
+//		Temperature: utils.Float32Ptr(0.8),
 //	}
 type Config struct {
 	// Optional. Ollama server host (defaults to localhost:11434 or OLLAMA_HOST env)
@@ -119,13 +120,13 @@ func WithConfig(cfg *Config) Option {
 // Example:
 //
 //	config := ollama.DefaultConfig()
-//	config.MaxTokens = ai.IntPtr(2000)
+//	config.MaxTokens = utils.IntPtr(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		Host:        "", // Will use ClientFromEnvironment() default
-		Temperature: ai.Float32Ptr(0.7),
+		Temperature: utils.Float32Ptr(0.7),
 		KeepAlive:   "5m",
-		Stream:      ai.BoolPtr(true), // Ollama streams by default
+		Stream:      utils.BoolPtr(true), // Ollama streams by default
 	}
 }
 
@@ -430,32 +431,33 @@ func (o *Client) determineResponseFormat(responseFormat *ai.ResponseFormat) json
 	}
 }
 
-// convertToOllamaTools converts our tool interface to Ollama's tool format
+// convertToOllamaTools converts our tool interface to Ollama's tool format using internal schema
 func (o *Client) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
-	ollamaTools := make([]api.Tool, len(toolList))
+	internalTools := tools.FormatToolsAsInternal(toolList)
+	ollamaTools := make([]api.Tool, len(internalTools))
 
-	for i, tool := range toolList {
-		schema := tool.ParametersSchema()
-
-		// Convert schema properties to Ollama format
+	for i, tool := range internalTools {
+		// Convert internal schema properties to Ollama format
 		properties := make(map[string]api.ToolProperty)
 
-		if schema.Properties != nil {
-			for pair := schema.Properties.Oldest(); pair != nil; pair = pair.Next() {
-				properties[pair.Key] = api.ToolProperty{
-					Type:        api.PropertyType{pair.Value.Type},
-					Description: pair.Value.Description,
+		if tool.Parameters != nil && tool.Parameters.Properties != nil {
+			for name, prop := range tool.Parameters.Properties {
+				properties[name] = api.ToolProperty{
+					Type:        api.PropertyType{prop.Type},
+					Description: prop.Description,
 				}
 			}
 		}
 
 		function := api.ToolFunction{
-			Name:        tool.Name(),
-			Description: tool.Description(),
+			Name:        tool.Name,
+			Description: tool.Description,
 		}
 		function.Parameters.Type = "object"
 		function.Parameters.Properties = properties
-		function.Parameters.Required = schema.Required
+		if tool.Parameters != nil {
+			function.Parameters.Required = tool.Parameters.Required
+		}
 
 		ollamaTool := api.Tool{
 			Type:     "function",
