@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/middleware/retrieval"
@@ -14,12 +16,13 @@ import (
 //
 // Implements the retrieval.VectorStore interface for Qdrant operations.
 // Provides vector similarity search, document storage, and collection management.
-// Also implements DiversificationProvider for native MMR support.
+// Also implements DiversificationProvider for native MMR support and EmbeddingCapable.
 type Client struct {
-	client         *qd.Client
-	url            string
-	collectionName string
-	apiKey         string
+	client            *qd.Client
+	url               string
+	collectionName    string
+	apiKey            string
+	embeddingProvider retrieval.EmbeddingProvider
 }
 
 // Config holds Qdrant client configuration.
@@ -33,6 +36,10 @@ type Config struct {
 
 	// Optional API key for authentication
 	APIKey string
+
+	// Optional embedding provider for generating vectors
+	// If not provided, GetEmbedding() will return an error
+	EmbeddingProvider retrieval.EmbeddingProvider
 }
 
 // New creates a new Qdrant client with the specified configuration.
@@ -54,10 +61,23 @@ func New(config *Config) (*Client, error) {
 	}
 
 	// Parse URL to extract host and port for Qdrant client
-	// Default Qdrant port is 6334
+	parsedURL, err := url.Parse(config.URL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Weaviate URL: %w", err)
+	}
+
+	port := 6334 // Default Qdrant port is 6334
+	if parsedURL.Port() != "" {
+		p, err := strconv.ParseInt(parsedURL.Port(), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("error converting string to int: %w", err)
+		}
+		port = int(p)
+	}
+
 	qdrantConfig := &qd.Config{
-		Host:   "localhost", // Will be updated based on URL parsing
-		Port:   6334,
+		Host:   parsedURL.Host,
+		Port:   port,
 		APIKey: config.APIKey,
 	}
 
@@ -68,16 +88,12 @@ func New(config *Config) (*Client, error) {
 	}
 
 	client := &Client{
-		client:         qdrantClient,
-		url:            config.URL,
-		collectionName: config.CollectionName,
-		apiKey:         config.APIKey,
+		client:            qdrantClient,
+		url:               config.URL,
+		collectionName:    config.CollectionName,
+		apiKey:            config.APIKey,
+		embeddingProvider: config.EmbeddingProvider,
 	}
-
-	// TODO: Ensure collection exists
-	// if err := client.ensureCollection(config.VectorDimension, config.Distance); err != nil {
-	//     return nil, err
-	// }
 
 	return client, nil
 }
@@ -293,42 +309,115 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 }
 
 // Delete removes documents from the Qdrant collection.
+// Supports batch deletion for efficient removal of multiple documents.
+// For large numbers of documents, deletion is processed in batches to optimize performance.
 func (c *Client) Delete(ctx context.Context, ids []string) error {
-	// TODO: Implement actual Qdrant deletion
-	// pointIds := make([]*qdrant.PointId, len(ids))
-	// for i, id := range ids {
-	//     pointIds[i] = &qdrant.PointId{PointIdOptions: &qdrant.PointId_Uuid{Uuid: id}}
-	// }
-	//
-	// deleteRequest := &qdrant.DeletePointsRequest{
-	//     CollectionName: c.collectionName,
-	//     Points:         &qdrant.PointsSelector{PointsSelectorOneOf: &qdrant.PointsSelector_Points{Points: &qdrant.PointIdsList{Ids: pointIds}}},
-	// }
-	// _, err := c.client.DeletePoints(ctx, deleteRequest)
+	if c.client == nil {
+		return fmt.Errorf("qdrant client is not initialized")
+	}
+	if len(ids) == 0 {
+		return nil // Nothing to delete
+	}
 
-	return fmt.Errorf("qdrant delete not yet implemented - add qdrant-go client dependency")
+	// Process deletions in batches for better performance
+	const batchSize = 100 // Reasonable batch size for deletion operations
+
+	for i := 0; i < len(ids); i += batchSize {
+		end := i + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+
+		batch := ids[i:end]
+		if err := c.deleteBatch(ctx, batch); err != nil {
+			return fmt.Errorf("failed to delete batch %d-%d: %w", i, end-1, err)
+		}
+	}
+
+	return nil
 }
 
-// GetEmbedding generates embeddings for text content using an external service.
+// deleteBatch removes a batch of documents from Qdrant using batch operations
+func (c *Client) deleteBatch(ctx context.Context, ids []string) error {
+	// Convert document IDs to Qdrant point IDs for deletion operations
+	pointIDs := make([]*qd.PointId, len(ids))
+	for i, id := range ids {
+		pointIDs[i] = &qd.PointId{
+			PointIdOptions: &qd.PointId_Uuid{Uuid: id},
+		}
+	}
+	// Create a single batch delete operation for all points
+	deleteOperation := qd.NewPointsUpdateDeletePoints(&qd.PointsUpdateOperation_DeletePoints{
+		Points: &qd.PointsSelector{
+			PointsSelectorOneOf: &qd.PointsSelector_Points{
+				Points: &qd.PointsIdsList{Ids: pointIDs},
+			},
+		},
+	})
+
+	operations := []*qd.PointsUpdateOperation{deleteOperation}
+
+	// Execute batch update with delete operations
+	waitForResult := true
+	_, err := c.client.UpdateBatch(ctx, &qd.UpdateBatchPoints{
+		CollectionName: c.collectionName,
+		Operations:     operations,
+		Wait:           &waitForResult, // Wait for operation to complete
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to batch delete %d points from collection %s: %w", len(ids), c.collectionName, err)
+	}
+
+	return nil
+}
+
+// GetEmbedding generates embeddings for text content using the configured external service.
 // This implements the EmbeddingCapable interface for Qdrant.
-// Note: Qdrant doesn't generate embeddings internally, so this uses an external service.
+// Note: Qdrant doesn't generate embeddings internally, so this delegates to the configured provider.
 func (c *Client) GetEmbedding(ctx context.Context, text string) (retrieval.EmbeddingVector, error) {
-	// TODO: Integrate with embedding service (OpenAI, Ollama, etc.)
-	// For now, return an error indicating this needs configuration
-	return nil, fmt.Errorf("qdrant embedding not yet implemented - please configure an external embedding service (OpenAI, Ollama, etc.)")
+	if c.embeddingProvider == nil {
+		return nil, fmt.Errorf("no embedding provider configured for Qdrant client - please set EmbeddingProvider in Config")
+	}
+
+	// Delegate to the configured embedding provider
+	embedding, err := c.embeddingProvider.Embed(ctx, text)
+	if err != nil {
+		return nil, fmt.Errorf("embedding provider failed to generate embedding: %w", err)
+	}
+
+	return embedding, nil
+}
+
+// SetEmbeddingProvider allows setting or updating the embedding provider after client creation.
+// This is useful for dynamic configuration or testing scenarios.
+func (c *Client) SetEmbeddingProvider(provider retrieval.EmbeddingProvider) {
+	c.embeddingProvider = provider
+}
+
+// GetEmbeddingProvider returns the currently configured embedding provider.
+// Returns nil if no provider is configured.
+func (c *Client) GetEmbeddingProvider() retrieval.EmbeddingProvider {
+	return c.embeddingProvider
 }
 
 // Health checks if the Qdrant server is available and responsive.
 func (c *Client) Health(ctx context.Context) error {
-	// TODO: Implement health check
-	// _, err := c.client.HealthCheck(ctx, &qdrant.HealthCheckRequest{})
+	_, err := c.client.HealthCheck(ctx)
+	if err != nil {
+		return fmt.Errorf("health check error %w", err)
+	}
 
-	return fmt.Errorf("qdrant health check not yet implemented - add qdrant-go client dependency")
+	return nil
 }
 
 // Close releases any resources held by the Qdrant client.
 func (c *Client) Close() error {
-	// TODO: Implement cleanup if needed
+	err := c.client.Close()
+	if err != nil {
+		return fmt.Errorf("close qdrant error %w", err)
+	}
+
 	return nil
 }
 
@@ -338,9 +427,6 @@ func (c *Client) storeBatch(ctx context.Context, documents []retrieval.Document)
 	points := make([]*qd.PointStruct, 0, len(documents))
 
 	for _, doc := range documents {
-		// Generate embedding for document content
-		// For now, we'll need to use an external embedding service
-		// TODO: This should be configurable or use GetEmbedding method
 		if doc.Content == "" {
 			continue // Skip documents without content
 		}
@@ -348,17 +434,25 @@ func (c *Client) storeBatch(ctx context.Context, documents []retrieval.Document)
 		// Create point ID - use document ID if available, otherwise generate UUID
 		pointID := c.createPointID(doc.ID)
 
-		// For now, we'll skip the vector creation since we don't have embeddings
-		// In a real implementation, you would:
-		// 1. Call c.GetEmbedding(ctx, doc.Content) to get vector
-		// 2. Or expect the caller to provide vectors in metadata
-		// 3. Or use a separate embedding service
+		// Generate embedding for document content using configured provider
+		var vectorData []float32
+		if c.embeddingProvider != nil {
+			// Use the configured embedding provider to generate vector
+			embedding, err := c.embeddingProvider.Embed(ctx, doc.Content)
+			if err != nil {
+				return fmt.Errorf("failed to generate embedding for document %s: %w", doc.ID, err)
+			}
+			vectorData = []float32(embedding)
+		} else {
+			// No embedding provider configured - return error
+			return fmt.Errorf("no embedding provider configured - cannot generate vectors for document storage")
+		}
 
-		// Create empty vector as placeholder - this needs proper embedding
+		// Create vector data
 		vectors := &qd.Vectors{
 			VectorsOptions: &qd.Vectors_Vector{
 				Vector: &qd.Vector{
-					Data: make([]float32, 1536), // Default OpenAI embedding size as placeholder
+					Data: vectorData,
 				},
 			},
 		}
