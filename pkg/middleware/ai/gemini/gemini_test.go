@@ -12,9 +12,9 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
-	"github.com/calque-ai/go-calque/pkg/utils"
 )
 
 func TestNew(t *testing.T) {
@@ -50,7 +50,7 @@ func TestNew(t *testing.T) {
 			opts: []Option{
 				WithConfig(&Config{
 					APIKey:      "config-api-key",
-					Temperature: utils.Float32Ptr(0.8),
+					Temperature: helpers.Float32Ptr(0.8),
 				}),
 			},
 		},
@@ -130,10 +130,10 @@ func TestDefaultConfig(t *testing.T) {
 func TestWithConfig(t *testing.T) {
 	customConfig := &Config{
 		APIKey:      "custom-key",
-		Temperature: utils.Float32Ptr(0.9),
-		MaxTokens:   utils.IntPtr(2000),
-		TopP:        utils.Float32Ptr(0.95),
-		TopK:        utils.Float32Ptr(40),
+		Temperature: helpers.Float32Ptr(0.9),
+		MaxTokens:   helpers.IntPtr(2000),
+		TopP:        helpers.Float32Ptr(0.95),
+		TopK:        helpers.Float32Ptr(40),
 	}
 
 	option := WithConfig(customConfig)
@@ -173,16 +173,16 @@ func TestBuildGenerateConfig(t *testing.T) {
 		{
 			name: "basic config",
 			config: &Config{
-				Temperature:       utils.Float32Ptr(0.8),
-				TopP:              utils.Float32Ptr(0.9),
-				TopK:              utils.Float32Ptr(50),
-				MaxTokens:         utils.IntPtr(1500),
+				Temperature:       helpers.Float32Ptr(0.8),
+				TopP:              helpers.Float32Ptr(0.9),
+				TopK:              helpers.Float32Ptr(50),
+				MaxTokens:         helpers.IntPtr(1500),
 				Stop:              []string{"END", "STOP"},
 				SystemInstruction: "Be helpful",
-				PresencePenalty:   utils.Float32Ptr(0.1),
-				FrequencyPenalty:  utils.Float32Ptr(0.2),
-				Seed:              utils.Int32Ptr(42),
-				CandidateCount:    utils.Int32Ptr(1),
+				PresencePenalty:   helpers.Float32Ptr(0.1),
+				FrequencyPenalty:  helpers.Float32Ptr(0.2),
+				Seed:              helpers.Int32Ptr(42),
+				CandidateCount:    helpers.Int32Ptr(1),
 			},
 			check: func(config *genai.GenerateContentConfig) error {
 				if config.Temperature == nil || *config.Temperature != 0.8 {

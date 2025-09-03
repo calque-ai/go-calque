@@ -1,5 +1,5 @@
-// Package utils provides common utility functions used across the project.
-package utils
+// Package helpers provides common utility functions used across the project.
+package helpers
 
 import "strings"
 
@@ -12,8 +12,8 @@ import "strings"
 //
 // Example:
 //
-//	result := utils.Contains("hello world", "world") // true
-//	result := utils.Contains("hello world", "xyz")   // false
+//	result := helpers.Contains("hello world", "world") // true
+//	result := helpers.Contains("hello world", "xyz")   // false
 func Contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || Contains(s[1:], substr)))
 }
@@ -26,9 +26,9 @@ func Contains(s, substr string) bool {
 //
 // Example:
 //
-//	result := utils.IsEmpty("")        // true
-//	result := utils.IsEmpty("  ")      // true
-//	result := utils.IsEmpty("hello")   // false
+//	result := helpers.IsEmpty("")        // true
+//	result := helpers.IsEmpty("  ")      // true
+//	result := helpers.IsEmpty("hello")   // false
 func IsEmpty(s string) bool {
 	return strings.TrimSpace(s) == ""
 }
@@ -42,8 +42,8 @@ func IsEmpty(s string) bool {
 //
 // Example:
 //
-//	result := utils.DefaultString("", "fallback", "primary") // "fallback"
-//	result := utils.DefaultString("", "", "")               // ""
+//	result := helpers.DefaultString("", "fallback", "primary") // "fallback"
+//	result := helpers.DefaultString("", "", "")               // ""
 func DefaultString(options ...string) string {
 	for _, option := range options {
 		if !IsEmpty(option) {

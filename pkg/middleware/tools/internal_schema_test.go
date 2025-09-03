@@ -7,7 +7,7 @@ import (
 	"github.com/invopop/jsonschema"
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 
-	"github.com/calque-ai/go-calque/pkg/utils"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 )
 
 func TestInternalToolSchema(t *testing.T) {
@@ -255,7 +255,7 @@ func TestFormatToolsAsOpenAIInternal(t *testing.T) {
 			}
 
 			for _, expected := range tt.expectedStrings {
-				if !utils.Contains(result, expected) {
+				if !helpers.Contains(result, expected) {
 					t.Errorf("Result missing expected string: %q", expected)
 				}
 			}
