@@ -914,18 +914,18 @@ func TestSSEConverter_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			// Each goroutine gets its own mock writer and SSE converter
 			mock := newMockResponseWriter()
 			sse := ToSSE(mock)
-			
+
 			for j := range numWrites {
 				err := sse.WriteError(fmt.Errorf("error %d-%d", id, j))
 				if err != nil {
 					errChan <- err
 				}
 			}
-			
+
 			// Count events from this goroutine
 			events := parseSSEEvents(t, mock.Body.String())
 			eventChan <- len(events)
@@ -949,7 +949,7 @@ func TestSSEConverter_ConcurrentAccess(t *testing.T) {
 		}
 		totalEvents += eventCount
 	}
-	
+
 	expectedTotal := numGoroutines * numWrites
 	if totalEvents != expectedTotal {
 		t.Errorf("Expected total %d error events, got %d", expectedTotal, totalEvents)

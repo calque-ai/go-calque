@@ -131,25 +131,25 @@ func TestStandardAdapter_Log(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create buffer to capture log output
 			var buf bytes.Buffer
-			
+
 			// Create standard logger writing to buffer
 			stdLogger := log.New(&buf, "", 0) // No prefix, no flags for cleaner testing
-			
+
 			// Create adapter
 			adapter := NewStandardAdapter(stdLogger)
-			
+
 			// Call Log method (context and level are ignored by StandardAdapter)
 			ctx := context.Background()
 			adapter.Log(ctx, tt.level, tt.msg, tt.attrs...)
-			
+
 			// Get output
 			output := buf.String()
-			
+
 			// Verify message is present
 			if !strings.Contains(output, tt.wantMsg) {
 				t.Errorf("Expected message %q in output, got: %s", tt.wantMsg, output)
 			}
-			
+
 			// Verify all attributes are present
 			for _, wantAttr := range tt.wantAttrs {
 				if !strings.Contains(output, wantAttr) {
@@ -198,14 +198,14 @@ func TestStandardAdapter_IsLevelEnabled(t *testing.T) {
 			// Create standard logger
 			var buf bytes.Buffer
 			stdLogger := log.New(&buf, "", 0)
-			
+
 			// Create adapter
 			adapter := NewStandardAdapter(stdLogger)
-			
+
 			// Test IsLevelEnabled (context is ignored)
 			ctx := context.Background()
 			got := adapter.IsLevelEnabled(ctx, tt.testLevel)
-			
+
 			if got != tt.want {
 				t.Errorf("IsLevelEnabled() = %v, want %v", got, tt.want)
 			}
@@ -269,13 +269,13 @@ func TestStandardAdapter_Printf(t *testing.T) {
 			// Create buffer to capture log output
 			var buf bytes.Buffer
 			stdLogger := log.New(&buf, "", 0) // No prefix, no flags
-			
+
 			// Create adapter
 			adapter := NewStandardAdapter(stdLogger)
-			
+
 			// Call Printf
 			adapter.Printf(tt.format, tt.args...)
-			
+
 			// Get output and verify expected content is present
 			output := buf.String()
 			if !strings.Contains(output, tt.want) {
@@ -289,36 +289,36 @@ func TestNewStandardAdapter(t *testing.T) {
 	t.Run("creates valid adapter", func(t *testing.T) {
 		var buf bytes.Buffer
 		stdLogger := log.New(&buf, "", 0)
-		
+
 		adapter := NewStandardAdapter(stdLogger)
-		
+
 		if adapter == nil {
 			t.Fatal("NewStandardAdapter returned nil")
 		}
-		
+
 		if adapter.logger != stdLogger {
 			t.Error("NewStandardAdapter did not store the provided logger")
 		}
 	})
-	
+
 	t.Run("adapter implements Adapter interface", func(_ *testing.T) {
 		var buf bytes.Buffer
 		stdLogger := log.New(&buf, "", 0)
-		
+
 		var _ Adapter = NewStandardAdapter(stdLogger)
 	})
-	
+
 	t.Run("works with default logger", func(t *testing.T) {
 		adapter := NewStandardAdapter(log.Default())
-		
+
 		if adapter == nil {
 			t.Fatal("NewStandardAdapter with default logger returned nil")
 		}
-		
+
 		// Test that it works (output goes to stderr, so we can't easily capture it)
 		ctx := context.Background()
 		adapter.Log(ctx, InfoLevel, "test message")
-		
+
 		// Just verify no panic occurred
 	})
 }
@@ -329,15 +329,15 @@ func TestStandardAdapter_Integration(t *testing.T) {
 		stdLogger := log.New(&buf, "[TEST] ", log.LstdFlags)
 		adapter := NewStandardAdapter(stdLogger)
 		ctx := context.Background()
-		
+
 		// Test different levels (should all behave the same)
 		adapter.Log(ctx, DebugLevel, "debug message")
-		adapter.Log(ctx, InfoLevel, "info message") 
+		adapter.Log(ctx, InfoLevel, "info message")
 		adapter.Log(ctx, WarnLevel, "warn message")
 		adapter.Log(ctx, ErrorLevel, "error message")
-		
+
 		output := buf.String()
-		
+
 		// All messages should be present
 		messages := []string{"debug message", "info message", "warn message", "error message"}
 		for _, msg := range messages {
@@ -345,7 +345,7 @@ func TestStandardAdapter_Integration(t *testing.T) {
 				t.Errorf("Expected %q in output, got: %s", msg, output)
 			}
 		}
-		
+
 		// Should have TEST prefix for all entries
 		lines := strings.Split(strings.TrimSpace(output), "\n")
 		for _, line := range lines {
@@ -354,24 +354,24 @@ func TestStandardAdapter_Integration(t *testing.T) {
 			}
 		}
 	})
-	
+
 	t.Run("context values are ignored", func(t *testing.T) {
 		var buf bytes.Buffer
 		stdLogger := log.New(&buf, "", 0)
 		adapter := NewStandardAdapter(stdLogger)
-		
+
 		// Create context with values using proper typed keys
 		type contextKey string
 		traceIDKey := contextKey("trace_id")
 		userIDKey := contextKey("user_id")
-		
+
 		ctx := context.WithValue(context.Background(), traceIDKey, "abc-123")
 		ctx = context.WithValue(ctx, userIDKey, "user-456")
-		
+
 		adapter.Log(ctx, InfoLevel, "test message", Attr("key", "value"))
-		
+
 		output := buf.String()
-		
+
 		// Context values should NOT appear in output (StandardAdapter ignores context)
 		if strings.Contains(output, "trace_id") || strings.Contains(output, "abc-123") {
 			t.Error("Context values should not appear in StandardAdapter output")
@@ -379,25 +379,25 @@ func TestStandardAdapter_Integration(t *testing.T) {
 		if strings.Contains(output, "user_id") || strings.Contains(output, "user-456") {
 			t.Error("Context values should not appear in StandardAdapter output")
 		}
-		
+
 		// But explicit attributes should appear
 		if !strings.Contains(output, "key=value") {
 			t.Error("Expected explicit attribute in output")
 		}
 	})
-	
+
 	t.Run("level parameter is ignored", func(t *testing.T) {
 		var buf bytes.Buffer
 		stdLogger := log.New(&buf, "", 0)
 		adapter := NewStandardAdapter(stdLogger)
 		ctx := context.Background()
-		
+
 		// Log same message at different levels
 		adapter.Log(ctx, DebugLevel, "same message")
 		buf.Reset()
-		
-		adapter.Log(ctx, ErrorLevel, "same message") 
-		
+
+		adapter.Log(ctx, ErrorLevel, "same message")
+
 		// Both should produce identical output (ignoring any timestamps)
 		output := buf.String()
 		if !strings.Contains(output, "same message") {
@@ -444,12 +444,12 @@ func TestStandardAdapter_AttributeFormatting(t *testing.T) {
 			var buf bytes.Buffer
 			stdLogger := log.New(&buf, "", 0)
 			adapter := NewStandardAdapter(stdLogger)
-			
+
 			ctx := context.Background()
 			adapter.Log(ctx, InfoLevel, "test message", tt.attrs...)
-			
+
 			output := buf.String()
-			
+
 			for _, want := range tt.want {
 				if !strings.Contains(output, want) {
 					t.Errorf("Expected %q in output, got: %s", want, output)
@@ -465,13 +465,13 @@ func BenchmarkStandardAdapter_Log(b *testing.B) {
 	stdLogger := log.New(&buf, "", 0)
 	adapter := NewStandardAdapter(stdLogger)
 	ctx := context.Background()
-	
+
 	attrs := []Attribute{
 		{Key: "user_id", Value: "12345"},
 		{Key: "action", Value: "login"},
 		{Key: "success", Value: true},
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.Reset() // Reset buffer to avoid memory issues
@@ -484,7 +484,7 @@ func BenchmarkStandardAdapter_IsLevelEnabled(b *testing.B) {
 	stdLogger := log.New(&buf, "", 0)
 	adapter := NewStandardAdapter(stdLogger)
 	ctx := context.Background()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		adapter.IsLevelEnabled(ctx, InfoLevel)
@@ -495,7 +495,7 @@ func BenchmarkStandardAdapter_Printf(b *testing.B) {
 	var buf bytes.Buffer
 	stdLogger := log.New(&buf, "", 0)
 	adapter := NewStandardAdapter(stdLogger)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
@@ -511,45 +511,45 @@ func TestStandardAdapter_EdgeCases(t *testing.T) {
 				t.Error("Expected panic when creating adapter with nil logger")
 			}
 		}()
-		
+
 		adapter := NewStandardAdapter(nil)
 		// Try to use the adapter to trigger the panic
 		adapter.Printf("test")
 	})
-	
+
 	t.Run("empty attributes slice", func(t *testing.T) {
 		var buf bytes.Buffer
 		stdLogger := log.New(&buf, "", 0)
 		adapter := NewStandardAdapter(stdLogger)
-		
+
 		ctx := context.Background()
 		adapter.Log(ctx, InfoLevel, "message", []Attribute{}...)
-		
+
 		output := buf.String()
 		if !strings.Contains(output, "message") {
 			t.Error("Expected message in output")
 		}
 	})
-	
+
 	t.Run("many attributes", func(t *testing.T) {
 		var buf bytes.Buffer
 		stdLogger := log.New(&buf, "", 0)
 		adapter := NewStandardAdapter(stdLogger)
-		
+
 		// Create many attributes
 		attrs := make([]Attribute, 100)
 		for i := 0; i < 100; i++ {
 			attrs[i] = Attribute{Key: fmt.Sprintf("key%d", i), Value: i}
 		}
-		
+
 		ctx := context.Background()
 		adapter.Log(ctx, InfoLevel, "many attrs", attrs...)
-		
+
 		output := buf.String()
 		if !strings.Contains(output, "many attrs") {
 			t.Error("Expected message in output")
 		}
-		
+
 		// Verify at least some attributes are present
 		if !strings.Contains(output, "key0=0") {
 			t.Error("Expected first attribute in output")
