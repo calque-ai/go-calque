@@ -4,45 +4,23 @@
   <img src=".github/images/go-calque.webp" alt="Go-Calque" width="400">
   
   <p>
-     <a href="https://github.com/calque-ai/go-calque/releases">
-       <img src="https://img.shields.io/github/v/release/calque-ai/go-calque?include_prereleases&style=flat&label=Latest%20release" alt="Latest release">
-    </a>
-    <a href="https://github.com/calque-ai/go-calque/releases">
-      <img src="https://img.shields.io/badge/Pre--release-v0.2.0-orange?style=flat" alt="Pre-release">
-    </a>
-    <a href="https://golang.org">
-      <img src="https://img.shields.io/badge/Go-1.24+-blue.svg?style=flat" alt="Go Version">
-    </a>
-    <a href="https://goreportcard.com/report/github.com/calque-ai/go-calque">
-      <img src="https://goreportcard.com/badge/github.com/calque-ai/go-calque?style=flat" alt="Go Report Card">
-    </a>
-    <a href="https://pkg.go.dev/github.com/calque-ai/go-calque">
-      <img src="https://pkg.go.dev/badge/github.com/calque-ai/go-calque.svg" alt="Go Reference">
-    </a>
-    <a href="https://github.com/calque-ai/go-calque/actions/workflows/ci.yml">
-      <img src="https://github.com/calque-ai/go-calque/workflows/CI/badge.svg" alt="Build Status" height="20">
-    </a>
-    <a href="https://codecov.io/gh/calque-ai/go-calque">
-      <img src="https://codecov.io/gh/calque-ai/go-calque/branch/main/graph/badge.svg" alt="Code Coverage">
-    </a>
-    <a href="https://github.com/calque-ai/go-calque/actions/workflows/ci.yml">
-      <img src="https://img.shields.io/badge/Security%20Scan-govulncheck-brightgreen?style=flat" alt="Security Scan">
-    </a>
-    <a href="https://github.com/calque-ai/go-calque/actions/workflows/ci.yml">
-      <img src="https://img.shields.io/badge/Static%20Analysis-golangci--lint-blue?style=flat" alt="Static Analysis">
-    </a>
-    <a href="https://opensource.org/licenses/MPL-2.0">
-      <img src="https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg?style=flat" alt="License: MPL 2.0">
-    </a>
+     <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/github/v/release/calque-ai/go-calque?include_prereleases&style=flat&label=Latest%20release" alt="Latest release"></a>
+    <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/badge/Pre--release-v0.2.0-orange?style=flat" alt="Pre-release"></a>
+    <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.24+-blue.svg?style=flat" alt="Go Version"></a>
+    <a href="https://goreportcard.com/report/github.com/calque-ai/go-calque"><img src="https://goreportcard.com/badge/github.com/calque-ai/go-calque?style=flat" alt="Go Report Card"></a>
+    <a href="https://pkg.go.dev/github.com/calque-ai/go-calque"><img src="https://pkg.go.dev/badge/github.com/calque-ai/go-calque.svg" alt="Go Reference"></a>
+    <a href="https://github.com/calque-ai/go-calque/actions/workflows/ci.yml"><img src="https://github.com/calque-ai/go-calque/workflows/CI/badge.svg" alt="Build Status" height="20"></a>
+    <a href="https://codecov.io/gh/calque-ai/go-calque"><img src="https://codecov.io/gh/calque-ai/go-calque/branch/main/graph/badge.svg" alt="Code Coverage"></a>
+    <a href="https://github.com/calque-ai/go-calque/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/Security%20Scan-govulncheck-brightgreen?style=flat" alt="Security Scan"></a>
+    <a href="https://github.com/calque-ai/go-calque/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/Static%20Analysis-golangci--lint-blue?style=flat" alt="Static Analysis"></a>
+    <a href="https://opensource.org/licenses/MPL-2.0"><img src="https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg?style=flat" alt="License: MPL 2.0"></a>
     <!-- <a href="https://github.com/calque-ai/go-calque">
       <img src="https://img.shields.io/github/stars/calque-ai/go-calque.svg?style=flat&logo=github&label=Stars" alt="Stars">
     </a>
     <a href="https://github.com/calque-ai/go-calque/network/members">
       <img src="https://img.shields.io/github/forks/calque-ai/go-calque?style=flat&logo=github&label=Forks" alt="Forks">
     </a> -->
-    <a href="https://discord.gg/sga8uzDbth">
-      <img src="https://img.shields.io/badge/Discord-Join%20Community-6D28D9?style=flat&logo=discord" alt="Discord">
-    </a>
+    <a href="https://discord.gg/sga8uzDbth"><img src="https://img.shields.io/badge/Discord-Join%20Community-6D28D9?style=flat&logo=discord" alt="Discord"></a>
   </p>
 </div>
 
