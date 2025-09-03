@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,111 @@ func TestNew(t *testing.T) {
 	}
 	if len(flow.handlers) != 0 {
 		t.Errorf("Flow() handlers length = %d, want 0", len(flow.handlers))
+	}
+}
+
+func TestNewFlow_Configuration(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         *FlowConfig
+		expectSemNil   bool
+		expectSemCap   int
+		description    string
+	}{
+		{
+			name:         "default_no_config",
+			config:       nil,
+			expectSemNil: true,
+			description:  "Default should use unlimited concurrency (sem = nil)",
+		},
+		{
+			name:         "unlimited_explicit",
+			config:       &FlowConfig{MaxConcurrent: ConcurrencyUnlimited},
+			expectSemNil: true,
+			description:  "ConcurrencyUnlimited should set sem = nil",
+		},
+		{
+			name:         "auto_with_default_multiplier",
+			config:       &FlowConfig{MaxConcurrent: ConcurrencyAuto},
+			expectSemNil: false,
+			expectSemCap: runtime.GOMAXPROCS(0) * DefaultCPUMultiplier,
+			description:  "ConcurrencyAuto should calculate semaphore size from CPU cores",
+		},
+		{
+			name:         "auto_with_custom_multiplier",
+			config:       &FlowConfig{MaxConcurrent: ConcurrencyAuto, CPUMultiplier: 100},
+			expectSemNil: false,
+			expectSemCap: runtime.GOMAXPROCS(0) * 100,
+			description:  "ConcurrencyAuto should use custom multiplier",
+		},
+		{
+			name:         "auto_with_zero_multiplier",
+			config:       &FlowConfig{MaxConcurrent: ConcurrencyAuto, CPUMultiplier: 0},
+			expectSemNil: false,
+			expectSemCap: runtime.GOMAXPROCS(0) * DefaultCPUMultiplier,
+			description:  "ConcurrencyAuto with zero multiplier should use default",
+		},
+		{
+			name:         "auto_with_negative_multiplier",
+			config:       &FlowConfig{MaxConcurrent: ConcurrencyAuto, CPUMultiplier: -5},
+			expectSemNil: false,
+			expectSemCap: runtime.GOMAXPROCS(0) * DefaultCPUMultiplier,
+			description:  "ConcurrencyAuto with negative multiplier should use default",
+		},
+		{
+			name:         "fixed_positive",
+			config:       &FlowConfig{MaxConcurrent: 50},
+			expectSemNil: false,
+			expectSemCap: 50,
+			description:  "Fixed positive value should create semaphore with that capacity",
+		},
+		{
+			name:         "fixed_small",
+			config:       &FlowConfig{MaxConcurrent: 1},
+			expectSemNil: false,
+			expectSemCap: 1,
+			description:  "Fixed value of 1 should work",
+		},
+		{
+			name:         "negative_value_treated_as_unlimited",
+			config:       &FlowConfig{MaxConcurrent: -5},
+			expectSemNil: true,
+			description:  "Negative values (other than ConcurrencyAuto) should be unlimited",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var flow *Flow
+			if tt.config == nil {
+				flow = NewFlow()
+			} else {
+				flow = NewFlow(*tt.config)
+			}
+
+			if flow == nil {
+				t.Fatal("NewFlow returned nil")
+			}
+
+			// Test semaphore presence
+			if tt.expectSemNil {
+				if flow.sem != nil {
+					t.Errorf("%s: expected sem = nil but got non-nil semaphore", tt.description)
+				}
+			} else {
+				if flow.sem == nil {
+					t.Errorf("%s: expected non-nil semaphore but got nil", tt.description)
+				} else if cap(flow.sem) != tt.expectSemCap {
+					t.Errorf("%s: expected semaphore capacity %d but got %d", 
+						tt.description, tt.expectSemCap, cap(flow.sem))
+				}
+			}
+
+			// Test that flow is functional
+			if len(flow.handlers) != 0 {
+				t.Errorf("Flow should start with 0 handlers, got %d", len(flow.handlers))
+			}
+		})
 	}
 }
 
