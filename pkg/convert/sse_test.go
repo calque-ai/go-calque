@@ -542,12 +542,13 @@ func parseSSEEvents(t *testing.T, sseData string) []SSEEventCapture {
 
 	var currentEvent SSEEventCapture
 	for _, line := range lines {
-		if strings.HasPrefix(line, "event: ") {
+		switch {
+		case strings.HasPrefix(line, "event: "):
 			currentEvent.Event = strings.TrimPrefix(line, "event: ")
-		} else if strings.HasPrefix(line, "data: ") {
+		case strings.HasPrefix(line, "data: "):
 			dataJSON := strings.TrimPrefix(line, "data: ")
 			currentEvent.Data = extractDataFromJSON(t, dataJSON)
-		} else if line == "" && currentEvent.Event != "" {
+		case line == "" && currentEvent.Event != "":
 			events = append(events, currentEvent)
 			currentEvent = SSEEventCapture{}
 		}
