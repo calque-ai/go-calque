@@ -14,6 +14,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
+	"github.com/calque-ai/go-calque/pkg/utils"
 )
 
 func TestNew(t *testing.T) {
@@ -49,7 +50,7 @@ func TestNew(t *testing.T) {
 			opts: []Option{
 				WithConfig(&Config{
 					APIKey:      "config-api-key",
-					Temperature: ai.Float32Ptr(0.8),
+					Temperature: utils.Float32Ptr(0.8),
 				}),
 			},
 		},
@@ -129,10 +130,10 @@ func TestDefaultConfig(t *testing.T) {
 func TestWithConfig(t *testing.T) {
 	customConfig := &Config{
 		APIKey:      "custom-key",
-		Temperature: ai.Float32Ptr(0.9),
-		MaxTokens:   ai.IntPtr(2000),
-		TopP:        ai.Float32Ptr(0.95),
-		TopK:        ai.Float32Ptr(40),
+		Temperature: utils.Float32Ptr(0.9),
+		MaxTokens:   utils.IntPtr(2000),
+		TopP:        utils.Float32Ptr(0.95),
+		TopK:        utils.Float32Ptr(40),
 	}
 
 	option := WithConfig(customConfig)
@@ -172,16 +173,16 @@ func TestBuildGenerateConfig(t *testing.T) {
 		{
 			name: "basic config",
 			config: &Config{
-				Temperature:       ai.Float32Ptr(0.8),
-				TopP:              ai.Float32Ptr(0.9),
-				TopK:              ai.Float32Ptr(50),
-				MaxTokens:         ai.IntPtr(1500),
+				Temperature:       utils.Float32Ptr(0.8),
+				TopP:              utils.Float32Ptr(0.9),
+				TopK:              utils.Float32Ptr(50),
+				MaxTokens:         utils.IntPtr(1500),
 				Stop:              []string{"END", "STOP"},
 				SystemInstruction: "Be helpful",
-				PresencePenalty:   ai.Float32Ptr(0.1),
-				FrequencyPenalty:  ai.Float32Ptr(0.2),
-				Seed:              ai.Int32Ptr(42),
-				CandidateCount:    ai.Int32Ptr(1),
+				PresencePenalty:   utils.Float32Ptr(0.1),
+				FrequencyPenalty:  utils.Float32Ptr(0.2),
+				Seed:              utils.Int32Ptr(42),
+				CandidateCount:    utils.Int32Ptr(1),
 			},
 			check: func(config *genai.GenerateContentConfig) error {
 				if config.Temperature == nil || *config.Temperature != 0.8 {

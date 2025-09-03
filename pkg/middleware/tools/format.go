@@ -1,7 +1,5 @@
 package tools
 
-import "encoding/json"
-
 // ToolDefinition represents a function in OpenAI format for tool schema
 type ToolDefinition struct {
 	Name        string         `json:"name"`
@@ -10,43 +8,7 @@ type ToolDefinition struct {
 }
 
 // FormatToolsAsOpenAI formats tools into OpenAI functions schema
+// This function is kept for backward compatibility but now uses the internal schema system
 func FormatToolsAsOpenAI(tools []Tool) string {
-	if len(tools) == 0 {
-		return ""
-	}
-
-	functions := make([]ToolDefinition, len(tools))
-
-	for i, tool := range tools {
-		// Convert jsonschema.Schema to map for JSON serialization
-		var parameters map[string]any
-		if schema := tool.ParametersSchema(); schema != nil {
-			// Marshal and unmarshal to convert to generic map
-			if schemaBytes, err := json.Marshal(schema); err == nil {
-				if err := json.Unmarshal(schemaBytes, &parameters); err != nil {
-					// JSON unmarshal error means schema is invalid - continue with nil parameters
-					// This is expected behavior when schema cannot be converted to generic map
-					_ = err
-				}
-			}
-		}
-
-		functions[i] = ToolDefinition{
-			Name:        tool.Name(),
-			Description: tool.Description(),
-			Parameters:  parameters,
-		}
-	}
-
-	// Create the OpenAI functions format
-	functionsData := map[string]any{
-		"functions": functions,
-	}
-
-	jsonBytes, err := json.MarshalIndent(functionsData, "", "  ")
-	if err != nil {
-		return ""
-	}
-
-	return "\n\nAvailable functions:\n" + string(jsonBytes) + "\n"
+	return FormatToolsAsOpenAIInternal(tools)
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
+	"github.com/calque-ai/go-calque/pkg/utils"
 )
 
 const testModel = "gpt-5"
@@ -142,8 +143,8 @@ func TestDefaultConfig(t *testing.T) {
 func TestWithConfig(t *testing.T) {
 	config := &Config{
 		APIKey:      "test-key",
-		Temperature: ai.Float32Ptr(0.9),
-		MaxTokens:   ai.IntPtr(1000),
+		Temperature: utils.Float32Ptr(0.9),
+		MaxTokens:   utils.IntPtr(1000),
 	}
 
 	option := WithConfig(config)
@@ -308,15 +309,15 @@ func TestApplyChatConfig(t *testing.T) {
 		{
 			name: "basic config",
 			config: &Config{
-				Temperature:      ai.Float32Ptr(0.8),
-				TopP:             ai.Float32Ptr(0.9),
-				MaxTokens:        ai.IntPtr(1500),
-				N:                ai.IntPtr(2),
+				Temperature:      utils.Float32Ptr(0.8),
+				TopP:             utils.Float32Ptr(0.9),
+				MaxTokens:        utils.IntPtr(1500),
+				N:                utils.IntPtr(2),
 				Stop:             []string{"END", "STOP"},
-				PresencePenalty:  ai.Float32Ptr(0.5),
-				FrequencyPenalty: ai.Float32Ptr(0.3),
+				PresencePenalty:  utils.Float32Ptr(0.5),
+				FrequencyPenalty: utils.Float32Ptr(0.3),
 				User:             "test-user",
-				Seed:             ai.IntPtr(42),
+				Seed:             utils.IntPtr(42),
 			},
 			check: func(params *openai.ChatCompletionNewParams) error {
 				if math.Abs(params.Temperature.Value-0.8) > 0.001 {
@@ -375,8 +376,8 @@ func TestBuildChatParams(t *testing.T) {
 	client := &Client{
 		model: shared.ChatModel(testModel),
 		config: &Config{
-			Temperature: ai.Float32Ptr(0.7),
-			MaxTokens:   ai.IntPtr(100),
+			Temperature: utils.Float32Ptr(0.7),
+			MaxTokens:   utils.IntPtr(100),
 		},
 	}
 
