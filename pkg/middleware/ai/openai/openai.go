@@ -161,8 +161,8 @@ func WithConfig(cfg *Config) Option {
 func DefaultConfig() *Config {
 	return &Config{
 		APIKey:      os.Getenv("OPENAI_API_KEY"),
-		Temperature: helpers.Float32Ptr(0.7),
-		Stream:      helpers.BoolPtr(true),
+		Temperature: helpers.PtrOf(float32(0.7)),
+		Stream:      helpers.PtrOf(true),
 	}
 }
 
