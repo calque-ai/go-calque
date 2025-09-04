@@ -124,9 +124,9 @@ func WithConfig(cfg *Config) Option {
 func DefaultConfig() *Config {
 	return &Config{
 		Host:        "", // Will use ClientFromEnvironment() default
-		Temperature: helpers.Float32Ptr(0.7),
+		Temperature: helpers.PtrOf(float32(0.7)),
 		KeepAlive:   "5m",
-		Stream:      helpers.BoolPtr(true), // Ollama streams by default
+		Stream:      helpers.PtrOf(true), // Ollama streams by default
 	}
 }
 

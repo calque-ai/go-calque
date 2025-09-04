@@ -135,7 +135,7 @@ func WithConfig(config *Config) Option {
 func DefaultConfig() *Config {
 	return &Config{
 		APIKey:      os.Getenv("GOOGLE_API_KEY"),
-		Temperature: helpers.Float32Ptr(0.7),
+		Temperature: helpers.PtrOf(float32(0.7)),
 	}
 }
 

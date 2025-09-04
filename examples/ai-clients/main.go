@@ -73,7 +73,7 @@ func geminiExample() {
 
 	// Create an optional custom gemini configuration
 	config := &gemini.Config{
-		Temperature: helpers.Float32Ptr(1.1),
+		Temperature: helpers.PtrOf(float32(1.1)),
 	}
 
 	// Create Gemini example client (reads GOOGLE_API_KEY from env unless set in the config)
@@ -119,12 +119,12 @@ func openaiExample() {
 	// Create an optional custom OpenAI configuration
 	config := &openai.Config{
 		APIKey:           os.Getenv("OPENAI_API_KEY"), // Load from env
-		Temperature:      helpers.Float32Ptr(1.0),
-		TopP:             helpers.Float32Ptr(1.0),
-		N:                helpers.IntPtr(1),
-		PresencePenalty:  helpers.Float32Ptr(0.0),
-		FrequencyPenalty: helpers.Float32Ptr(0.0),
-		MaxTokens:        helpers.IntPtr(150),
+		Temperature:      helpers.PtrOf(float32(1.0)),
+		TopP:             helpers.PtrOf(float32(1.0)),
+		N:                helpers.PtrOf(1),
+		PresencePenalty:  helpers.PtrOf(float32(0.0)),
+		FrequencyPenalty: helpers.PtrOf(float32(0.0)),
+		MaxTokens:        helpers.PtrOf(150),
 	}
 
 	// Create OpenAI client (reads OPENAI_API_KEY from env unless set in the config)

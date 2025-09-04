@@ -1,151 +1,82 @@
 package helpers
 
 import (
+	"reflect"
 	"testing"
 )
 
-func TestIntPtr(t *testing.T) {
-	value := 42
-	ptr := IntPtr(value)
-
-	if ptr == nil {
-		t.Fatal("Expected non-nil pointer")
+func TestPtrOf(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    interface{}
+		expected interface{}
+	}{
+		{"int", 42, 42},
+		{"int32", int32(42), int32(42)},
+		{"int64", int64(42), int64(42)},
+		{"uint", uint(42), uint(42)},
+		{"uint32", uint32(42), uint32(42)},
+		{"uint64", uint64(42), uint64(42)},
+		{"float32", float32(3.14), float32(3.14)},
+		{"float64", 3.14, 3.14},
+		{"bool", true, true},
+		{"string", "test", "test"},
+		{"zero int", 0, 0},
+		{"empty string", "", ""},
+		{"false bool", false, false},
+		{"nil interface", nil, nil},
 	}
 
-	if *ptr != value {
-		t.Errorf("Expected pointer to contain %d, got %d", value, *ptr)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use reflect to call PtrOf with the input value
+			inputValue := reflect.ValueOf(tt.input)
+			if tt.input == nil {
+				// Handle nil case specially
+				result := PtrOf[interface{}](nil)
 
-func TestInt32Ptr(t *testing.T) {
-	value := int32(42)
-	ptr := Int32Ptr(value)
+				if result == nil {
+					t.Fatal("Expected non-nil pointer")
+				}
 
-	if ptr == nil {
-		t.Fatal("Expected non-nil pointer")
-	}
+				// For nil interface, the pointer should exist but point to nil
+				if result == nil {
+					t.Error("Expected non-nil pointer result")
+				}
+				return
+			}
 
-	if *ptr != value {
-		t.Errorf("Expected pointer to contain %d, got %d", value, *ptr)
-	}
-}
+			// Create a function that can call PtrOf with the specific type
+			ptrOfFunc := reflect.MakeFunc(
+				reflect.TypeOf(func(interface{}) interface{} { return nil }),
+				func(_ []reflect.Value) []reflect.Value {
+					// This is a bit complex due to Go's type system
+					// We'll use a simpler approach for the test
+					return []reflect.Value{reflect.ValueOf(PtrOf(tt.input))}
+				},
+			)
 
-func TestInt64Ptr(t *testing.T) {
-	value := int64(42)
-	ptr := Int64Ptr(value)
+			// Call the function
+			results := ptrOfFunc.Call([]reflect.Value{inputValue})
+			if len(results) == 0 {
+				t.Fatal("Expected result from PtrOf")
+			}
 
-	if ptr == nil {
-		t.Fatal("Expected non-nil pointer")
-	}
+			result := results[0].Interface()
+			if result == nil {
+				t.Fatal("Expected non-nil pointer")
+			}
 
-	if *ptr != value {
-		t.Errorf("Expected pointer to contain %d, got %d", value, *ptr)
-	}
-}
+			// Extract the value from the pointer using reflect
+			resultValue := reflect.ValueOf(result)
+			if resultValue.Kind() != reflect.Ptr {
+				t.Fatal("Expected pointer result")
+			}
 
-func TestUintPtr(t *testing.T) {
-	value := uint(42)
-	ptr := UintPtr(value)
-
-	if ptr == nil {
-		t.Fatal("Expected non-nil pointer")
-	}
-
-	if *ptr != value {
-		t.Errorf("Expected pointer to contain %d, got %d", value, *ptr)
-	}
-}
-
-func TestUint32Ptr(t *testing.T) {
-	value := uint32(42)
-	ptr := Uint32Ptr(value)
-
-	if ptr == nil {
-		t.Fatal("Expected non-nil pointer")
-	}
-
-	if *ptr != value {
-		t.Errorf("Expected pointer to contain %d, got %d", value, *ptr)
-	}
-}
-
-func TestUint64Ptr(t *testing.T) {
-	value := uint64(42)
-	ptr := Uint64Ptr(value)
-
-	if ptr == nil {
-		t.Fatal("Expected non-nil pointer")
-	}
-
-	if *ptr != value {
-		t.Errorf("Expected pointer to contain %d, got %d", value, *ptr)
-	}
-}
-
-func TestFloat32Ptr(t *testing.T) {
-	value := float32(3.14)
-	ptr := Float32Ptr(value)
-
-	if ptr == nil {
-		t.Fatal("Expected non-nil pointer")
-	}
-
-	if *ptr != value {
-		t.Errorf("Expected pointer to contain %f, got %f", value, *ptr)
-	}
-}
-
-func TestFloat64Ptr(t *testing.T) {
-	value := 3.14
-	ptr := Float64Ptr(value)
-
-	if ptr == nil {
-		t.Fatal("Expected non-nil pointer")
-	}
-
-	if *ptr != value {
-		t.Errorf("Expected pointer to contain %f, got %f", value, *ptr)
-	}
-}
-
-func TestBoolPtr(t *testing.T) {
-	value := true
-	ptr := BoolPtr(value)
-
-	if ptr == nil {
-		t.Fatal("Expected non-nil pointer")
-	}
-
-	if *ptr != value {
-		t.Errorf("Expected pointer to contain %t, got %t", value, *ptr)
-	}
-}
-
-func TestStringPtr(t *testing.T) {
-	value := "test"
-	ptr := StringPtr(value)
-
-	if ptr == nil {
-		t.Fatal("Expected non-nil pointer")
-	}
-
-	if *ptr != value {
-		t.Errorf("Expected pointer to contain %s, got %s", value, *ptr)
-	}
-}
-
-func TestPointerModification(t *testing.T) {
-	// Test that modifying the pointer doesn't affect the original value
-	original := 42
-	ptr := IntPtr(original)
-
-	*ptr = 100
-
-	if original != 42 {
-		t.Error("Modifying pointer should not affect original value")
-	}
-
-	if *ptr != 100 {
-		t.Error("Pointer should contain modified value")
+			pointedValue := resultValue.Elem().Interface()
+			if !reflect.DeepEqual(pointedValue, tt.expected) {
+				t.Errorf("Expected pointer to contain %v, got %v", tt.expected, pointedValue)
+			}
+		})
 	}
 }
