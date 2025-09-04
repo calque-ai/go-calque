@@ -12,6 +12,7 @@ import (
 	"github.com/ollama/ollama/api"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
@@ -39,8 +40,8 @@ func TestNew(t *testing.T) {
 			model: "llama3.2",
 			opts: []Option{
 				WithConfig(&Config{
-					Temperature: ai.Float32Ptr(0.8),
-					MaxTokens:   ai.IntPtr(1000),
+					Temperature: helpers.PtrOf(float32(0.8)),
+					MaxTokens:   helpers.PtrOf(1000),
 				}),
 			},
 			wantModel: "llama3.2",
@@ -96,8 +97,8 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestWithConfig(t *testing.T) {
 	customConfig := &Config{
-		Temperature: ai.Float32Ptr(0.9),
-		MaxTokens:   ai.IntPtr(2000),
+		Temperature: helpers.PtrOf(float32(0.9)),
+		MaxTokens:   helpers.PtrOf(2000),
 	}
 
 	option := WithConfig(customConfig)
@@ -245,12 +246,12 @@ func TestApplyChatConfig(t *testing.T) {
 		{
 			name: "basic config",
 			config: &Config{
-				Temperature: ai.Float32Ptr(0.8),
-				TopP:        ai.Float32Ptr(0.9),
-				MaxTokens:   ai.IntPtr(1500),
+				Temperature: helpers.PtrOf(float32(0.8)),
+				TopP:        helpers.PtrOf(float32(0.9)),
+				MaxTokens:   helpers.PtrOf(1500),
 				Stop:        []string{"END", "STOP"},
 				KeepAlive:   "10m",
-				Stream:      ai.BoolPtr(false),
+				Stream:      helpers.PtrOf(false),
 			},
 			check: func(req *api.ChatRequest) error {
 				if temp, ok := req.Options["temperature"]; !ok || temp != float32(0.8) {
@@ -295,7 +296,7 @@ func TestApplyChatConfig(t *testing.T) {
 		{
 			name: "custom options override",
 			config: &Config{
-				Temperature: ai.Float32Ptr(0.7),
+				Temperature: helpers.PtrOf(float32(0.7)),
 				Options: map[string]any{
 					"temperature":   float32(0.9), // Should override the Temperature field
 					"custom_option": "test",

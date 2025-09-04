@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
@@ -72,7 +73,7 @@ func geminiExample() {
 
 	// Create an optional custom gemini configuration
 	config := &gemini.Config{
-		Temperature: ai.Float32Ptr(1.1),
+		Temperature: helpers.PtrOf(float32(1.1)),
 	}
 
 	// Create Gemini example client (reads GOOGLE_API_KEY from env unless set in the config)
@@ -118,12 +119,12 @@ func openaiExample() {
 	// Create an optional custom OpenAI configuration
 	config := &openai.Config{
 		APIKey:           os.Getenv("OPENAI_API_KEY"), // Load from env
-		Temperature:      ai.Float32Ptr(1.0),
-		TopP:             ai.Float32Ptr(1.0),
-		N:                ai.IntPtr(1),
-		PresencePenalty:  ai.Float32Ptr(0.0),
-		FrequencyPenalty: ai.Float32Ptr(0.0),
-		MaxTokens:        ai.IntPtr(150),
+		Temperature:      helpers.PtrOf(float32(1.0)),
+		TopP:             helpers.PtrOf(float32(1.0)),
+		N:                helpers.PtrOf(1),
+		PresencePenalty:  helpers.PtrOf(float32(0.0)),
+		FrequencyPenalty: helpers.PtrOf(float32(0.0)),
+		MaxTokens:        helpers.PtrOf(150),
 	}
 
 	// Create OpenAI client (reads OPENAI_API_KEY from env unless set in the config)

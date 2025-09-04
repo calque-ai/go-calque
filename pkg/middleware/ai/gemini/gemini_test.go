@@ -12,6 +12,7 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
@@ -49,7 +50,7 @@ func TestNew(t *testing.T) {
 			opts: []Option{
 				WithConfig(&Config{
 					APIKey:      "config-api-key",
-					Temperature: ai.Float32Ptr(0.8),
+					Temperature: helpers.PtrOf(float32(0.8)),
 				}),
 			},
 		},
@@ -129,10 +130,10 @@ func TestDefaultConfig(t *testing.T) {
 func TestWithConfig(t *testing.T) {
 	customConfig := &Config{
 		APIKey:      "custom-key",
-		Temperature: ai.Float32Ptr(0.9),
-		MaxTokens:   ai.IntPtr(2000),
-		TopP:        ai.Float32Ptr(0.95),
-		TopK:        ai.Float32Ptr(40),
+		Temperature: helpers.PtrOf(float32(0.9)),
+		MaxTokens:   helpers.PtrOf(2000),
+		TopP:        helpers.PtrOf(float32(0.95)),
+		TopK:        helpers.PtrOf(float32(40)),
 	}
 
 	option := WithConfig(customConfig)
@@ -172,16 +173,16 @@ func TestBuildGenerateConfig(t *testing.T) {
 		{
 			name: "basic config",
 			config: &Config{
-				Temperature:       ai.Float32Ptr(0.8),
-				TopP:              ai.Float32Ptr(0.9),
-				TopK:              ai.Float32Ptr(50),
-				MaxTokens:         ai.IntPtr(1500),
+				Temperature:       helpers.PtrOf(float32(0.8)),
+				TopP:              helpers.PtrOf(float32(0.9)),
+				TopK:              helpers.PtrOf(float32(50)),
+				MaxTokens:         helpers.PtrOf(1500),
 				Stop:              []string{"END", "STOP"},
 				SystemInstruction: "Be helpful",
-				PresencePenalty:   ai.Float32Ptr(0.1),
-				FrequencyPenalty:  ai.Float32Ptr(0.2),
-				Seed:              ai.Int32Ptr(42),
-				CandidateCount:    ai.Int32Ptr(1),
+				PresencePenalty:   helpers.PtrOf(float32(0.1)),
+				FrequencyPenalty:  helpers.PtrOf(float32(0.2)),
+				Seed:              helpers.PtrOf(int32(42)),
+				CandidateCount:    helpers.PtrOf(int32(1)),
 			},
 			check: func(config *genai.GenerateContentConfig) error {
 				if config.Temperature == nil || *config.Temperature != 0.8 {
@@ -551,8 +552,8 @@ func TestBuildRequestConfig(t *testing.T) {
 	client := &Client{
 		model: "gemini-1.5-pro",
 		config: &Config{
-			Temperature: ai.Float32Ptr(0.8),
-			MaxTokens:   ai.IntPtr(1000),
+			Temperature: helpers.PtrOf(float32(0.8)),
+			MaxTokens:   helpers.PtrOf(1000),
 		},
 	}
 
@@ -785,7 +786,7 @@ func TestChat_Integration(t *testing.T) {
 			// Test that we can build a client (without real API key)
 			client := &Client{
 				model:  "gemini-1.5-pro",
-				config: &Config{Temperature: ai.Float32Ptr(0.7)},
+				config: &Config{Temperature: helpers.PtrOf(float32(0.7))},
 			}
 
 			// Test parts conversion

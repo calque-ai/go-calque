@@ -16,6 +16,7 @@ import (
 	orderedmap "github.com/wk8/go-ordered-map/v2"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
@@ -142,8 +143,8 @@ func TestDefaultConfig(t *testing.T) {
 func TestWithConfig(t *testing.T) {
 	config := &Config{
 		APIKey:      "test-key",
-		Temperature: ai.Float32Ptr(0.9),
-		MaxTokens:   ai.IntPtr(1000),
+		Temperature: helpers.PtrOf(float32(0.9)),
+		MaxTokens:   helpers.PtrOf(1000),
 	}
 
 	option := WithConfig(config)
@@ -308,15 +309,15 @@ func TestApplyChatConfig(t *testing.T) {
 		{
 			name: "basic config",
 			config: &Config{
-				Temperature:      ai.Float32Ptr(0.8),
-				TopP:             ai.Float32Ptr(0.9),
-				MaxTokens:        ai.IntPtr(1500),
-				N:                ai.IntPtr(2),
+				Temperature:      helpers.PtrOf(float32(0.8)),
+				TopP:             helpers.PtrOf(float32(0.9)),
+				MaxTokens:        helpers.PtrOf(1500),
+				N:                helpers.PtrOf(2),
 				Stop:             []string{"END", "STOP"},
-				PresencePenalty:  ai.Float32Ptr(0.5),
-				FrequencyPenalty: ai.Float32Ptr(0.3),
+				PresencePenalty:  helpers.PtrOf(float32(0.5)),
+				FrequencyPenalty: helpers.PtrOf(float32(0.3)),
 				User:             "test-user",
-				Seed:             ai.IntPtr(42),
+				Seed:             helpers.PtrOf(42),
 			},
 			check: func(params *openai.ChatCompletionNewParams) error {
 				if math.Abs(params.Temperature.Value-0.8) > 0.001 {
@@ -375,8 +376,8 @@ func TestBuildChatParams(t *testing.T) {
 	client := &Client{
 		model: shared.ChatModel(testModel),
 		config: &Config{
-			Temperature: ai.Float32Ptr(0.7),
-			MaxTokens:   ai.IntPtr(100),
+			Temperature: helpers.PtrOf(float32(0.7)),
+			MaxTokens:   helpers.PtrOf(100),
 		},
 	}
 
@@ -820,7 +821,7 @@ func TestChat_Method(t *testing.T) {
 			// Test that we can build a client (without real API key)
 			client := &Client{
 				model:  shared.ChatModel(testModel),
-				config: &Config{APIKey: "test-key", Temperature: ai.Float32Ptr(0.7)},
+				config: &Config{APIKey: "test-key", Temperature: helpers.PtrOf(float32(0.7))},
 			}
 
 			// Test message conversion
@@ -859,7 +860,7 @@ func TestChat_Method(t *testing.T) {
 func TestExecuteRequest_Method(t *testing.T) {
 	client := &Client{
 		model:  shared.ChatModel(testModel),
-		config: &Config{APIKey: "test-key", Stream: ai.BoolPtr(true)},
+		config: &Config{APIKey: "test-key", Stream: helpers.PtrOf(true)},
 	}
 
 	tests := []struct {
@@ -917,7 +918,7 @@ func TestExecuteStreamingRequest_Logic(t *testing.T) {
 	// Test the logic of streaming request setup without actual API calls
 	client := &Client{
 		model:  shared.ChatModel(testModel),
-		config: &Config{APIKey: "test-key", Stream: ai.BoolPtr(true)},
+		config: &Config{APIKey: "test-key", Stream: helpers.PtrOf(true)},
 	}
 
 	// Test that client config is set for streaming
@@ -944,7 +945,7 @@ func TestExecuteNonStreamingRequest_Logic(t *testing.T) {
 	// Test the logic of non-streaming request setup without actual API calls
 	client := &Client{
 		model:  shared.ChatModel(testModel),
-		config: &Config{APIKey: "test-key", Stream: ai.BoolPtr(false)},
+		config: &Config{APIKey: "test-key", Stream: helpers.PtrOf(false)},
 	}
 
 	// Test that client config is set for non-streaming

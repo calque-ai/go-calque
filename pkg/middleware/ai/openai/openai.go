@@ -37,6 +37,7 @@ import (
 	"github.com/openai/openai-go/v2/shared/constant"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
@@ -66,8 +67,8 @@ type Client struct {
 //
 //	config := &openai.Config{
 //		APIKey: "sk-...",
-//		Temperature: ai.Float32Ptr(0.8),
-//		MaxTokens: ai.IntPtr(1000),
+//		Temperature: helpers.PtrOf(float32(0.8)),
+//		MaxTokens: helpers.PtrOf(1000),
 //	}
 type Config struct {
 	// Required. API key for OpenAI authentication
@@ -139,7 +140,7 @@ func (o configOption) Apply(opts *Config) {
 //
 // Example:
 //
-//	config := &openai.Config{Temperature: ai.Float32Ptr(0.9)}
+//	config := &openai.Config{Temperature: helpers.PtrOf(float32(0.9))}
 //	client, _ := openai.New("gpt-4", openai.WithConfig(config))
 func WithConfig(cfg *Config) Option {
 	return configOption{config: cfg}
@@ -156,12 +157,12 @@ func WithConfig(cfg *Config) Option {
 // Example:
 //
 //	config := openai.DefaultConfig()
-//	config.MaxTokens = ai.IntPtr(2000)
+//	config.MaxTokens = helpers.PtrOf(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		APIKey:      os.Getenv("OPENAI_API_KEY"),
-		Temperature: ai.Float32Ptr(0.7),
-		Stream:      ai.BoolPtr(true),
+		Temperature: helpers.PtrOf(float32(0.7)),
+		Stream:      helpers.PtrOf(true),
 	}
 }
 

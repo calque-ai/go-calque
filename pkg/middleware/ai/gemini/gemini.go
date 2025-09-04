@@ -13,6 +13,7 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
@@ -43,8 +44,8 @@ type Client struct {
 // Example:
 //
 //	config := &gemini.Config{
-//		Temperature: ai.Float32Ptr(0.8),
-//		MaxTokens: ai.IntPtr(1000),
+//		Temperature: helpers.PtrOf(float32(0.8)),
+//		MaxTokens: helpers.PtrOf(1000),
 //	}
 type Config struct {
 	// Required. API key for Google AI/Vertex AI authentication
@@ -113,7 +114,7 @@ func (o configOption) Apply(opts *Config) {
 //
 // Example:
 //
-//	config := &gemini.Config{Temperature: ai.Float32Ptr(0.9)}
+//	config := &gemini.Config{Temperature: helpers.PtrOf(float32(0.9))}
 //	client, _ := gemini.New("gemini-pro", gemini.WithConfig(config))
 func WithConfig(config *Config) Option {
 	return configOption{config: config}
@@ -130,11 +131,11 @@ func WithConfig(config *Config) Option {
 // Example:
 //
 //	config := gemini.DefaultConfig()
-//	config.MaxTokens = ai.IntPtr(2000)
+//	config.MaxTokens = helpers.PtrOf(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		APIKey:      os.Getenv("GOOGLE_API_KEY"),
-		Temperature: ai.Float32Ptr(0.7),
+		Temperature: helpers.PtrOf(float32(0.7)),
 	}
 }
 
@@ -324,15 +325,24 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 	return config
 }
 
-// Convert your OpenAI JSON schema tools to Gemini format
-func convertToolsToGeminiFunctions(tools []tools.Tool) []*genai.FunctionDeclaration {
-	functions := make([]*genai.FunctionDeclaration, len(tools))
+// Convert tools to Gemini format using internal schema
+func convertToolsToGeminiFunctions(toolList []tools.Tool) []*genai.FunctionDeclaration {
+	internalTools := tools.FormatToolsAsInternal(toolList)
+	functions := make([]*genai.FunctionDeclaration, len(internalTools))
 
-	for i, tool := range tools {
+	for i, tool := range internalTools {
+		// Convert internal schema to JSON for Gemini
+		var parametersJSONSchema map[string]any
+		if tool.Parameters != nil {
+			if paramsBytes, err := json.Marshal(tool.Parameters); err == nil {
+				_ = json.Unmarshal(paramsBytes, &parametersJSONSchema)
+			}
+		}
+
 		functions[i] = &genai.FunctionDeclaration{
-			Name:                 tool.Name(),
-			Description:          tool.Description(),
-			ParametersJsonSchema: tool.ParametersSchema(), // Use raw JSON schema like response format
+			Name:                 tool.Name,
+			Description:          tool.Description,
+			ParametersJsonSchema: parametersJSONSchema,
 		}
 	}
 
