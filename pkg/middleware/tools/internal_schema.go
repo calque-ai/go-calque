@@ -242,64 +242,6 @@ func (t *InternalToolSchema) ToOpenAIFormat() map[string]any {
 	return result
 }
 
-// ToGeminiFormat converts internal schema to Gemini function declaration format
-func (t *InternalToolSchema) ToGeminiFormat() map[string]any {
-	result := map[string]any{
-		"name":        t.Name,
-		"description": t.Description,
-	}
-
-	if t.Parameters != nil {
-		// Gemini expects the schema directly
-		parametersBytes, err := json.Marshal(t.Parameters)
-		if err == nil {
-			var parameters map[string]any
-			if err := json.Unmarshal(parametersBytes, &parameters); err == nil {
-				result["parameters"] = parameters
-			}
-		}
-	}
-
-	return result
-}
-
-// ToOllamaFormat converts internal schema to Ollama tool format
-func (t *InternalToolSchema) ToOllamaFormat() map[string]any {
-	result := map[string]any{
-		"type": "function",
-		"function": map[string]any{
-			"name":        t.Name,
-			"description": t.Description,
-		},
-	}
-
-	if t.Parameters != nil {
-		// Ollama expects a specific format structure
-		ollamaParams := map[string]any{
-			"type": "object",
-		}
-
-		if t.Parameters.Properties != nil {
-			properties := make(map[string]any)
-			for name, prop := range t.Parameters.Properties {
-				properties[name] = map[string]any{
-					"type":        prop.Type,
-					"description": prop.Description,
-				}
-			}
-			ollamaParams["properties"] = properties
-		}
-
-		if t.Parameters.Required != nil {
-			ollamaParams["required"] = t.Parameters.Required
-		}
-
-		result["function"].(map[string]any)["parameters"] = ollamaParams
-	}
-
-	return result
-}
-
 // String returns a string representation of the internal tool schema
 func (t *InternalToolSchema) String() string {
 	bytes, err := json.MarshalIndent(t, "", "  ")

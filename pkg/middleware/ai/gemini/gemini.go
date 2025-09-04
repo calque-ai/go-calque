@@ -44,8 +44,8 @@ type Client struct {
 // Example:
 //
 //	config := &gemini.Config{
-//		Temperature: helpers.Float32Ptr(0.8),
-//		MaxTokens: helpers.IntPtr(1000),
+//		Temperature: helpers.PtrOf(float32(0.8)),
+//		MaxTokens: helpers.PtrOf(1000),
 //	}
 type Config struct {
 	// Required. API key for Google AI/Vertex AI authentication
@@ -114,7 +114,7 @@ func (o configOption) Apply(opts *Config) {
 //
 // Example:
 //
-//	config := &gemini.Config{Temperature: helpers.Float32Ptr(0.9)}
+//	config := &gemini.Config{Temperature: helpers.PtrOf(float32(0.9))}
 //	client, _ := gemini.New("gemini-pro", gemini.WithConfig(config))
 func WithConfig(config *Config) Option {
 	return configOption{config: config}
@@ -131,7 +131,7 @@ func WithConfig(config *Config) Option {
 // Example:
 //
 //	config := gemini.DefaultConfig()
-//	config.MaxTokens = helpers.IntPtr(2000)
+//	config.MaxTokens = helpers.PtrOf(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		APIKey:      os.Getenv("GOOGLE_API_KEY"),

@@ -45,7 +45,7 @@ type Client struct {
 //
 //	config := &ollama.Config{
 //		Host: "http://192.168.1.100:11434",
-//		Temperature: helpers.Float32Ptr(0.8),
+//		Temperature: helpers.PtrOf(float32(0.8)),
 //	}
 type Config struct {
 	// Optional. Ollama server host (defaults to localhost:11434 or OLLAMA_HOST env)
@@ -120,7 +120,7 @@ func WithConfig(cfg *Config) Option {
 // Example:
 //
 //	config := ollama.DefaultConfig()
-//	config.MaxTokens = helpers.IntPtr(2000)
+//	config.MaxTokens = helpers.PtrOf(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		Host:        "", // Will use ClientFromEnvironment() default

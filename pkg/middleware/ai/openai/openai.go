@@ -67,8 +67,8 @@ type Client struct {
 //
 //	config := &openai.Config{
 //		APIKey: "sk-...",
-//		Temperature: helpers.Float32Ptr(0.8),
-//		MaxTokens: helpers.IntPtr(1000),
+//		Temperature: helpers.PtrOf(float32(0.8)),
+//		MaxTokens: helpers.PtrOf(1000),
 //	}
 type Config struct {
 	// Required. API key for OpenAI authentication
@@ -140,7 +140,7 @@ func (o configOption) Apply(opts *Config) {
 //
 // Example:
 //
-//	config := &openai.Config{Temperature: helpers.Float32Ptr(0.9)}
+//	config := &openai.Config{Temperature: helpers.PtrOf(float32(0.9))}
 //	client, _ := openai.New("gpt-4", openai.WithConfig(config))
 func WithConfig(cfg *Config) Option {
 	return configOption{config: cfg}
@@ -157,7 +157,7 @@ func WithConfig(cfg *Config) Option {
 // Example:
 //
 //	config := openai.DefaultConfig()
-//	config.MaxTokens = helpers.IntPtr(2000)
+//	config.MaxTokens = helpers.PtrOf(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		APIKey:      os.Getenv("OPENAI_API_KEY"),
