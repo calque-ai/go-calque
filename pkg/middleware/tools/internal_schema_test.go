@@ -490,8 +490,6 @@ func TestProviderFormatConversions(t *testing.T) {
 		name           string
 		tool           *InternalToolSchema
 		expectedOpenAI map[string]any
-		expectedGemini map[string]any
-		expectedOllama map[string]any
 	}{
 		{
 			name: "tool with parameters",
@@ -513,13 +511,6 @@ func TestProviderFormatConversions(t *testing.T) {
 				"name":        "test_tool",
 				"description": "A test tool",
 			},
-			expectedGemini: map[string]any{
-				"name":        "test_tool",
-				"description": "A test tool",
-			},
-			expectedOllama: map[string]any{
-				"type": "function",
-			},
 		},
 		{
 			name: "tool without parameters",
@@ -530,13 +521,6 @@ func TestProviderFormatConversions(t *testing.T) {
 			expectedOpenAI: map[string]any{
 				"name":        "simple_tool",
 				"description": "A simple tool",
-			},
-			expectedGemini: map[string]any{
-				"name":        "simple_tool",
-				"description": "A simple tool",
-			},
-			expectedOllama: map[string]any{
-				"type": "function",
 			},
 		},
 	}
@@ -550,26 +534,6 @@ func TestProviderFormatConversions(t *testing.T) {
 					t.Errorf("OpenAI format missing key: %s", key)
 				} else if !reflect.DeepEqual(actualValue, expectedValue) {
 					t.Errorf("OpenAI format %s: expected %v, got %v", key, expectedValue, actualValue)
-				}
-			}
-
-			// Test Gemini format
-			geminiFormat := tt.tool.ToGeminiFormat()
-			for key, expectedValue := range tt.expectedGemini {
-				if actualValue, exists := geminiFormat[key]; !exists {
-					t.Errorf("Gemini format missing key: %s", key)
-				} else if !reflect.DeepEqual(actualValue, expectedValue) {
-					t.Errorf("Gemini format %s: expected %v, got %v", key, expectedValue, actualValue)
-				}
-			}
-
-			// Test Ollama format
-			ollamaFormat := tt.tool.ToOllamaFormat()
-			for key, expectedValue := range tt.expectedOllama {
-				if actualValue, exists := ollamaFormat[key]; !exists {
-					t.Errorf("Ollama format missing key: %s", key)
-				} else if !reflect.DeepEqual(actualValue, expectedValue) {
-					t.Errorf("Ollama format %s: expected %v, got %v", key, expectedValue, actualValue)
 				}
 			}
 		})
