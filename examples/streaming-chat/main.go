@@ -75,6 +75,12 @@ func handleStreamingChat(client *ollama.Client, conversationMemory *memory.Conve
 				"session":   "chat_session",
 			})
 
+		defer func() { // cleanup connection call defer Close() and log any errors
+			if err := sseConverter.Close(); err != nil {
+				log.Printf("failed to close SSE connection: %v", err)
+			}
+		}()
+
 		// Create agents with fallback
 		primaryAgent := ai.Agent(client)
 		fallbackAgent := ai.Agent(ai.NewMockClient("Hi there! I'm a mock backup assistant ready to help."))

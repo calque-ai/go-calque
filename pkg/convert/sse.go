@@ -156,6 +156,37 @@ type SSEConverter struct {
 	eventFields map[string]any    // Additional fields to include in events
 }
 
+// Close terminates the SSE connection gracefully and releases resources.
+//
+// Input: none
+// Output: error if cleanup fails
+// Behavior: Sends final flush, closes writer
+//
+// Performs cleanup of SSE streaming connection including final
+// flush and optional writer closure.
+//
+// Example:
+//
+//	defer sse.Close() // Ensure cleanup on function exit
+//	if err := sse.Close(); err != nil {
+//		log.Printf("SSE close error: %v", err)
+//	}
+func (s *SSEConverter) Close() error {
+	// Send final flush if flusher is available
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+
+	// Close if response writer supports it
+	if s.writer != nil {
+		if closer, ok := s.writer.(io.Closer); ok {
+			return closer.Close()
+		}
+	}
+
+	return nil
+}
+
 // WithChunkMode sets how the data should be chunked for streaming.
 //
 // Input: SSEChunkMode enum value
