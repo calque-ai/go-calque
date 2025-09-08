@@ -1,11 +1,13 @@
 package convert
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -993,6 +995,309 @@ func BenchmarkSSEConverter_ChunkNone(b *testing.B) {
 		sse := ToSSE(mock).WithChunkMode(SSEChunkNone)
 		reader := strings.NewReader(input)
 		sse.FromReader(reader)
+	}
+}
+
+func TestSSEConverter_Close(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func() *SSEConverter
+		wantErr  bool
+		verifyFn func(t *testing.T, mock *mockResponseWriter, sse *SSEConverter)
+	}{
+		{
+			name: "close with flusher",
+			setup: func() *SSEConverter {
+				mock := newMockResponseWriter()
+				return ToSSE(mock)
+			},
+			wantErr: false,
+			verifyFn: func(t *testing.T, mock *mockResponseWriter, _ *SSEConverter) {
+				// Should have flushed before close
+				if mock.flusher.FlushCount() == 0 {
+					t.Error("Expected flush to be called during close")
+				}
+			},
+		},
+		{
+			name: "close without flusher",
+			setup: func() *SSEConverter {
+				recorder := httptest.NewRecorder()
+				return ToSSE(recorder)
+			},
+			wantErr: false,
+			verifyFn: func(_ *testing.T, _ *mockResponseWriter, _ *SSEConverter) {
+				// Should not panic even without real flusher
+			},
+		},
+		{
+			name: "multiple close calls",
+			setup: func() *SSEConverter {
+				mock := newMockResponseWriter()
+				return ToSSE(mock)
+			},
+			wantErr: false,
+			verifyFn: func(t *testing.T, mock *mockResponseWriter, sse *SSEConverter) {
+				// First close
+				if err := sse.Close(); err != nil {
+					t.Errorf("First close failed: %v", err)
+				}
+				initialFlushCount := mock.flusher.FlushCount()
+
+				// Second close should be safe
+				if err := sse.Close(); err != nil {
+					t.Errorf("Second close failed: %v", err)
+				}
+
+				// Should have flushed again
+				if mock.flusher.FlushCount() <= initialFlushCount {
+					t.Error("Expected additional flush on second close")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sse := tt.setup()
+			var mock *mockResponseWriter
+
+			// Extract mock if available for verification
+			if sse != nil {
+				if mockWriter, ok := sse.writer.(*mockResponseWriter); ok {
+					mock = mockWriter
+				}
+			}
+
+			err := sse.Close()
+
+			if tt.wantErr && err == nil {
+				t.Error("Expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+
+			if tt.verifyFn != nil {
+				tt.verifyFn(t, mock, sse)
+			}
+		})
+	}
+}
+
+// mockClosableWriter implements both http.ResponseWriter and io.Closer
+type mockClosableWriter struct {
+	*mockResponseWriter
+	closed     bool
+	closeError error
+}
+
+func (m *mockClosableWriter) Close() error {
+	m.closed = true
+	return m.closeError
+}
+
+// mockHijackableWriter implements http.ResponseWriter and http.Hijacker
+type mockHijackableWriter struct {
+	*mockResponseWriter
+	hijacked    bool
+	hijackError error
+	mockConn    *mockConn
+}
+
+func (m *mockHijackableWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if m.hijackError != nil {
+		return nil, nil, m.hijackError
+	}
+	m.hijacked = true
+	return m.mockConn, nil, nil
+}
+
+// mockConn implements net.Conn for testing
+type mockConn struct {
+	closed     bool
+	closeError error
+}
+
+func (m *mockConn) Read(_ []byte) (n int, err error)  { return 0, io.EOF }
+func (m *mockConn) Write(b []byte) (n int, err error) { return len(b), nil }
+func (m *mockConn) Close() error {
+	m.closed = true
+	return m.closeError
+}
+func (m *mockConn) LocalAddr() net.Addr                { return nil }
+func (m *mockConn) RemoteAddr() net.Addr               { return nil }
+func (m *mockConn) SetDeadline(_ time.Time) error      { return nil }
+func (m *mockConn) SetReadDeadline(_ time.Time) error  { return nil }
+func (m *mockConn) SetWriteDeadline(_ time.Time) error { return nil }
+
+func TestSSEConverter_Close_WithClosableWriter(t *testing.T) {
+	tests := []struct {
+		name       string
+		closeError error
+		wantErr    bool
+	}{
+		{
+			name:       "successful close",
+			closeError: nil,
+			wantErr:    false,
+		},
+		{
+			name:       "close with error",
+			closeError: errors.New("close failed"),
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockWriter := &mockClosableWriter{
+				mockResponseWriter: newMockResponseWriter(),
+				closeError:         tt.closeError,
+			}
+
+			// Manually create SSE converter with closable writer
+			sse := &SSEConverter{
+				writer:      mockWriter,
+				flusher:     mockWriter.flusher,
+				chunkBy:     SSEChunkByWord,
+				formatter:   RawContentFormatter,
+				eventFields: nil,
+			}
+
+			err := sse.Close()
+
+			if tt.wantErr && err == nil {
+				t.Error("Expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+
+			// Verify writer was closed
+			if !mockWriter.closed {
+				t.Error("Expected writer to be closed")
+			}
+
+			// Verify flush was called
+			if mockWriter.flusher.FlushCount() == 0 {
+				t.Error("Expected flush to be called before close")
+			}
+		})
+	}
+}
+
+func verifySuccessfulHijack(t *testing.T, mockWriter *mockHijackableWriter, mockConn *mockConn, connError error) {
+	// Hijack should have been called
+	if !mockWriter.hijacked {
+		t.Error("Expected writer to be hijacked")
+	}
+	// Connection should have been closed (if no conn error)
+	if connError == nil && !mockConn.closed {
+		t.Error("Expected connection to be closed")
+	}
+}
+
+func verifyFailedHijack(t *testing.T, mockWriter *mockHijackableWriter, mockConn *mockConn) {
+	// Hijack should have failed, no connection interaction
+	if mockWriter.hijacked {
+		t.Error("Expected hijack to fail, but it succeeded")
+	}
+	if mockConn.closed {
+		t.Error("Expected connection to remain open when hijack fails")
+	}
+}
+
+func TestSSEConverter_Close_WithHijacker(t *testing.T) {
+	tests := []struct {
+		name        string
+		hijackError error
+		connError   error
+		wantErr     bool
+	}{
+		{
+			name:        "successful hijack and close",
+			hijackError: nil,
+			connError:   nil,
+			wantErr:     false,
+		},
+		{
+			name:        "successful hijack, connection close error",
+			hijackError: nil,
+			connError:   errors.New("connection close failed"),
+			wantErr:     true,
+		},
+		{
+			name:        "hijack fails, fallback to no-op",
+			hijackError: errors.New("hijack failed"),
+			connError:   nil,
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockConn := &mockConn{closeError: tt.connError}
+			mockWriter := &mockHijackableWriter{
+				mockResponseWriter: newMockResponseWriter(),
+				hijackError:        tt.hijackError,
+				mockConn:           mockConn,
+			}
+
+			// Manually create SSE converter with hijackable writer
+			sse := &SSEConverter{
+				writer:      mockWriter,
+				flusher:     mockWriter.flusher,
+				chunkBy:     SSEChunkByWord,
+				formatter:   RawContentFormatter,
+				eventFields: nil,
+			}
+
+			err := sse.Close()
+
+			if tt.wantErr && err == nil {
+				t.Error("Expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+
+			// Verify hijacking behavior
+			if tt.hijackError == nil {
+				verifySuccessfulHijack(t, mockWriter, mockConn, tt.connError)
+			} else {
+				verifyFailedHijack(t, mockWriter, mockConn)
+			}
+
+			// Verify flush was called
+			if mockWriter.flusher.FlushCount() == 0 {
+				t.Error("Expected flush to be called before close attempt")
+			}
+		})
+	}
+}
+
+func TestSSEConverter_Close_DeferUsage(t *testing.T) {
+	// Test the common defer pattern
+	testFunc := func() error {
+		mock := newMockResponseWriter()
+		sse := ToSSE(mock)
+
+		// Simulate defer close with error handling
+		defer func() {
+			if closeErr := sse.Close(); closeErr != nil {
+				// In real code, this would likely be logged
+				t.Logf("Close error (expected in defer): %v", closeErr)
+			}
+		}()
+
+		// Simulate some work
+		reader := strings.NewReader("test data")
+		return sse.FromReader(reader)
+	}
+
+	if err := testFunc(); err != nil {
+		t.Errorf("Test function failed: %v", err)
 	}
 }
 
