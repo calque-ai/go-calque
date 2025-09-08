@@ -1,11 +1,13 @@
 package convert
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1095,6 +1097,40 @@ func (m *mockClosableWriter) Close() error {
 	return m.closeError
 }
 
+// mockHijackableWriter implements http.ResponseWriter and http.Hijacker
+type mockHijackableWriter struct {
+	*mockResponseWriter
+	hijacked    bool
+	hijackError error
+	mockConn    *mockConn
+}
+
+func (m *mockHijackableWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if m.hijackError != nil {
+		return nil, nil, m.hijackError
+	}
+	m.hijacked = true
+	return m.mockConn, nil, nil
+}
+
+// mockConn implements net.Conn for testing
+type mockConn struct {
+	closed     bool
+	closeError error
+}
+
+func (m *mockConn) Read(_ []byte) (n int, err error)  { return 0, io.EOF }
+func (m *mockConn) Write(b []byte) (n int, err error) { return len(b), nil }
+func (m *mockConn) Close() error {
+	m.closed = true
+	return m.closeError
+}
+func (m *mockConn) LocalAddr() net.Addr                { return nil }
+func (m *mockConn) RemoteAddr() net.Addr               { return nil }
+func (m *mockConn) SetDeadline(_ time.Time) error      { return nil }
+func (m *mockConn) SetReadDeadline(_ time.Time) error  { return nil }
+func (m *mockConn) SetWriteDeadline(_ time.Time) error { return nil }
+
 func TestSSEConverter_Close_WithClosableWriter(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -1146,6 +1182,96 @@ func TestSSEConverter_Close_WithClosableWriter(t *testing.T) {
 			// Verify flush was called
 			if mockWriter.flusher.FlushCount() == 0 {
 				t.Error("Expected flush to be called before close")
+			}
+		})
+	}
+}
+
+func verifySuccessfulHijack(t *testing.T, mockWriter *mockHijackableWriter, mockConn *mockConn, connError error) {
+	// Hijack should have been called
+	if !mockWriter.hijacked {
+		t.Error("Expected writer to be hijacked")
+	}
+	// Connection should have been closed (if no conn error)
+	if connError == nil && !mockConn.closed {
+		t.Error("Expected connection to be closed")
+	}
+}
+
+func verifyFailedHijack(t *testing.T, mockWriter *mockHijackableWriter, mockConn *mockConn) {
+	// Hijack should have failed, no connection interaction
+	if mockWriter.hijacked {
+		t.Error("Expected hijack to fail, but it succeeded")
+	}
+	if mockConn.closed {
+		t.Error("Expected connection to remain open when hijack fails")
+	}
+}
+
+func TestSSEConverter_Close_WithHijacker(t *testing.T) {
+	tests := []struct {
+		name        string
+		hijackError error
+		connError   error
+		wantErr     bool
+	}{
+		{
+			name:        "successful hijack and close",
+			hijackError: nil,
+			connError:   nil,
+			wantErr:     false,
+		},
+		{
+			name:        "successful hijack, connection close error",
+			hijackError: nil,
+			connError:   errors.New("connection close failed"),
+			wantErr:     true,
+		},
+		{
+			name:        "hijack fails, fallback to no-op",
+			hijackError: errors.New("hijack failed"),
+			connError:   nil,
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockConn := &mockConn{closeError: tt.connError}
+			mockWriter := &mockHijackableWriter{
+				mockResponseWriter: newMockResponseWriter(),
+				hijackError:        tt.hijackError,
+				mockConn:           mockConn,
+			}
+
+			// Manually create SSE converter with hijackable writer
+			sse := &SSEConverter{
+				writer:      mockWriter,
+				flusher:     mockWriter.flusher,
+				chunkBy:     SSEChunkByWord,
+				formatter:   RawContentFormatter,
+				eventFields: nil,
+			}
+
+			err := sse.Close()
+
+			if tt.wantErr && err == nil {
+				t.Error("Expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+
+			// Verify hijacking behavior
+			if tt.hijackError == nil {
+				verifySuccessfulHijack(t, mockWriter, mockConn, tt.connError)
+			} else {
+				verifyFailedHijack(t, mockWriter, mockConn)
+			}
+
+			// Verify flush was called
+			if mockWriter.flusher.FlushCount() == 0 {
+				t.Error("Expected flush to be called before close attempt")
 			}
 		})
 	}
