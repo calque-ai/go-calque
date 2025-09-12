@@ -289,18 +289,27 @@ func (s *SSEConverter) streamByWord(reader io.Reader) error {
 
 // processWordChar processes a single character for word streaming
 func (s *SSEConverter) processWordChar(char byte, currentWord *[]byte) bool {
-	// If we hit a delimiter, send the current word
+	// Word boundary on space, newline, or tab
 	if char == ' ' || char == '\n' || char == '\t' {
-		if len(*currentWord) > 0 {
-			if sendErr := s.sendChunk(string(*currentWord) + " "); sendErr != nil {
-				return true
-			}
-			*currentWord = (*currentWord)[:0] // Reset slice
-		}
-	} else {
-		*currentWord = append(*currentWord, char)
+		return s.handleWhitespace(char, currentWord)
 	}
+	*currentWord = append(*currentWord, char)
 	return false
+}
+
+// handleWhitespace processes whitespace characters for word streaming
+func (s *SSEConverter) handleWhitespace(char byte, currentWord *[]byte) bool {
+	if len(*currentWord) > 0 {
+		// Send word with its delimiter
+		if sendErr := s.sendChunk(string(*currentWord) + string(char)); sendErr != nil {
+			return true
+		}
+		*currentWord = (*currentWord)[:0]
+		return false
+	}
+
+	// Send standalone whitespace character (handles consecutive/leading whitespace)
+	return s.sendChunk(string(char)) != nil
 }
 
 // handleWordEOF handles end-of-file for word streaming

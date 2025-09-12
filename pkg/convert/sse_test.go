@@ -1301,6 +1301,129 @@ func TestSSEConverter_Close_DeferUsage(t *testing.T) {
 	}
 }
 
+func TestSSEConverter_WhitespacePreservation(t *testing.T) {
+	tests := []struct {
+		name           string
+		mode           SSEChunkMode
+		input          string
+		expectedChunks []string
+	}{
+		{
+			name:           "word mode preserves spaces",
+			mode:           SSEChunkByWord,
+			input:          "hello world test",
+			expectedChunks: []string{"hello ", "world ", "test"},
+		},
+		{
+			name:           "word mode preserves newlines",
+			mode:           SSEChunkByWord,
+			input:          "line1\nline2\nend",
+			expectedChunks: []string{"line1\n", "line2\n", "end"},
+		},
+		{
+			name:           "word mode preserves tabs",
+			mode:           SSEChunkByWord,
+			input:          "col1\tcol2\tdata",
+			expectedChunks: []string{"col1\t", "col2\t", "data"},
+		},
+		{
+			name:           "word mode preserves mixed whitespace",
+			mode:           SSEChunkByWord,
+			input:          "word \ttab\nnewline end",
+			expectedChunks: []string{"word ", "\t", "tab\n", "newline ", "end"},
+		},
+		{
+			name:           "char mode preserves all characters",
+			mode:           SSEChunkByChar,
+			input:          "a \n\tb",
+			expectedChunks: []string{"a", " ", "\n", "\t", "b"},
+		},
+		{
+			name:           "line mode preserves newlines",
+			mode:           SSEChunkByLine,
+			input:          "line1\nline2\n\nline4",
+			expectedChunks: []string{"line1\n", "line2\n", "\n", "line4"},
+		},
+		{
+			name:           "line mode with spaces and tabs",
+			mode:           SSEChunkByLine,
+			input:          "  spaced\t\tline  \n\ttabbed line\nend",
+			expectedChunks: []string{"  spaced\t\tline  \n", "\ttabbed line\n", "end"},
+		},
+		{
+			name:           "none mode preserves everything",
+			mode:           SSEChunkNone,
+			input:          "multi\nline\t\tcontent with   spaces",
+			expectedChunks: []string{"multi\nline\t\tcontent with   spaces"},
+		},
+		{
+			name:           "consecutive whitespace preservation",
+			mode:           SSEChunkByWord,
+			input:          "word1   \n\n\t  word2",
+			expectedChunks: []string{"word1 ", " ", " ", "\n", "\n", "\t", " ", " ", "word2"},
+		},
+		{
+			name:           "leading and trailing whitespace",
+			mode:           SSEChunkByWord,
+			input:          "  start middle  end  ",
+			expectedChunks: []string{" ", " ", "start ", "middle ", " ", "end ", " "},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := newMockResponseWriter()
+			sse := ToSSE(mock).WithChunkMode(tt.mode)
+
+			reader := strings.NewReader(tt.input)
+			err := sse.FromReader(reader)
+
+			if err != nil {
+				t.Fatalf("FromReader() error = %v", err)
+			}
+
+			events := parseSSEEvents(t, mock.Body.String())
+			messageEvents := filterMessageEvents(events)
+
+			if len(messageEvents) != len(tt.expectedChunks) {
+				t.Errorf("Expected %d message events, got %d", len(tt.expectedChunks), len(messageEvents))
+				t.Logf("Input: %q", tt.input)
+				t.Logf("Expected chunks: %+v", tt.expectedChunks)
+				actualChunks := make([]string, len(messageEvents))
+				for i, event := range messageEvents {
+					actualChunks[i] = event.Data
+				}
+				t.Logf("Actual chunks: %+v", actualChunks)
+				return
+			}
+
+			// Reconstruct original input from chunks
+			var reconstructed strings.Builder
+			for i, event := range messageEvents {
+				reconstructed.WriteString(event.Data)
+
+				// Verify each chunk matches expected
+				if event.Data != tt.expectedChunks[i] {
+					t.Errorf("Chunk %d: expected %q, got %q", i, tt.expectedChunks[i], event.Data)
+				}
+			}
+
+			// Verify complete reconstruction matches original input
+			if reconstructed.String() != tt.input {
+				t.Errorf("Reconstructed input doesn't match original")
+				t.Logf("Original:      %q", tt.input)
+				t.Logf("Reconstructed: %q", reconstructed.String())
+
+				// Show byte-by-byte comparison for debugging
+				orig := []byte(tt.input)
+				recon := []byte(reconstructed.String())
+				t.Logf("Original bytes:      %v", orig)
+				t.Logf("Reconstructed bytes: %v", recon)
+			}
+		})
+	}
+}
+
 func TestSSEIntegration(t *testing.T) {
 	t.Run("http server integration", func(t *testing.T) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
