@@ -265,6 +265,7 @@ func TestProtobufConverters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			switch tt.testType {
 			case "input":
 				testInputConverter(t, tt.input, tt.expectError, tt.errorMsg)
@@ -575,11 +576,114 @@ func TestErrorHandling(t *testing.T) {
 				if !strings.Contains(err.Error(), tt.errorMsg) {
 					t.Errorf("Expected error message to contain '%s', got '%s'", tt.errorMsg, err.Error())
 				}
-			} else {
-				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Errorf("Unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+// TestChunkedReader tests the chunked streaming functionality for large protobuf messages
+func TestChunkedReader(t *testing.T) {
+	// Create a large test message
+	largeData := make([]byte, 2*1024*1024) // 2MB
+	for i := range largeData {
+		largeData[i] = byte(i % 256)
+	}
+
+	chunkSize := 64 * 1024 // 64KB chunks
+	reader := &chunkedReader{data: largeData, chunkSize: chunkSize}
+
+	// Test reading the entire data
+	readData := make([]byte, len(largeData))
+	totalRead := 0
+
+	for totalRead < len(largeData) {
+		n, err := reader.Read(readData[totalRead:])
+		if err != nil && err != io.EOF {
+			t.Fatalf("Read failed at %d bytes: %v", totalRead, err)
+		}
+		totalRead += n
+		if err == io.EOF {
+			break
+		}
+	}
+
+	if totalRead != len(largeData) {
+		t.Errorf("Expected to read %d bytes, read %d", len(largeData), totalRead)
+	}
+
+	// Verify data integrity
+	if !bytes.Equal(largeData, readData) {
+		t.Error("Read data doesn't match original data")
+	}
+}
+
+// TestChunkedReaderSmallData tests chunked reader with small data
+func TestChunkedReaderSmallData(t *testing.T) {
+	smallData := []byte("small test data")
+	reader := &chunkedReader{data: smallData, chunkSize: 64 * 1024}
+
+	readData := make([]byte, len(smallData))
+	n, err := reader.Read(readData)
+	if err != nil && err != io.EOF {
+		t.Fatalf("Read failed: %v", err)
+	}
+
+	if n != len(smallData) {
+		t.Errorf("Expected to read %d bytes, read %d", len(smallData), n)
+	}
+
+	if !bytes.Equal(smallData, readData) {
+		t.Error("Read data doesn't match original data")
+	}
+}
+
+// TestChunkedReaderMultipleReads tests multiple read operations
+func TestChunkedReaderMultipleReads(t *testing.T) {
+	largeData := make([]byte, 200*1024) // 200KB
+	for i := range largeData {
+		largeData[i] = byte(i % 256)
+	}
+
+	chunkSize := 32 * 1024 // 32KB chunks
+	reader := &chunkedReader{data: largeData, chunkSize: chunkSize}
+
+	// Read in multiple chunks
+	buffer := make([]byte, chunkSize)
+	totalRead := 0
+	readCount := 0
+
+	for totalRead < len(largeData) {
+		n, err := reader.Read(buffer)
+		if err != nil && err != io.EOF {
+			t.Fatalf("Read %d failed: %v", readCount, err)
+		}
+		totalRead += n
+		readCount++
+
+		// Verify chunk size (except possibly the last chunk)
+		// Note: The last chunk may be smaller than the expected chunk size
+		if err != io.EOF && n != chunkSize && n != 0 {
+			// Only error if we got a non-zero read that's not the expected size
+			// and it's not the last chunk
+			if totalRead < len(largeData) {
+				t.Errorf("Read %d: expected chunk size %d, got %d", readCount, chunkSize, n)
+			}
+		}
+
+		if err == io.EOF {
+			break
+		}
+	}
+
+	if totalRead != len(largeData) {
+		t.Errorf("Expected to read %d bytes, read %d", len(largeData), totalRead)
+	}
+
+	// Should have read in multiple chunks
+	expectedReads := (len(largeData) + chunkSize - 1) / chunkSize
+	if readCount != expectedReads {
+		t.Errorf("Expected %d reads, got %d", expectedReads, readCount)
 	}
 }

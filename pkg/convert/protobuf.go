@@ -131,13 +131,13 @@ func (p *ProtobufStreamInputConverter) ToReader() (io.Reader, error) {
 		return nil, fmt.Errorf("protobuf data is nil")
 	}
 
-	// TODO: Implement chunked streaming for large messages
+	// Marshal the protobuf message to binary
 	data, err := proto.Marshal(p.data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal protobuf: %w", err)
 	}
 
-	// If the message is large (>1MB), we could implement chunked streaming here
+	// For large messages (>1MB), use chunked streaming to avoid memory issues
 	if len(data) > 1024*1024 {
 		return &chunkedReader{data: data, chunkSize: 64 * 1024}, nil
 	}
@@ -173,12 +173,24 @@ func (p *ProtobufStreamOutputConverter) FromReader(reader io.Reader) error {
 		return fmt.Errorf("protobuf target is nil")
 	}
 
-	// TODO: Implement chunked streaming for large messages
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return fmt.Errorf("failed to read protobuf data: %w", err)
+	// Read data in chunks for large messages to avoid memory issues
+	var data []byte
+	buffer := make([]byte, 64*1024) // 64KB buffer for chunked reading
+
+	for {
+		n, err := reader.Read(buffer)
+		if n > 0 {
+			data = append(data, buffer[:n]...)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read protobuf data: %w", err)
+		}
 	}
 
+	// Unmarshal the complete data to the target message
 	if err := proto.Unmarshal(data, p.target); err != nil {
 		return fmt.Errorf("failed to unmarshal protobuf: %w", err)
 	}

@@ -69,6 +69,10 @@ func NewRegistry() *Registry {
 
 // Register adds a service to the registry.
 func (r *Registry) Register(service *Service) error {
+	if service == nil {
+		return helpers.NewError("service cannot be nil")
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

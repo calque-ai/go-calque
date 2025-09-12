@@ -147,6 +147,7 @@ func TestSchemaInputConverter_ToReader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			converter := &SchemaInputConverter{data: tt.data}
 			reader, err := converter.ToReader()
 
@@ -275,6 +276,7 @@ func TestJSONSchemaOutputConverter_FromReader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			switch target := tt.target.(type) {
 			case *JSONSchemaTestStruct:
 				converter := FromJSONSchema[JSONSchemaTestStruct](target)
@@ -499,6 +501,7 @@ func TestJSONSchemaConverter_ErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			converter := FromJSONSchema[SimpleStruct](tt.target)
 			err := converter.FromReader(tt.reader)
 

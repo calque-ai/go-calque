@@ -167,7 +167,7 @@ func isRetryableError(err error) bool {
 		switch st.Code() {
 		case codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted:
 			return true
-		case codes.Internal, codes.Unknown:
+		case codes.Internal, codes.Aborted:
 			return true
 		default:
 			return false

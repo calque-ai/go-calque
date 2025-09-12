@@ -42,8 +42,8 @@ func WrapErrorf(err error, format string, args ...interface{}) error {
 		return nil
 	}
 	// Append the error to the args for the %w verb
-	allArgs := append(args, err)
-	return fmt.Errorf(format+": %w", allArgs...)
+	args = append(args, err)
+	return fmt.Errorf(format+": %w", args...)
 }
 
 // NewError creates a new error with the given message.

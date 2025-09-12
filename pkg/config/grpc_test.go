@@ -256,8 +256,7 @@ func TestGetServiceConfig(t *testing.T) {
 		{
 			name:        "non-existent service",
 			serviceName: "non-existent",
-			setupConfig: func(c *GRPCConfig) {
-				// No setup needed
+			setupConfig: func(_ *GRPCConfig) {
 			},
 			expectError: true,
 			checks:      nil,
@@ -265,8 +264,7 @@ func TestGetServiceConfig(t *testing.T) {
 		{
 			name:        "empty service name",
 			serviceName: "",
-			setupConfig: func(c *GRPCConfig) {
-				// No setup needed
+			setupConfig: func(_ *GRPCConfig) {
 			},
 			expectError: true,
 			checks:      nil,
