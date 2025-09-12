@@ -10,7 +10,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	calqueproto "github.com/calque-ai/go-calque/proto"
+	calquepb "github.com/calque-ai/go-calque/proto"
 )
 
 func TestProtobufConverters(t *testing.T) {
@@ -24,7 +24,7 @@ func TestProtobufConverters(t *testing.T) {
 	}{
 		{
 			name: "FlowRequest - basic input conversion",
-			input: &calqueproto.FlowRequest{
+			input: &calquepb.FlowRequest{
 				Version:  1,
 				FlowName: "test-flow",
 				Input:    "test input",
@@ -37,7 +37,7 @@ func TestProtobufConverters(t *testing.T) {
 		},
 		{
 			name: "FlowRequest - basic output conversion",
-			input: &calqueproto.FlowRequest{
+			input: &calquepb.FlowRequest{
 				Version:  1,
 				FlowName: "test-flow",
 				Input:    "test input",
@@ -45,12 +45,12 @@ func TestProtobufConverters(t *testing.T) {
 					"key1": "value1",
 				},
 			},
-			target:   &calqueproto.FlowRequest{},
+			target:   &calquepb.FlowRequest{},
 			testType: "output",
 		},
 		{
 			name: "FlowRequest - roundtrip conversion",
-			input: &calqueproto.FlowRequest{
+			input: &calquepb.FlowRequest{
 				Version:  1,
 				FlowName: "test-flow",
 				Input:    "test input",
@@ -59,12 +59,12 @@ func TestProtobufConverters(t *testing.T) {
 					"key2": "value2",
 				},
 			},
-			target:   &calqueproto.FlowRequest{},
+			target:   &calquepb.FlowRequest{},
 			testType: "roundtrip",
 		},
 		{
 			name: "FlowRequest - streaming input",
-			input: &calqueproto.FlowRequest{
+			input: &calquepb.FlowRequest{
 				Version:  1,
 				FlowName: "test-flow",
 				Input:    "test input",
@@ -76,7 +76,7 @@ func TestProtobufConverters(t *testing.T) {
 		},
 		{
 			name: "FlowRequest - streaming output",
-			input: &calqueproto.FlowRequest{
+			input: &calquepb.FlowRequest{
 				Version:  1,
 				FlowName: "test-flow",
 				Input:    "test input",
@@ -84,14 +84,14 @@ func TestProtobufConverters(t *testing.T) {
 					"key1": "value1",
 				},
 			},
-			target:   &calqueproto.FlowRequest{},
+			target:   &calquepb.FlowRequest{},
 			testType: "stream_output",
 		},
 
 		// FlowResponse tests
 		{
 			name: "FlowResponse - basic input conversion",
-			input: &calqueproto.FlowResponse{
+			input: &calquepb.FlowResponse{
 				Version:      1,
 				Output:       "test output",
 				Success:      true,
@@ -104,7 +104,7 @@ func TestProtobufConverters(t *testing.T) {
 		},
 		{
 			name: "FlowResponse - roundtrip conversion",
-			input: &calqueproto.FlowResponse{
+			input: &calquepb.FlowResponse{
 				Version:      1,
 				Output:       "test output",
 				Success:      false,
@@ -113,12 +113,12 @@ func TestProtobufConverters(t *testing.T) {
 					"status": "error",
 				},
 			},
-			target:   &calqueproto.FlowResponse{},
+			target:   &calquepb.FlowResponse{},
 			testType: "roundtrip",
 		},
 		{
 			name: "AIRequest - basic input conversion",
-			input: &calqueproto.AIRequest{
+			input: &calquepb.AIRequest{
 				Prompt: "test prompt",
 				Parameters: map[string]string{
 					"temperature": "0.7",
@@ -130,21 +130,21 @@ func TestProtobufConverters(t *testing.T) {
 		},
 		{
 			name: "AIRequest - roundtrip conversion",
-			input: &calqueproto.AIRequest{
+			input: &calquepb.AIRequest{
 				Prompt: "test prompt",
 				Parameters: map[string]string{
 					"temperature": "0.7",
 				},
 				Tools: []string{"tool1"},
 			},
-			target:   &calqueproto.AIRequest{},
+			target:   &calquepb.AIRequest{},
 			testType: "roundtrip",
 		},
 		{
 			name: "AIResponse - basic input conversion",
-			input: &calqueproto.AIResponse{
+			input: &calquepb.AIResponse{
 				Response: "test response",
-				ToolCalls: []*calqueproto.ToolCall{
+				ToolCalls: []*calquepb.ToolCall{
 					{
 						Name:      "test_tool",
 						Arguments: `{"arg1": "value1"}`,
@@ -159,9 +159,9 @@ func TestProtobufConverters(t *testing.T) {
 		},
 		{
 			name: "AIResponse - roundtrip conversion",
-			input: &calqueproto.AIResponse{
+			input: &calquepb.AIResponse{
 				Response: "test response",
-				ToolCalls: []*calqueproto.ToolCall{
+				ToolCalls: []*calquepb.ToolCall{
 					{
 						Name:      "test_tool",
 						Arguments: `{"arg1": "value1"}`,
@@ -172,12 +172,12 @@ func TestProtobufConverters(t *testing.T) {
 					"model": "gpt-4",
 				},
 			},
-			target:   &calqueproto.AIResponse{},
+			target:   &calquepb.AIResponse{},
 			testType: "roundtrip",
 		},
 		{
 			name: "MemoryRequest - basic input conversion",
-			input: &calqueproto.MemoryRequest{
+			input: &calquepb.MemoryRequest{
 				Operation: "set",
 				Key:       "test_key",
 				Value:     "test_value",
@@ -189,7 +189,7 @@ func TestProtobufConverters(t *testing.T) {
 		},
 		{
 			name: "MemoryRequest - roundtrip conversion",
-			input: &calqueproto.MemoryRequest{
+			input: &calquepb.MemoryRequest{
 				Operation: "get",
 				Key:       "test_key",
 				Value:     "",
@@ -197,12 +197,12 @@ func TestProtobufConverters(t *testing.T) {
 					"namespace": "default",
 				},
 			},
-			target:   &calqueproto.MemoryRequest{},
+			target:   &calquepb.MemoryRequest{},
 			testType: "roundtrip",
 		},
 		{
 			name: "ToolRequest - basic input conversion",
-			input: &calqueproto.ToolRequest{
+			input: &calquepb.ToolRequest{
 				Name:      "test_tool",
 				Arguments: `{"param1": "value1", "param2": 42}`,
 				Id:        "req_123",
@@ -214,7 +214,7 @@ func TestProtobufConverters(t *testing.T) {
 		},
 		{
 			name: "ToolRequest - roundtrip conversion",
-			input: &calqueproto.ToolRequest{
+			input: &calquepb.ToolRequest{
 				Name:      "test_tool",
 				Arguments: `{"param1": "value1"}`,
 				Id:        "req_123",
@@ -222,7 +222,7 @@ func TestProtobufConverters(t *testing.T) {
 					"timeout": "30s",
 				},
 			},
-			target:   &calqueproto.ToolRequest{},
+			target:   &calquepb.ToolRequest{},
 			testType: "roundtrip",
 		},
 		{
@@ -241,24 +241,24 @@ func TestProtobufConverters(t *testing.T) {
 		},
 		{
 			name: "empty FlowRequest",
-			input: &calqueproto.FlowRequest{
+			input: &calquepb.FlowRequest{
 				Version:  0,
 				FlowName: "",
 				Input:    "",
 				Metadata: map[string]string{},
 			},
-			target:   &calqueproto.FlowRequest{},
+			target:   &calquepb.FlowRequest{},
 			testType: "roundtrip",
 		},
 		{
 			name: "FlowRequest with large metadata",
-			input: &calqueproto.FlowRequest{
+			input: &calquepb.FlowRequest{
 				Version:  1,
 				FlowName: "test-flow",
 				Input:    "test input",
 				Metadata: generateLargeMetadata(1000), // 1000 key-value pairs
 			},
-			target:   &calqueproto.FlowRequest{},
+			target:   &calquepb.FlowRequest{},
 			testType: "roundtrip",
 		},
 	}
@@ -313,13 +313,14 @@ func testInputConverter(t *testing.T, input proto.Message, expectError bool, err
 	}
 
 	// Verify the data can be unmarshaled back to the original type
-	originalData, err := proto.Marshal(input)
+	unmarshaled := reflect.New(reflect.TypeOf(input).Elem()).Interface().(proto.Message)
+	err = proto.Unmarshal(data, unmarshaled)
 	if err != nil {
-		t.Fatalf("Failed to marshal original data: %v", err)
+		t.Fatalf("Failed to unmarshal data: %v", err)
 	}
 
-	if !bytes.Equal(data, originalData) {
-		t.Error("Converted data doesn't match original marshaled data")
+	if !proto.Equal(input, unmarshaled) {
+		t.Error("Converted data doesn't match original message")
 	}
 }
 
@@ -473,7 +474,7 @@ func generateLargeMetadata(size int) map[string]string {
 // Test chunked reading for large messages
 func TestChunkedReading(t *testing.T) {
 	// Create a large message that will trigger chunked reading
-	largeMessage := &calqueproto.FlowRequest{
+	largeMessage := &calquepb.FlowRequest{
 		Version:  1,
 		FlowName: "test-flow",
 		Input:    strings.Repeat("large input data ", 10000), // ~160KB
@@ -518,7 +519,7 @@ func TestChunkedReading(t *testing.T) {
 		reconstructed = append(reconstructed, chunk...)
 	}
 
-	target := &calqueproto.FlowRequest{}
+	target := &calquepb.FlowRequest{}
 	err = proto.Unmarshal(reconstructed, target)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal reconstructed data: %v", err)
@@ -541,14 +542,14 @@ func TestErrorHandling(t *testing.T) {
 		{
 			name:        "invalid protobuf data",
 			data:        []byte("invalid protobuf data"),
-			target:      &calqueproto.FlowRequest{},
+			target:      &calquepb.FlowRequest{},
 			expectError: true,
 			errorMsg:    "failed to unmarshal protobuf",
 		},
 		{
 			name:        "empty data",
 			data:        []byte{},
-			target:      &calqueproto.FlowRequest{},
+			target:      &calquepb.FlowRequest{},
 			expectError: false, // Empty data is valid for protobuf (represents empty message)
 			errorMsg:    "",
 		},

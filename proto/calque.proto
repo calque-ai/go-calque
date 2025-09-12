@@ -1,0 +1,258 @@
+syntax = "proto3";
+
+package calque;
+
+option go_package = "github.com/calque-ai/go-calque/proto";
+
+// Import buf validation rules
+import "buf/validate/validate.proto";
+
+// FlowService provides gRPC methods for executing calque flows
+service FlowService {
+  // ExecuteFlow executes a flow with a single request/response
+  // This is the primary method for running flows synchronously
+  rpc ExecuteFlow(FlowRequest) returns (FlowResponse);
+  
+  // StreamFlow executes a flow with bidirectional streaming
+  // Allows for real-time communication during flow execution
+  rpc StreamFlow(stream StreamingFlowRequest) returns (stream StreamingFlowResponse);
+}
+
+// AIService provides gRPC methods for AI operations
+service AIService {
+  // Chat performs a chat completion with the specified AI model
+  // Returns a single response with potential tool calls
+  rpc Chat(AIRequest) returns (AIResponse);
+  
+  // StreamChat performs a streaming chat completion
+  // Returns a stream of responses for real-time AI interactions
+  rpc StreamChat(AIRequest) returns (stream AIResponse);
+}
+
+// MemoryService provides gRPC methods for memory operations
+service MemoryService {
+  // ProcessMemory handles various memory operations (get, set, delete, list, exists)
+  // Supports key-value storage with metadata and TTL capabilities
+  rpc ProcessMemory(MemoryRequest) returns (MemoryResponse);
+}
+
+// ToolsService provides gRPC methods for tool operations
+service ToolsService {
+  // ExecuteTool executes a single tool with the provided arguments
+  // Returns the result of the tool execution
+  rpc ExecuteTool(ToolRequest) returns (ToolResponse);
+  
+  // ExecuteTools executes multiple tools concurrently
+  // Processes a stream of tool requests and returns results as they complete
+  rpc ExecuteTools(stream ToolRequest) returns (stream ToolResponse);
+}
+
+// FlowRequest represents a request to execute a flow
+message FlowRequest {
+  // Protocol version for compatibility (currently 1)
+  int32 version = 1 [
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 10
+  ];
+  
+  // Name of the flow to execute (required)
+  string flow_name = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100,
+    (buf.validate.field).string.pattern = "^[a-zA-Z0-9_-]+$"
+  ];
+  
+  // Input data for the flow (required)
+  string input = 3 [
+    (buf.validate.field).string.min_len = 0,
+    (buf.validate.field).string.max_len = 1000000
+  ];
+  
+  // Additional metadata for the flow execution
+  map<string, string> metadata = 4 [
+    (buf.validate.field).map.max_pairs = 50,
+    (buf.validate.field).map.values.string.max_len = 1000
+  ];
+}
+
+// FlowResponse represents the response from executing a flow
+message FlowResponse {
+  // Protocol version for compatibility (matches request version)
+  int32 version = 1;
+  
+  // Output data from the flow execution
+  string output = 2;
+  
+  // Additional metadata from the flow execution
+  map<string, string> metadata = 3;
+  
+  // Whether the flow execution was successful
+  bool success = 4;
+  
+  // Error message if the flow execution failed
+  string error_message = 5;
+}
+
+// StreamingFlowRequest represents a streaming request to execute a flow
+message StreamingFlowRequest {
+  // Name of the flow to execute (required)
+  string flow_name = 1;
+  
+  // Input data for the flow (required)
+  string input = 2;
+  
+  // Additional metadata for the flow execution
+  map<string, string> metadata = 3;
+}
+
+// StreamingFlowResponse represents a streaming response from executing a flow
+message StreamingFlowResponse {
+  // Output data from the flow execution
+  string output = 1;
+  
+  // Additional metadata from the flow execution
+  map<string, string> metadata = 2;
+  
+  // Whether the flow execution was successful
+  bool success = 3;
+  
+  // Error message if the flow execution failed
+  string error_message = 4;
+  
+  // Whether this is the final response in the stream
+  bool is_final = 5;
+}
+
+// AIRequest represents a request to an AI service
+message AIRequest {
+  // The prompt or message to send to the AI model (required)
+  string prompt = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100000
+  ];
+  
+  // Parameters for the AI model (temperature, max_tokens, etc.)
+  map<string, string> parameters = 2 [
+    (buf.validate.field).map.max_pairs = 20,
+    (buf.validate.field).map.values.string.max_len = 100
+  ];
+  
+  // List of tools available to the AI model
+  repeated string tools = 3 [
+    (buf.validate.field).repeated.max_items = 50,
+    (buf.validate.field).repeated.items.string.min_len = 1,
+    (buf.validate.field).repeated.items.string.max_len = 100
+  ];
+}
+
+// AIResponse represents a response from an AI service
+message AIResponse {
+  // The response text from the AI model
+  string response = 1;
+  
+  // Tool calls made by the AI model
+  repeated ToolCall tool_calls = 2;
+  
+  // Additional metadata from the AI service
+  map<string, string> metadata = 3;
+}
+
+// ToolCall represents a tool call in the AI response
+message ToolCall {
+  // Name of the tool to call (required)
+  string name = 1;
+  
+  // Arguments for the tool call (JSON string)
+  string arguments = 2;
+  
+  // Unique identifier for this tool call
+  string id = 3;
+}
+
+// MemoryRequest represents a request to a memory service
+message MemoryRequest {
+  // Operation to perform: "get", "set", "delete", "list", "exists" (required)
+  string operation = 1 [
+    (buf.validate.field).string.in = "get",
+    (buf.validate.field).string.in = "set",
+    (buf.validate.field).string.in = "delete",
+    (buf.validate.field).string.in = "list",
+    (buf.validate.field).string.in = "exists"
+  ];
+  
+  // Key for the memory operation (required for get, set, delete, exists)
+  string key = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 500,
+    (buf.validate.field).string.pattern = "^[a-zA-Z0-9_./-]+$"
+  ];
+  
+  // Value for the memory operation (required for set)
+  string value = 3 [
+    (buf.validate.field).string.max_len = 1000000
+  ];
+  
+  // Additional metadata (TTL, namespace, etc.)
+  map<string, string> metadata = 4 [
+    (buf.validate.field).map.max_pairs = 20,
+    (buf.validate.field).map.values.string.max_len = 1000
+  ];
+}
+
+// MemoryResponse represents a response from a memory service
+message MemoryResponse {
+  // Whether the memory operation was successful
+  bool success = 1;
+  
+  // Value retrieved from memory (for get operations)
+  string value = 2;
+  
+  // Error message if the operation failed
+  string error_message = 3;
+  
+  // Additional metadata from the memory service
+  map<string, string> metadata = 4;
+}
+
+// ToolRequest represents a request to execute a tool
+message ToolRequest {
+  // Name of the tool to execute (required)
+  string name = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100,
+    (buf.validate.field).string.pattern = "^[a-zA-Z0-9_-]+$"
+  ];
+  
+  // Arguments for the tool execution (JSON string)
+  string arguments = 2 [
+    (buf.validate.field).string.max_len = 100000
+  ];
+  
+  // Unique identifier for this tool request
+  string id = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 100,
+    (buf.validate.field).string.pattern = "^[a-zA-Z0-9_-]+$"
+  ];
+  
+  // Additional metadata for the tool execution
+  map<string, string> metadata = 4 [
+    (buf.validate.field).map.max_pairs = 20,
+    (buf.validate.field).map.values.string.max_len = 1000
+  ];
+}
+
+// ToolResponse represents a response from tool execution
+message ToolResponse {
+  // Whether the tool execution was successful
+  bool success = 1;
+  
+  // Result of the tool execution
+  string result = 2;
+  
+  // Error message if the tool execution failed
+  string error_message = 3;
+  
+  // Additional metadata from the tool execution
+  map<string, string> metadata = 4;
+}
