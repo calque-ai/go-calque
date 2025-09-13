@@ -1,0 +1,15 @@
+version: v2
+deps:
+  - buf.build/bufbuild/protovalidate
+breaking:
+  use:
+    - FILE
+lint:
+  use:
+    - STANDARD
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+    - PACKAGE_VERSION_SUFFIX
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME

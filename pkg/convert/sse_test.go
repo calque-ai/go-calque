@@ -134,6 +134,7 @@ func TestSSEEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			eventBytes, err := json.Marshal(tt.event)
 			if err != nil {
 				t.Fatalf("Failed to marshal event: %v", err)
@@ -194,6 +195,7 @@ func TestSSEChunkMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if int(tt.mode) != tt.want {
 				t.Errorf("SSEChunkMode %s = %d, want %d", tt.name, int(tt.mode), tt.want)
 			}
@@ -216,6 +218,7 @@ func TestRawContentFormatter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := RawContentFormatter(tt.content, tt.done)
 			if result != tt.expected {
 				t.Errorf("RawContentFormatter(%q, %v) = %v, want %v", tt.content, tt.done, result, tt.expected)
@@ -275,6 +278,7 @@ func TestMapEventFormatter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			formatter := MapEventFormatter(tt.baseFields)
 			result := formatter(tt.content, tt.done)
 
@@ -325,6 +329,7 @@ func TestToSSE(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			w, flusher := tt.setupWriter()
 			sse := ToSSE(w)
 
@@ -366,6 +371,7 @@ func TestSSEConverter_WithChunkMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mock := newMockResponseWriter()
 			sse := ToSSE(mock).WithChunkMode(tt.mode)
 
@@ -413,6 +419,7 @@ func TestSSEConverter_WithEventFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mock := newMockResponseWriter()
 			sse := ToSSE(mock).WithEventFields(tt.fields)
 
@@ -508,6 +515,7 @@ func TestSSEConverter_FromReader_ChunkModes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mock := newMockResponseWriter()
 			sse := ToSSE(mock).WithChunkMode(tt.mode)
 
@@ -674,6 +682,7 @@ func TestSSEConverter_FromReader_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mock := newMockResponseWriter()
 			sse := ToSSE(mock).WithChunkMode(tt.mode)
 
@@ -705,6 +714,7 @@ func TestSSEConverter_WriteError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mock := newMockResponseWriter()
 			sse := ToSSE(mock)
 
@@ -887,6 +897,7 @@ func TestSSEConverter_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mock := newMockResponseWriter()
 			sse := ToSSE(mock).WithChunkMode(tt.mode)
 
@@ -1059,6 +1070,7 @@ func TestSSEConverter_Close(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			sse := tt.setup()
 			var mock *mockResponseWriter
 
@@ -1119,16 +1131,23 @@ type mockConn struct {
 	closeError error
 }
 
-func (m *mockConn) Read(_ []byte) (n int, err error)  { return 0, io.EOF }
+func (m *mockConn) Read(_ []byte) (n int, err error) { return 0, io.EOF }
+
 func (m *mockConn) Write(b []byte) (n int, err error) { return len(b), nil }
+
 func (m *mockConn) Close() error {
 	m.closed = true
 	return m.closeError
 }
-func (m *mockConn) LocalAddr() net.Addr                { return nil }
-func (m *mockConn) RemoteAddr() net.Addr               { return nil }
-func (m *mockConn) SetDeadline(_ time.Time) error      { return nil }
-func (m *mockConn) SetReadDeadline(_ time.Time) error  { return nil }
+
+func (m *mockConn) LocalAddr() net.Addr { return nil }
+
+func (m *mockConn) RemoteAddr() net.Addr { return nil }
+
+func (m *mockConn) SetDeadline(_ time.Time) error { return nil }
+
+func (m *mockConn) SetReadDeadline(_ time.Time) error { return nil }
+
 func (m *mockConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 func TestSSEConverter_Close_WithClosableWriter(t *testing.T) {
@@ -1151,6 +1170,7 @@ func TestSSEConverter_Close_WithClosableWriter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mockWriter := &mockClosableWriter{
 				mockResponseWriter: newMockResponseWriter(),
 				closeError:         tt.closeError,
@@ -1237,6 +1257,7 @@ func TestSSEConverter_Close_WithHijacker(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mockConn := &mockConn{closeError: tt.connError}
 			mockWriter := &mockHijackableWriter{
 				mockResponseWriter: newMockResponseWriter(),

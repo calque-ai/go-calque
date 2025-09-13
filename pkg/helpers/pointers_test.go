@@ -29,6 +29,7 @@ func TestPtrOf(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Use reflect to call PtrOf with the input value
 			inputValue := reflect.ValueOf(tt.input)
 			if tt.input == nil {

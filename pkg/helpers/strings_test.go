@@ -23,6 +23,7 @@ func TestContains(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := Contains(tt.s, tt.substr)
 			if result != tt.expected {
 				t.Errorf("Contains(%q, %q) = %v, want %v", tt.s, tt.substr, result, tt.expected)
@@ -49,6 +50,7 @@ func TestIsEmpty(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := IsEmpty(tt.input)
 			if result != tt.expected {
 				t.Errorf("IsEmpty(%q) = %v, want %v", tt.input, result, tt.expected)
@@ -73,6 +75,7 @@ func TestDefaultString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := DefaultString(tt.options...)
 			if result != tt.expected {
 				t.Errorf("DefaultString(%v) = %q, want %q", tt.options, result, tt.expected)
