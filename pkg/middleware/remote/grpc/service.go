@@ -10,22 +10,22 @@
 //
 //	// Register services
 //	flow := calque.NewFlow().
-//		Use(grpc.Registry(
-//			grpc.Service("ai-service", "localhost:8080"),
-//			grpc.Service("memory-service", "localhost:8081"),
+//		Use(grpcerrors.Registry(
+//			grpcerrors.Service("ai-service", "localhost:8080"),
+//			grpcerrors.Service("memory-service", "localhost:8081"),
 //		)).
-//		Use(grpc.Call("ai-service")).
-//		Use(grpc.Call("memory-service"))
+//		Use(grpcerrors.Call("ai-service")).
+//		Use(grpcerrors.Call("memory-service"))
 //
 //	// Type-safe calls
 //	flow := calque.NewFlow().
-//		Use(grpc.ServiceWithTypes[Request, Response]("ai-service", "localhost:8080")).
-//		Use(grpc.CallWithTypes[Request, Response]("ai-service"))
+//		Use(grpcerrors.ServiceWithTypes[Request, Response]("ai-service", "localhost:8080")).
+//		Use(grpcerrors.CallWithTypes[Request, Response]("ai-service"))
 //
 //	// Streaming services
 //	flow := calque.NewFlow().
-//		Use(grpc.StreamingService("streaming-service", "localhost:8082")).
-//		Use(grpc.Stream("streaming-service"))
+//		Use(grpcerrors.StreamingService("streaming-service", "localhost:8082")).
+//		Use(grpcerrors.Stream("streaming-service"))
 package grpc
 
 import (
@@ -34,19 +34,19 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc"
+	grpcclient "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/helpers"
+	grpcerrors "github.com/calque-ai/go-calque/pkg/grpc"
 )
 
 // Service represents a registered gRPC service with connection and metadata.
 type Service struct {
 	Name       string
 	Endpoint   string
-	Conn       *grpc.ClientConn
+	Conn       *grpcclient.ClientConn
 	Streaming  bool
 	Method     string        // gRPC method name to call (e.g., "FlowService/ExecuteFlow")
 	Timeout    time.Duration // Timeout for gRPC calls
@@ -70,7 +70,7 @@ func NewRegistry() *Registry {
 // Register adds a service to the registry.
 func (r *Registry) Register(service *Service) error {
 	if service == nil {
-		return helpers.NewError("service cannot be nil")
+		return grpcerrors.NewErrorSimple("service cannot be nil")
 	}
 
 	r.mu.Lock()
@@ -78,9 +78,9 @@ func (r *Registry) Register(service *Service) error {
 
 	// Connect to the service if not already connected
 	if service.Conn == nil {
-		conn, err := grpc.NewClient(service.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpcclient.NewClient(service.Endpoint, grpcclient.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			return helpers.WrapErrorf(err, "failed to connect to service %s at %s", service.Name, service.Endpoint)
+			return grpcerrors.WrapErrorfSimple(err, "failed to connect to service %s at %s", service.Name, service.Endpoint)
 		}
 		service.Conn = conn
 	}
@@ -96,7 +96,7 @@ func (r *Registry) Get(name string) (*Service, error) {
 
 	service, exists := r.services[name]
 	if !exists {
-		return nil, helpers.NewError("service %s not found in registry", name)
+		return nil, grpcerrors.NewErrorSimple("service %s not found in registry", name)
 	}
 	return service, nil
 }
@@ -110,13 +110,13 @@ func (r *Registry) Close() error {
 	for _, service := range r.services {
 		if service.Conn != nil {
 			if err := service.Conn.Close(); err != nil {
-				errs = append(errs, helpers.WrapErrorf(err, "failed to close connection for service %s", service.Name))
+				errs = append(errs, grpcerrors.WrapErrorfSimple(err, "failed to close connection for service %s", service.Name))
 			}
 		}
 	}
 
 	if len(errs) > 0 {
-		return helpers.NewError("errors closing services: %v", errs)
+		return grpcerrors.NewErrorSimple("errors closing services: %v", errs)
 	}
 	return nil
 }
@@ -169,9 +169,9 @@ func StreamingService(name, endpoint string) *Service {
 // Example:
 //
 //	flow := calque.NewFlow().
-//		Use(grpc.NewRegistryHandler(
-//			grpc.NewService("ai-service", "localhost:8080"),
-//			grpc.NewService("memory-service", "localhost:8081"),
+//		Use(grpcerrors.NewRegistryHandler(
+//			grpcerrors.NewService("ai-service", "localhost:8080"),
+//			grpcerrors.NewService("memory-service", "localhost:8081"),
 //		))
 func NewRegistryHandler(services ...*Service) calque.Handler {
 	return &registryHandler{services: services}
@@ -187,7 +187,7 @@ func (rh *registryHandler) ServeFlow(req *calque.Request, res *calque.Response) 
 	registry := NewRegistry()
 	for _, service := range rh.services {
 		if err := registry.Register(service); err != nil {
-			return helpers.WrapErrorf(err, "failed to register service %s", service.Name)
+			return grpcerrors.WrapErrorfSimple(err, "failed to register service %s", service.Name)
 		}
 	}
 

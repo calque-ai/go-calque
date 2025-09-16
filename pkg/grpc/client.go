@@ -8,8 +8,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
-
-	"github.com/calque-ai/go-calque/pkg/helpers"
 )
 
 // Config holds configuration for gRPC client connections.
@@ -55,11 +53,11 @@ func DefaultConfig(endpoint string) *Config {
 // NewClient creates a new gRPC client connection with the given configuration.
 func NewClient(config *Config) (*grpc.ClientConn, error) {
 	if config == nil {
-		return nil, helpers.NewGRPCInvalidArgumentError("grpc config cannot be nil", nil)
+		return nil, NewInvalidArgumentError("grpc config cannot be nil", nil)
 	}
 
 	if config.Endpoint == "" {
-		return nil, helpers.NewGRPCInvalidArgumentError("grpc endpoint cannot be empty", nil)
+		return nil, NewInvalidArgumentError("grpc endpoint cannot be empty", nil)
 	}
 
 	opts := []grpc.DialOption{
@@ -73,7 +71,7 @@ func NewClient(config *Config) (*grpc.ClientConn, error) {
 
 	conn, err := grpc.NewClient(config.Endpoint, opts...)
 	if err != nil {
-		return nil, helpers.WrapGRPCError(err, "failed to connect to gRPC service", config.Endpoint)
+		return nil, WrapError(err, "failed to connect to gRPC service", config.Endpoint)
 	}
 
 	return conn, nil
@@ -83,7 +81,7 @@ func NewClient(config *Config) (*grpc.ClientConn, error) {
 func NewClientWithTLS(endpoint string, _, _, caFile string) (*grpc.ClientConn, error) {
 	creds, err := credentials.NewClientTLSFromFile(caFile, "")
 	if err != nil {
-		return nil, helpers.WrapGRPCError(err, "failed to load TLS credentials", caFile)
+		return nil, WrapError(err, "failed to load TLS credentials", caFile)
 	}
 
 	config := DefaultConfig(endpoint)
@@ -106,10 +104,10 @@ func CloseConnection(conn *grpc.ClientConn, timeout time.Duration) error {
 	select {
 	case err := <-done:
 		if err != nil {
-			return helpers.WrapGRPCError(err, "failed to close gRPC connection")
+			return WrapError(err, "failed to close gRPC connection")
 		}
 		return err
 	case <-time.After(timeout):
-		return helpers.NewGRPCDeadlineExceededError("connection close timeout", nil)
+		return NewDeadlineExceededError("connection close timeout", nil)
 	}
 }

@@ -70,7 +70,7 @@ func TestCallHandler(t *testing.T) {
 				Data:    calque.NewReader(tt.input),
 			}
 			res := &calque.Response{
-				Data: calque.NewWriter(),
+				Data: calque.NewWriter[string](),
 			}
 
 			// Execute handler
@@ -88,7 +88,7 @@ func TestCallHandler(t *testing.T) {
 			}
 
 			// Check response
-			output := res.Data.(*calque.Buffer).String()
+			output := res.Data.(*calque.Buffer[string]).String()
 			if output == "" {
 				t.Error("Expected non-empty output")
 			}
@@ -112,7 +112,7 @@ func TestCallHandlerErrors(t *testing.T) {
 					Data:    calque.NewReader(testInput),
 				}
 				res := &calque.Response{
-					Data: calque.NewWriter(),
+					Data: calque.NewWriter[string](),
 				}
 				_ = handler // Use handler to avoid unused variable
 				return req, res
@@ -131,7 +131,7 @@ func TestCallHandlerErrors(t *testing.T) {
 					Data:    calque.NewReader(testInput),
 				}
 				res := &calque.Response{
-					Data: calque.NewWriter(),
+					Data: calque.NewWriter[string](),
 				}
 				_ = handler // Use handler to avoid unused variable
 				return req, res
@@ -209,7 +209,7 @@ func TestTypedCallHandler(t *testing.T) {
 		Data:    calque.NewReader(string(reqData)),
 	}
 	res := &calque.Response{
-		Data: calque.NewWriter(),
+		Data: calque.NewWriter[string](),
 	}
 
 	// Execute handler - expect connection failure
@@ -250,7 +250,7 @@ func TestStreamHandler(t *testing.T) {
 		Data:    calque.NewReader(testInput),
 	}
 	res := &calque.Response{
-		Data: calque.NewWriter(),
+		Data: calque.NewWriter[string](),
 	}
 
 	// Execute handler - expect connection failure
@@ -287,7 +287,7 @@ func TestStreamHandlerWithNonStreamingService(t *testing.T) {
 		Data:    calque.NewReader(testInput),
 	}
 	res := &calque.Response{
-		Data: calque.NewWriter(),
+		Data: calque.NewWriter[string](),
 	}
 
 	// Execute handler - should fail

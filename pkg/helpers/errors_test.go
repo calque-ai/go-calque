@@ -3,9 +3,6 @@ package helpers
 import (
 	"errors"
 	"testing"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func TestWrapError(t *testing.T) {
@@ -182,111 +179,6 @@ func TestNewError(t *testing.T) {
 
 			if result.Error() != tt.expected {
 				t.Errorf("NewError() = %q, want %q", result.Error(), tt.expected)
-			}
-		})
-	}
-}
-
-func TestWrapGRPCError(t *testing.T) {
-	originalErr := errors.New("original error")
-	wrappedErr := WrapGRPCError(originalErr, "wrapped message", "detail1", "detail2")
-
-	if wrappedErr == nil {
-		t.Fatal("Expected wrapped error to not be nil")
-	}
-
-	if wrappedErr.Err != originalErr {
-		t.Error("Expected wrapped error to contain original error")
-	}
-
-	if wrappedErr.Message != "wrapped message" {
-		t.Errorf("Expected message 'wrapped message', got '%s'", wrappedErr.Message)
-	}
-
-	if len(wrappedErr.Details) != 2 {
-		t.Errorf("Expected 2 details, got %d", len(wrappedErr.Details))
-	}
-}
-
-func TestWrapGRPCErrorWithGRPCStatus(t *testing.T) {
-	grpcErr := status.New(codes.Unavailable, "service unavailable").Err()
-	wrappedErr := WrapGRPCError(grpcErr, "wrapped message")
-
-	if wrappedErr.Code != codes.Unavailable {
-		t.Errorf("Expected code %v, got %v", codes.Unavailable, wrappedErr.Code)
-	}
-}
-
-func TestGRPCErrorIsRetryable(t *testing.T) {
-	tests := []struct {
-		code     codes.Code
-		expected bool
-	}{
-		{codes.Unavailable, true},
-		{codes.DeadlineExceeded, true},
-		{codes.ResourceExhausted, true},
-		{codes.InvalidArgument, false},
-		{codes.NotFound, false},
-		{codes.Internal, false},
-	}
-
-	for _, test := range tests {
-		err := &GRPCError{Code: test.code}
-		if err.IsRetryable() != test.expected {
-			t.Errorf("Expected IsRetryable() to return %v for code %v", test.expected, test.code)
-		}
-	}
-}
-
-func TestIsGRPCError(t *testing.T) {
-	grpcErr := status.New(codes.Internal, "internal error").Err()
-	regularErr := errors.New("regular error")
-
-	if !IsGRPCError(grpcErr) {
-		t.Error("Expected grpc error to be detected")
-	}
-
-	if IsGRPCError(regularErr) {
-		t.Error("Expected regular error to not be detected as grpc error")
-	}
-}
-
-func TestGetGRPCCode(t *testing.T) {
-	grpcErr := status.New(codes.NotFound, "not found").Err()
-	regularErr := errors.New("regular error")
-
-	if GetGRPCCode(grpcErr) != codes.NotFound {
-		t.Error("Expected to get NotFound code from grpc error")
-	}
-
-	if GetGRPCCode(regularErr) != codes.Unknown {
-		t.Error("Expected to get Unknown code from regular error")
-	}
-}
-
-func TestGRPCErrorConstructors(t *testing.T) {
-	originalErr := errors.New("original")
-
-	tests := []struct {
-		name         string
-		constructor  func(string, error) *GRPCError
-		expectedCode codes.Code
-	}{
-		{"Unavailable", NewGRPCUnavailableError, codes.Unavailable},
-		{"DeadlineExceeded", NewGRPCDeadlineExceededError, codes.DeadlineExceeded},
-		{"InvalidArgument", NewGRPCInvalidArgumentError, codes.InvalidArgument},
-		{"NotFound", NewGRPCNotFoundError, codes.NotFound},
-		{"Internal", NewGRPCInternalError, codes.Internal},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			err := test.constructor("test message", originalErr)
-			if err.Code != test.expectedCode {
-				t.Errorf("Expected code %v, got %v", test.expectedCode, err.Code)
-			}
-			if err.Err != originalErr {
-				t.Error("Expected original error to be preserved")
 			}
 		})
 	}

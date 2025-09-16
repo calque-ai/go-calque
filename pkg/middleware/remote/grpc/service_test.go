@@ -70,7 +70,7 @@ func TestRegistryHandler(t *testing.T) {
 		Data:    calque.NewReader("test input"),
 	}
 	res := &calque.Response{
-		Data: calque.NewWriter(),
+		Data: calque.NewWriter[string](),
 	}
 
 	// Execute handler

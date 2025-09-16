@@ -1,6 +1,6 @@
-// Package main demonstrates comprehensive gRPC integration with go-calque.
+// Package main demonstrates comprehensive gRPC integration with go-calque using the registry pattern.
 // This example shows:
-// - Distributed AI, memory, and tool services via gRPC
+// - Distributed services via gRPC using the registry pattern
 // - Service registry and connection management
 // - Protobuf serialization and streaming
 // - Type-safe service calls and error handling
@@ -16,11 +16,8 @@ import (
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/helpers"
-	"github.com/calque-ai/go-calque/pkg/middleware/ai"
-	"github.com/calque-ai/go-calque/pkg/middleware/memory"
+	grpcerrors "github.com/calque-ai/go-calque/pkg/grpc"
 	grpcmw "github.com/calque-ai/go-calque/pkg/middleware/remote/grpc"
-	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 	calquepb "github.com/calque-ai/go-calque/proto"
 )
 
@@ -34,10 +31,10 @@ func main() {
 	// Wait for services to be ready
 	<-servicesReady
 
-	// Demonstrate distributed architecture
-	demonstrateDistributedAI()
-	demonstrateDistributedMemory()
-	demonstrateDistributedTools()
+	// Demonstrate distributed architecture using registry pattern
+	demonstrateRegistryPattern()
+	demonstrateTypeSafeCalls()
+	demonstrateStreamingServices()
 	demonstrateFullDistributedFlow()
 }
 
@@ -107,7 +104,7 @@ func startMemoryService(addr string, started chan struct{}) {
 			}
 
 			// Simple memory processing
-			response := fmt.Sprintf("Memory stored: %s", input)
+			response := fmt.Sprintf("Memory processed: %s", input)
 			return calque.Write(res, response)
 		})
 
@@ -159,155 +156,100 @@ func startToolsService(addr string, started chan struct{}) {
 	}
 }
 
-func demonstrateDistributedAI() {
-	fmt.Println("\n=== Distributed AI Service ===")
+func demonstrateRegistryPattern() {
+	fmt.Println("\n=== Registry Pattern Demo ===")
 
-	// Create gRPC AI client
-	aiClient, err := ai.NewGRPCClient("localhost:8080")
-	if err != nil {
-		log.Fatalf("Failed to create AI client: %v", err)
-	}
-
-	// Create flow with distributed AI
+	// Create flow using registry pattern
 	flow := calque.NewFlow().
-		Use(ai.Agent(aiClient))
+		Use(grpcmw.NewRegistryHandler(
+			grpcmw.NewService("ai-service", "localhost:8080"),
+			grpcmw.NewService("memory-service", "localhost:8081"),
+			grpcmw.NewService("tools-service", "localhost:8082"),
+		)).
+		Use(grpcmw.Call("ai-service")).
+		Use(grpcmw.Call("memory-service")).
+		Use(grpcmw.Call("tools-service"))
 
 	// Execute flow
 	ctx := context.Background()
 	var result string
-	err = flow.Run(ctx, "Hello from distributed AI!", &result)
+	err := flow.Run(ctx, "Hello from registry pattern!", &result)
 	if err != nil {
-		aiClient.Close()
-		log.Fatalf("Flow execution failed: %v", err)
+		log.Fatalf("Registry pattern flow execution failed: %v", err)
 	}
 
-	fmt.Printf("AI Result: %s\n", result)
-
-	// Cleanup
-	aiClient.Close()
+	fmt.Printf("Registry Pattern Result: %s\n", result)
 }
 
-func demonstrateDistributedMemory() {
-	fmt.Println("\n=== Distributed Memory Service ===")
+func demonstrateTypeSafeCalls() {
+	fmt.Println("\n=== Type-Safe Calls Demo ===")
 
-	// Create gRPC memory store
-	memoryStore, err := memory.NewGRPCStore("localhost:8081")
-	if err != nil {
-		log.Fatalf("Failed to create memory store: %v", err)
-	}
-
-	// Test basic memory operations directly
-	fmt.Println("Testing memory operations...")
-
-	// Test Set operation
-	err = memoryStore.Set("test-key", []byte("test-value"))
-	if err != nil {
-		log.Printf("Set operation failed: %v", err)
-	} else {
-		fmt.Println("✓ Set operation successful")
-	}
-
-	// Test Get operation
-	value, err := memoryStore.Get("test-key")
-	if err != nil {
-		log.Printf("Get operation failed: %v", err)
-	} else {
-		fmt.Printf("✓ Get operation successful: %s\n", string(value))
-	}
-
-	// Test Exists operation
-	exists := memoryStore.Exists("test-key")
-	fmt.Printf("✓ Exists operation successful: %t\n", exists)
-
-	// Test List operation
-	keys := memoryStore.List()
-	fmt.Printf("✓ List operation successful: %v\n", keys)
-
-	// Test Delete operation
-	err = memoryStore.Delete("test-key")
-	if err != nil {
-		log.Printf("Delete operation failed: %v", err)
-	} else {
-		fmt.Println("✓ Delete operation successful")
-	}
-
-	// Cleanup
-	memoryStore.Close()
-}
-
-func demonstrateDistributedTools() {
-	fmt.Println("\n=== Distributed Tools Service ===")
-
-	// Create gRPC tool executor
-	toolExecutor, err := tools.NewGRPCExecutor("localhost:8082")
-	if err != nil {
-		log.Fatalf("Failed to create tool executor: %v", err)
-	}
-
-	// Create flow with distributed tools
+	// Create type-safe flow using registry pattern
 	flow := calque.NewFlow().
-		Use(toolExecutor.Execute())
+		Use(grpcmw.NewRegistryHandler(
+			grpcmw.ServiceWithTypes[*calquepb.AIRequest, *calquepb.AIResponse]("ai-service", "localhost:8080"),
+			grpcmw.ServiceWithTypes[*calquepb.MemoryRequest, *calquepb.MemoryResponse]("memory-service", "localhost:8081"),
+		)).
+		Use(grpcmw.CallWithTypes[*calquepb.AIRequest, *calquepb.AIResponse]("ai-service")).
+		Use(grpcmw.CallWithTypes[*calquepb.MemoryRequest, *calquepb.MemoryResponse]("memory-service"))
 
 	// Execute flow
 	ctx := context.Background()
 	var result string
-	err = flow.Run(ctx, `{"tool_calls": [{"name": "search", "arguments": "{\"query\": \"golang\"}"}]}`, &result)
+	err := flow.Run(ctx, "Type-safe call demo", &result)
 	if err != nil {
-		toolExecutor.Close()
-		log.Fatalf("Flow execution failed: %v", err)
+		log.Fatalf("Type-safe calls flow execution failed: %v", err)
 	}
 
-	fmt.Printf("Tools Result: %s\n", result)
+	fmt.Printf("Type-Safe Calls Result: %s\n", result)
+}
 
-	// Cleanup
-	toolExecutor.Close()
+func demonstrateStreamingServices() {
+	fmt.Println("\n=== Streaming Services Demo ===")
+
+	// Create streaming flow using registry pattern
+	flow := calque.NewFlow().
+		Use(grpcmw.NewRegistryHandler(
+			grpcmw.StreamingService("ai-service", "localhost:8080"),
+			grpcmw.StreamingService("memory-service", "localhost:8081"),
+		)).
+		Use(grpcmw.Stream("ai-service")).
+		Use(grpcmw.Stream("memory-service"))
+
+	// Execute flow
+	ctx := context.Background()
+	var result string
+	err := flow.Run(ctx, "Streaming demo", &result)
+	if err != nil {
+		log.Fatalf("Streaming services flow execution failed: %v", err)
+	}
+
+	fmt.Printf("Streaming Services Result: %s\n", result)
 }
 
 func demonstrateFullDistributedFlow() {
-	fmt.Println("\n=== Full Distributed Flow ===")
+	fmt.Println("\n=== Full Distributed Flow with Registry ===")
 
-	// Create distributed clients
-	aiClient, err := ai.NewGRPCClient("localhost:8080")
-	if err != nil {
-		log.Fatalf("Failed to create AI client: %v", err)
-	}
-
-	memoryStore, err := memory.NewGRPCStore("localhost:8081")
-	if err != nil {
-		aiClient.Close()
-		log.Fatalf("Failed to create memory store: %v", err)
-	}
-
-	toolExecutor, err := tools.NewGRPCExecutor("localhost:8082")
-	if err != nil {
-		aiClient.Close()
-		memoryStore.Close()
-		log.Fatalf("Failed to create tool executor: %v", err)
-	}
-
-	// Create comprehensive distributed flow
+	// Create comprehensive distributed flow using registry pattern
 	flow := calque.NewFlow().
-		Use(memory.NewContextWithStore(memoryStore).Input("session1", 4000)). // Distributed memory
-		Use(ai.Agent(aiClient)).                                              // Distributed AI
-		Use(toolExecutor.Execute())                                           // Distributed tools
+		Use(grpcmw.NewRegistryHandler(
+			grpcmw.NewService("ai-service", "localhost:8080").WithTimeout(10*time.Second),
+			grpcmw.NewService("memory-service", "localhost:8081").WithTimeout(5*time.Second),
+			grpcmw.NewService("tools-service", "localhost:8082").WithTimeout(15*time.Second),
+		)).
+		Use(grpcmw.Call("ai-service")).
+		Use(grpcmw.Call("memory-service")).
+		Use(grpcmw.Call("tools-service"))
 
 	// Execute comprehensive flow
 	ctx := context.Background()
 	var result string
-	err = flow.Run(ctx, "Process this with distributed services", &result)
+	err := flow.Run(ctx, "Process this with distributed services using registry pattern", &result)
 	if err != nil {
-		aiClient.Close()
-		memoryStore.Close()
-		toolExecutor.Close()
-		log.Fatalf("Flow execution failed: %v", err)
+		log.Fatalf("Full distributed flow execution failed: %v", err)
 	}
 
-	fmt.Printf("Distributed Flow Result: %s\n", result)
-
-	// Cleanup
-	aiClient.Close()
-	memoryStore.Close()
-	toolExecutor.Close()
+	fmt.Printf("Full Distributed Flow Result: %s\n", result)
 }
 
 // Service implementations (simplified for demonstration)
@@ -341,7 +283,7 @@ func (s *AIServiceImpl) StreamChat(req *calquepb.AIRequest, stream calquepb.AISe
 			Response: chunk,
 		}
 		if err := stream.Send(resp); err != nil {
-			return helpers.WrapGRPCError(err, "failed to send AI response")
+			return grpcerrors.WrapError(err, "failed to send AI response")
 		}
 
 		// Wait for ticker on all chunks except the last one
@@ -360,44 +302,37 @@ type MemoryServiceImpl struct {
 
 // ProcessMemory implements the memory service method
 func (s *MemoryServiceImpl) ProcessMemory(_ context.Context, req *calquepb.MemoryRequest) (*calquepb.MemoryResponse, error) {
+	// Simple memory processing based on operation
 	switch req.Operation {
-	case "get":
-		// Return proper JSON structure that the memory middleware expects
-		// The memory middleware expects a JSON object with max_tokens and content fields
-		// The content field should be base64-encoded bytes
-		contextData := `{"max_tokens":4000,"content":"UHJldmlvdXMgY29udGV4dCBjb250ZW50Cg=="}`
-		return &calquepb.MemoryResponse{
-			Success: true,
-			Value:   contextData,
-		}, nil
 	case "set":
-		// Simulate setting a value - just acknowledge success
 		return &calquepb.MemoryResponse{
 			Success: true,
-			Value:   "stored",
+			Value:   "Memory set successfully",
+		}, nil
+	case "get":
+		return &calquepb.MemoryResponse{
+			Success: true,
+			Value:   "Retrieved memory value",
 		}, nil
 	case "delete":
-		// Simulate deleting a value
 		return &calquepb.MemoryResponse{
 			Success: true,
-			Value:   "deleted",
+			Value:   "Memory deleted successfully",
 		}, nil
 	case "list":
-		// Simulate listing keys
 		return &calquepb.MemoryResponse{
 			Success: true,
-			Value:   "session1",
+			Value:   "key1,key2,key3",
 		}, nil
 	case "exists":
-		// Simulate checking if key exists
 		return &calquepb.MemoryResponse{
 			Success: true,
 			Value:   "true",
 		}, nil
 	default:
 		return &calquepb.MemoryResponse{
-			Success:      false,
-			ErrorMessage: "unknown operation",
+			Success: false,
+			Value:   "Unknown operation",
 		}, nil
 	}
 }
@@ -409,19 +344,19 @@ type ToolsServiceImpl struct {
 
 // ExecuteTool implements the tools service method
 func (s *ToolsServiceImpl) ExecuteTool(_ context.Context, req *calquepb.ToolRequest) (*calquepb.ToolResponse, error) {
-	// Simulate tool execution with proper JSON format
+	// Simple tool execution
 	result := map[string]interface{}{
 		"tool":      req.Name,
-		"result":    "executed successfully",
 		"arguments": req.Arguments,
+		"result":    fmt.Sprintf("Tool %s executed successfully", req.Name),
 	}
 
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
 		return &calquepb.ToolResponse{
-			Success:      false,
-			ErrorMessage: fmt.Sprintf("failed to marshal result: %v", err),
-		}, nil
+			Success: false,
+			Result:  "",
+		}, err
 	}
 
 	return &calquepb.ToolResponse{

@@ -12,7 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/helpers"
+	grpcerrors "github.com/calque-ai/go-calque/pkg/grpc"
 	calquepb "github.com/calque-ai/go-calque/proto"
 )
 
@@ -53,8 +53,8 @@ func Call(serviceName string) calque.Handler {
 //	}
 //
 //	flow := calque.NewFlow().
-//		Use(grpc.ServiceWithTypes[Request, Response]("ai-service", "localhost:8080")).
-//		Use(grpc.CallWithTypes[Request, Response]("ai-service"))
+//		Use(grpcerrors.ServiceWithTypes[Request, Response]("ai-service", "localhost:8080")).
+//		Use(grpcerrors.CallWithTypes[Request, Response]("ai-service"))
 func CallWithTypes[TReq, TResp proto.Message](serviceName string) calque.Handler {
 	return &typedCallHandler[TReq, TResp]{serviceName: serviceName}
 }
@@ -68,19 +68,19 @@ func (ch *callHandler) ServeFlow(req *calque.Request, res *calque.Response) erro
 	// Get registry from context
 	registry := GetRegistry(req.Context)
 	if registry == nil {
-		return helpers.NewError("gRPC registry not found in context, ensure grpc.NewRegistryHandler() is used before grpc.Call()")
+		return grpcerrors.NewErrorSimple("gRPC registry not found in context, ensure grpcerrors.NewRegistryHandler() is used before grpcerrors.Call()")
 	}
 
 	// Get service from registry
 	service, err := registry.Get(ch.serviceName)
 	if err != nil {
-		return helpers.WrapErrorf(err, "failed to get service %s", ch.serviceName)
+		return grpcerrors.WrapErrorfSimple(err, "failed to get service %s", ch.serviceName)
 	}
 
 	// Read input data
 	var inputData []byte
 	if err := calque.Read(req, &inputData); err != nil {
-		return helpers.WrapError(err, "failed to read input data")
+		return grpcerrors.WrapErrorSimple(err, "failed to read input data")
 	}
 
 	// Create a flow request
@@ -94,7 +94,7 @@ func (ch *callHandler) ServeFlow(req *calque.Request, res *calque.Response) erro
 	// Marshal the request
 	reqData, err := proto.Marshal(flowReq)
 	if err != nil {
-		return helpers.WrapError(err, "failed to marshal request")
+		return grpcerrors.WrapErrorSimple(err, "failed to marshal request")
 	}
 
 	// Create context with timeout
@@ -111,7 +111,7 @@ func (ch *callHandler) ServeFlow(req *calque.Request, res *calque.Response) erro
 
 		// Check if error is retryable
 		if !isRetryableError(err) || attempt == service.MaxRetries {
-			return helpers.WrapError(err, "gRPC call failed")
+			return grpcerrors.WrapErrorSimple(err, "gRPC call failed")
 		}
 
 		// Wait before retry
@@ -121,7 +121,7 @@ func (ch *callHandler) ServeFlow(req *calque.Request, res *calque.Response) erro
 	// Marshal the response
 	respData, err := proto.Marshal(flowResp)
 	if err != nil {
-		return helpers.WrapError(err, "failed to marshal response")
+		return grpcerrors.WrapErrorSimple(err, "failed to marshal response")
 	}
 
 	// Write response
@@ -145,7 +145,7 @@ func (ch *callHandler) makeGRPCCall(ctx context.Context, service *Service, reqDa
 	// Make the unary gRPC call
 	flowResp, err := client.ExecuteFlow(ctx, flowReq)
 	if err != nil {
-		return nil, helpers.WrapGRPCError(err, "gRPC ExecuteFlow failed")
+		return nil, grpcerrors.WrapError(err, "gRPC ExecuteFlow failed")
 	}
 
 	return flowResp, nil
@@ -157,8 +157,8 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
-	// Check if it's a GRPCError from helpers
-	if grpcErr, ok := err.(*helpers.GRPCError); ok {
+	// Check if it's a GRPCError from grpc package
+	if grpcErr, ok := err.(*grpcerrors.Error); ok {
 		return grpcErr.IsRetryable()
 	}
 
@@ -191,26 +191,26 @@ func (tch *typedCallHandler[TReq, TResp]) ServeFlow(req *calque.Request, res *ca
 	// Get registry from context
 	registry := GetRegistry(req.Context)
 	if registry == nil {
-		return helpers.NewError("gRPC registry not found in context, ensure grpc.NewRegistryHandler() is used before grpc.CallWithTypes()")
+		return grpcerrors.NewErrorSimple("gRPC registry not found in context, ensure grpcerrors.NewRegistryHandler() is used before grpcerrors.CallWithTypes()")
 	}
 
 	// Get service from registry
 	service, err := registry.Get(tch.serviceName)
 	if err != nil {
-		return helpers.WrapErrorf(err, "failed to get service %s", tch.serviceName)
+		return grpcerrors.WrapErrorfSimple(err, "failed to get service %s", tch.serviceName)
 	}
 
 	// Read input data
 	var inputData []byte
 	if err := calque.Read(req, &inputData); err != nil {
-		return helpers.WrapError(err, "failed to read input data")
+		return grpcerrors.WrapErrorSimple(err, "failed to read input data")
 	}
 
 	// Unmarshal input to typed request
 	var reqMsg TReq
 	reqMsg = reflect.New(reflect.TypeOf(reqMsg).Elem()).Interface().(TReq)
 	if err := proto.Unmarshal(inputData, reqMsg); err != nil {
-		return helpers.WrapError(err, "failed to unmarshal request")
+		return grpcerrors.WrapErrorSimple(err, "failed to unmarshal request")
 	}
 
 	// Create context with timeout
@@ -227,7 +227,7 @@ func (tch *typedCallHandler[TReq, TResp]) ServeFlow(req *calque.Request, res *ca
 
 		// Check if error is retryable
 		if !isRetryableError(err) || attempt == service.MaxRetries {
-			return helpers.WrapError(err, "typed gRPC call failed")
+			return grpcerrors.WrapErrorSimple(err, "typed gRPC call failed")
 		}
 
 		// Wait before retry
@@ -237,7 +237,7 @@ func (tch *typedCallHandler[TReq, TResp]) ServeFlow(req *calque.Request, res *ca
 	// Marshal the response
 	respData, err := proto.Marshal(respMsg)
 	if err != nil {
-		return helpers.WrapError(err, "failed to marshal response")
+		return grpcerrors.WrapErrorSimple(err, "failed to marshal response")
 	}
 
 	// Write response
@@ -253,7 +253,7 @@ func (tch *typedCallHandler[TReq, TResp]) makeTypedGRPCCall(ctx context.Context,
 	// Convert typed request to FlowRequest
 	reqData, err := proto.Marshal(reqMsg)
 	if err != nil {
-		return *new(TResp), helpers.WrapError(err, "failed to marshal typed request")
+		return *new(TResp), grpcerrors.WrapErrorSimple(err, "failed to marshal typed request")
 	}
 
 	flowReq := &calquepb.FlowRequest{
@@ -266,14 +266,14 @@ func (tch *typedCallHandler[TReq, TResp]) makeTypedGRPCCall(ctx context.Context,
 	// Make the unary gRPC call
 	flowResp, err := client.ExecuteFlow(ctx, flowReq)
 	if err != nil {
-		return *new(TResp), helpers.WrapGRPCError(err, "gRPC ExecuteFlow failed", tch.serviceName)
+		return *new(TResp), grpcerrors.WrapError(err, "gRPC ExecuteFlow failed", tch.serviceName)
 	}
 
 	// Convert FlowResponse to typed response
 	var respMsg TResp
 	respMsg = reflect.New(reflect.TypeOf(respMsg).Elem()).Interface().(TResp)
 	if err := proto.Unmarshal([]byte(flowResp.Output), respMsg); err != nil {
-		return *new(TResp), helpers.WrapError(err, "failed to unmarshal typed response")
+		return *new(TResp), grpcerrors.WrapErrorSimple(err, "failed to unmarshal typed response")
 	}
 
 	return respMsg, nil
@@ -285,13 +285,13 @@ func (tch *typedCallHandler[TReq, TResp]) makeTypedGRPCCall(ctx context.Context,
 // Output: protobuf message response (streaming)
 // Behavior: STREAMING - bidirectional streaming with gRPC service
 //
-// The service must be registered as a streaming service using grpc.StreamingService().
+// The service must be registered as a streaming service using grpcerrors.StreamingService().
 //
 // Example:
 //
 //	flow := calque.NewFlow().
-//		Use(grpc.Registry(grpc.StreamingService("streaming-service", "localhost:8082"))).
-//		Use(grpc.Stream("streaming-service"))
+//		Use(grpcerrors.Registry(grpcerrors.StreamingService("streaming-service", "localhost:8082"))).
+//		Use(grpcerrors.Stream("streaming-service"))
 func Stream(serviceName string) calque.Handler {
 	return &streamHandler{serviceName: serviceName}
 }
@@ -305,17 +305,17 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 	// Get registry from context
 	registry := GetRegistry(req.Context)
 	if registry == nil {
-		return helpers.NewError("gRPC registry not found in context, ensure grpc.NewRegistryHandler() is used before grpc.Stream()")
+		return grpcerrors.NewErrorSimple("gRPC registry not found in context, ensure grpcerrors.NewRegistryHandler() is used before grpcerrors.Stream()")
 	}
 
 	// Get service from registry
 	service, err := registry.Get(sh.serviceName)
 	if err != nil {
-		return helpers.WrapErrorf(err, "failed to get service %s", sh.serviceName)
+		return grpcerrors.WrapErrorfSimple(err, "failed to get service %s", sh.serviceName)
 	}
 
 	if !service.Streaming {
-		return helpers.NewError("service %s is not configured for streaming", sh.serviceName)
+		return grpcerrors.NewErrorSimple("service %s is not configured for streaming", sh.serviceName)
 	}
 
 	// Create context with timeout
@@ -328,7 +328,7 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 	// Create streaming client
 	stream, err := client.StreamFlow(ctx)
 	if err != nil {
-		return helpers.WrapGRPCError(err, "failed to create streaming client", sh.serviceName)
+		return grpcerrors.WrapError(err, "failed to create streaming client", sh.serviceName)
 	}
 	defer func() {
 		_ = stream.CloseSend()
@@ -349,7 +349,7 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 				if err == io.EOF {
 					return
 				}
-				errorChan <- helpers.WrapGRPCError(err, "failed to receive streaming response", sh.serviceName)
+				errorChan <- grpcerrors.WrapError(err, "failed to receive streaming response", sh.serviceName)
 				return
 			}
 			responseChan <- resp
@@ -370,7 +370,7 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 				if err == io.EOF {
 					break
 				}
-				errorChan <- helpers.WrapError(err, "failed to read input data")
+				errorChan <- grpcerrors.WrapErrorSimple(err, "failed to read input data")
 				return
 			}
 
@@ -384,7 +384,7 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 
 			// Send the request
 			if err := stream.Send(streamReq); err != nil {
-				errorChan <- helpers.WrapGRPCError(err, "failed to send streaming request", sh.serviceName)
+				errorChan <- grpcerrors.WrapError(err, "failed to send streaming request", sh.serviceName)
 				return
 			}
 		}
@@ -401,7 +401,7 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 
 			// Write response data
 			if _, err := res.Data.Write([]byte(resp.Output)); err != nil {
-				return helpers.WrapError(err, "failed to write response")
+				return grpcerrors.WrapErrorSimple(err, "failed to write response")
 			}
 
 			// Check if this is the final response
@@ -413,7 +413,7 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 			return err
 
 		case <-ctx.Done():
-			return helpers.WrapError(ctx.Err(), "streaming context cancelled")
+			return grpcerrors.WrapErrorSimple(ctx.Err(), "streaming context cancelled")
 		}
 	}
 }

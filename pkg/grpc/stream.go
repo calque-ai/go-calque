@@ -7,8 +7,6 @@ import (
 	"io"
 
 	"google.golang.org/protobuf/proto"
-
-	"github.com/calque-ai/go-calque/pkg/helpers"
 )
 
 // Stream represents a bidirectional gRPC stream.
@@ -32,7 +30,7 @@ func NewStreamHandler(stream Stream) *StreamHandler {
 // SendMessage sends a protobuf message through the stream.
 func (sh *StreamHandler) SendMessage(msg proto.Message) error {
 	if err := sh.stream.Send(msg); err != nil {
-		return helpers.WrapGRPCError(err, "failed to send message")
+		return WrapError(err, "failed to send message")
 	}
 	return nil
 }
@@ -44,7 +42,7 @@ func (sh *StreamHandler) ReceiveMessage(_ proto.Message) error {
 		if err == io.EOF {
 			return io.EOF
 		}
-		return helpers.WrapGRPCError(err, "failed to receive message")
+		return WrapError(err, "failed to receive message")
 	}
 	return nil
 }
@@ -52,7 +50,7 @@ func (sh *StreamHandler) ReceiveMessage(_ proto.Message) error {
 // Close closes the send side of the stream.
 func (sh *StreamHandler) Close() error {
 	if err := sh.stream.CloseSend(); err != nil {
-		return helpers.WrapGRPCError(err, "failed to close stream")
+		return WrapError(err, "failed to close stream")
 	}
 	return nil
 }
@@ -115,13 +113,13 @@ func (sr *StreamReader) readFromStream() error {
 		if err == io.EOF {
 			return io.EOF
 		}
-		return helpers.WrapGRPCError(err, "failed to receive from stream")
+		return WrapError(err, "failed to receive from stream")
 	}
 
 	// Marshal message to bytes
 	data, err := proto.Marshal(msg)
 	if err != nil {
-		return helpers.WrapGRPCError(err, "failed to marshal message")
+		return WrapError(err, "failed to marshal message")
 	}
 
 	sr.buffer = data
@@ -153,12 +151,12 @@ func (sw *StreamWriter) Write(p []byte) (n int, err error) {
 
 	// Unmarshal bytes to message
 	if err := proto.Unmarshal(p, msg); err != nil {
-		return 0, helpers.WrapGRPCError(err, "failed to unmarshal message")
+		return 0, WrapError(err, "failed to unmarshal message")
 	}
 
 	// Send message through stream
 	if err := sw.stream.Send(msg); err != nil {
-		return 0, helpers.WrapGRPCError(err, "failed to send message")
+		return 0, WrapError(err, "failed to send message")
 	}
 
 	return len(p), nil
