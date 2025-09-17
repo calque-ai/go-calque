@@ -342,3 +342,172 @@ func TestStreamHandlerConcurrency(t *testing.T) {
 		})
 	}
 }
+
+func TestStreamHandler_Close(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	stream := NewMockStreamServer(ctx)
+	handler := NewStreamHandler(stream)
+
+	// Test Close
+	err := handler.Close()
+	if err != nil {
+		t.Errorf("Close failed: %v", err)
+	}
+
+	// Test operations after close
+	testMsg, err := anypb.New(&anypb.Any{})
+	if err != nil {
+		t.Fatalf("Failed to create test message: %v", err)
+	}
+
+	err = handler.SendMessage(testMsg)
+	if err == nil {
+		t.Error("Expected error after close, got nil")
+	}
+}
+
+func TestStreamReader_ReadAfterClose(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	stream := NewMockStreamServer(ctx)
+	reader := NewStreamReader(stream, &anypb.Any{})
+
+	// Close the stream
+	stream.CloseSend()
+
+	// Test Read after close
+	buffer := make([]byte, 1024)
+	_, err := reader.Read(buffer)
+	if err == nil {
+		t.Error("Expected error after close, got nil")
+	}
+}
+
+func TestStreamWriter_Close(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	stream := NewMockStreamServer(ctx)
+	writer := NewStreamWriter(stream, &anypb.Any{})
+
+	// Test Close
+	err := writer.Close()
+	if err != nil {
+		t.Errorf("Close failed: %v", err)
+	}
+
+	// Test Write after close
+	_, err = writer.Write([]byte("test data"))
+	if err == nil {
+		t.Error("Expected error after close, got nil")
+	}
+}
+
+func TestStreamReader_ReadError(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	stream := NewMockStreamServer(ctx)
+	reader := NewStreamReader(stream, &anypb.Any{})
+
+	// Test Read with timeout
+	buffer := make([]byte, 1024)
+	_, err := reader.Read(buffer)
+	if err == nil {
+		t.Error("Expected timeout error, got nil")
+	}
+}
+
+func TestStreamWriter_WriteError(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	stream := NewMockStreamServer(ctx)
+	writer := NewStreamWriter(stream, &anypb.Any{})
+
+	// Test Write with large data that might cause issues
+	largeData := make([]byte, 1024*1024) // 1MB
+	_, err := writer.Write(largeData)
+	// Write might succeed or fail depending on mock implementation
+	_ = err // Accept either outcome
+}
+
+func TestStreamHandler_ReceiveMessageError(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	stream := NewMockStreamServer(ctx)
+	handler := NewStreamHandler(stream)
+
+	// Test ReceiveMessage with timeout (no message sent)
+	err := handler.ReceiveMessage(&anypb.Any{})
+	if err == nil {
+		t.Error("Expected timeout error, got nil")
+	}
+}
+
+func TestStreamHandler_Context(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	stream := NewMockStreamServer(ctx)
+	handler := NewStreamHandler(stream)
+
+	// Test Context
+	if handler.Context() != ctx {
+		t.Error("Context mismatch")
+	}
+}
+
+func TestStreamReader_ReadFromStream(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	stream := NewMockStreamServer(ctx)
+	reader := NewStreamReader(stream, &anypb.Any{})
+
+	// Test reading from stream
+	buffer := make([]byte, 1024)
+	n, err := reader.Read(buffer)
+	if err != nil {
+		t.Logf("Read failed as expected (no data): %v", err)
+	}
+	_ = n // Use n to avoid unused variable
+}
+
+func TestStreamWriter_WriteLargeData(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	stream := NewMockStreamServer(ctx)
+	writer := NewStreamWriter(stream, &anypb.Any{})
+
+	// Test Write with large data
+	largeData := make([]byte, 1024*1024) // 1MB
+	n, err := writer.Write(largeData)
+	if err != nil {
+		t.Logf("Write failed as expected (mock limitations): %v", err)
+	}
+	_ = n // Use n to avoid unused variable
+}

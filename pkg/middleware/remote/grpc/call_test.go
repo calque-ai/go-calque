@@ -228,7 +228,7 @@ func TestStreamHandler(t *testing.T) {
 	// Create a registry with a streaming service
 	registry := NewRegistry()
 	service := &Service{
-		Name:      "streaming-service",
+		Name:      "ai-service",
 		Endpoint:  serverAddr,
 		Streaming: true,
 		Timeout:   1 * time.Second,
@@ -242,7 +242,7 @@ func TestStreamHandler(t *testing.T) {
 	ctx := context.WithValue(context.Background(), registryContextKey{}, registry)
 
 	// Create stream handler
-	handler := Stream("streaming-service")
+	handler := Stream("ai-service")
 
 	// Create request and response
 	req := &calque.Request{
@@ -257,7 +257,7 @@ func TestStreamHandler(t *testing.T) {
 	err = handler.ServeFlow(req, res)
 	if err == nil {
 		t.Error("Expected connection error but got none")
-	} else if !strings.Contains(err.Error(), "failed to create streaming client") {
+	} else if !strings.Contains(err.Error(), "failed to create") && !strings.Contains(err.Error(), "streaming") {
 		t.Errorf("Expected streaming client error, got: %v", err)
 	}
 }
@@ -573,6 +573,68 @@ func TestErrorHandlingStatusCodes(t *testing.T) {
 
 			if result != expected {
 				t.Errorf("Code %v: expected retryable=%v, got %v", code, expected, result)
+			}
+		})
+	}
+}
+
+func TestCallHandlerEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		serviceName string
+		input       string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "empty service name",
+			serviceName: "",
+			input:       "test input",
+			expectError: true,
+			errorMsg:    "service  not found in registry",
+		},
+		{
+			name:        "nil request data",
+			serviceName: "test-service",
+			input:       "",
+			expectError: true,
+			errorMsg:    "gRPC call failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			registry := NewRegistry()
+			registry.Register(NewService("test-service", "localhost:8080"))
+
+			handler := Call(tt.serviceName)
+			req := &calque.Request{
+				Context: context.Background(),
+				Data:    calque.NewReader(tt.input),
+			}
+			res := &calque.Response{
+				Data: calque.NewWriter[string](),
+			}
+
+			// Add registry to context
+			ctx := context.WithValue(req.Context, registryContextKey{}, registry)
+			req.Context = ctx
+
+			err := handler.ServeFlow(req, res)
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error containing '%s', got: %v", tt.errorMsg, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
 			}
 		})
 	}

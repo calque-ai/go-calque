@@ -7,9 +7,13 @@ import (
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	calquepb "github.com/calque-ai/go-calque/proto"
 )
 
-const testEndpoint = "localhost:8080"
+const (
+	testEndpoint    = "localhost:8080"
+	testServiceName = "test-service"
+)
 
 func TestRegistry(t *testing.T) {
 	t.Parallel()
@@ -32,8 +36,8 @@ func TestRegistry(t *testing.T) {
 		t.Fatalf("Failed to get service: %v", err)
 	}
 
-	if retrieved.Name != "test-service" {
-		t.Errorf("Expected service name 'test-service', got '%s'", retrieved.Name)
+	if retrieved.Name != testServiceName {
+		t.Errorf("Expected service name '%s', got '%s'", testServiceName, retrieved.Name)
 	}
 
 	if retrieved.Endpoint != testEndpoint {
@@ -90,8 +94,8 @@ func TestRegistryHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get service1: %v", err)
 	}
-	if service1.Endpoint != "localhost:8080" {
-		t.Errorf("Expected endpoint 'localhost:8080', got '%s'", service1.Endpoint)
+	if service1.Endpoint != testEndpoint {
+		t.Errorf("Expected endpoint '%s', got '%s'", testEndpoint, service1.Endpoint)
 	}
 
 	service2, err := registry.Get("service2")
@@ -461,5 +465,134 @@ func TestServiceErrorHandling(t *testing.T) {
 	_, err := registry.Get("non-existent")
 	if err == nil {
 		t.Error("Expected error for non-existent service")
+	}
+}
+
+func TestNewService(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(testServiceName, testEndpoint)
+
+	if service.Name != testServiceName {
+		t.Errorf("Expected service name '%s', got '%s'", testServiceName, service.Name)
+	}
+
+	if service.Endpoint != testEndpoint {
+		t.Errorf("Expected endpoint '%s', got '%s'", testEndpoint, service.Endpoint)
+	}
+
+	if service.Streaming != false {
+		t.Errorf("Expected streaming to be false, got %v", service.Streaming)
+	}
+
+	if service.Method != "FlowService/ExecuteFlow" {
+		t.Errorf("Expected method 'FlowService/ExecuteFlow', got '%s'", service.Method)
+	}
+
+	if service.Timeout != 30*time.Second {
+		t.Errorf("Expected timeout 30s, got %v", service.Timeout)
+	}
+
+	if service.MaxRetries != 3 {
+		t.Errorf("Expected max retries 3, got %d", service.MaxRetries)
+	}
+
+	if service.RetryDelay != 1*time.Second {
+		t.Errorf("Expected retry delay 1s, got %v", service.RetryDelay)
+	}
+}
+
+func TestServiceWithTypes(t *testing.T) {
+	t.Parallel()
+
+	service := ServiceWithTypes[*calquepb.AIRequest, *calquepb.AIResponse](testServiceName, testEndpoint)
+
+	if service.Name != testServiceName {
+		t.Errorf("Expected service name '%s', got '%s'", testServiceName, service.Name)
+	}
+
+	if service.Endpoint != testEndpoint {
+		t.Errorf("Expected endpoint '%s', got '%s'", testEndpoint, service.Endpoint)
+	}
+
+	if service.Streaming != false {
+		t.Errorf("Expected streaming to be false, got %v", service.Streaming)
+	}
+}
+
+func TestStreamingService(t *testing.T) {
+	t.Parallel()
+
+	service := StreamingService(testServiceName, testEndpoint)
+
+	if service.Name != testServiceName {
+		t.Errorf("Expected service name '%s', got '%s'", testServiceName, service.Name)
+	}
+
+	if service.Endpoint != testEndpoint {
+		t.Errorf("Expected endpoint '%s', got '%s'", testEndpoint, service.Endpoint)
+	}
+
+	if service.Streaming != true {
+		t.Errorf("Expected streaming to be true, got %v", service.Streaming)
+	}
+}
+
+func TestNewRegistryHandler(t *testing.T) {
+	t.Parallel()
+
+	services := []*Service{
+		NewService("service1", "localhost:8080"),
+		NewService("service2", "localhost:8081"),
+	}
+
+	handler := NewRegistryHandler(services...)
+
+	if handler == nil {
+		t.Fatal("Expected non-nil handler")
+	}
+
+	// Test that the handler can be used
+	req := &calque.Request{
+		Context: context.Background(),
+		Data:    calque.NewReader("test input"),
+	}
+	res := &calque.Response{
+		Data: calque.NewWriter[string](),
+	}
+
+	err := handler.ServeFlow(req, res)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestServiceConfigurationMethods(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(testServiceName, testEndpoint)
+
+	// Test WithMethod
+	service = service.WithMethod("CustomService/CustomMethod")
+	if service.Method != "CustomService/CustomMethod" {
+		t.Errorf("Expected method 'CustomService/CustomMethod', got '%s'", service.Method)
+	}
+
+	// Test WithTimeout
+	timeout := 10 * time.Second
+	service = service.WithTimeout(timeout)
+	if service.Timeout != timeout {
+		t.Errorf("Expected timeout %v, got %v", timeout, service.Timeout)
+	}
+
+	// Test WithRetries
+	maxRetries := 5
+	retryDelay := 2 * time.Second
+	service = service.WithRetries(maxRetries, retryDelay)
+	if service.MaxRetries != maxRetries {
+		t.Errorf("Expected max retries %d, got %d", maxRetries, service.MaxRetries)
+	}
+	if service.RetryDelay != retryDelay {
+		t.Errorf("Expected retry delay %v, got %v", retryDelay, service.RetryDelay)
 	}
 }

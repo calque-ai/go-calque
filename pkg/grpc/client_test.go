@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -76,5 +77,29 @@ func TestConfigValidation(t *testing.T) {
 	// Both are acceptable for this test
 	if err == nil {
 		t.Error("Expected error for invalid config")
+	}
+}
+
+func TestCloseConnection(t *testing.T) {
+	// Test CloseConnection with nil connection
+	var conn *grpc.ClientConn
+	err := CloseConnection(conn, 5*time.Second)
+	if err != nil {
+		t.Errorf("CloseConnection with nil connection should not error, got: %v", err)
+	}
+
+	// Test CloseConnection with valid connection (will fail to connect but tests the function)
+	config := DefaultConfig("localhost:8080")
+	conn, err = NewClient(config)
+	if err != nil {
+		// Connection failed as expected, but we can still test CloseConnection
+		t.Logf("Connection failed as expected: %v", err)
+		return
+	}
+
+	// If we got here, the connection succeeded (unlikely but possible)
+	err = CloseConnection(conn, 5*time.Second)
+	if err != nil {
+		t.Errorf("CloseConnection failed: %v", err)
 	}
 }

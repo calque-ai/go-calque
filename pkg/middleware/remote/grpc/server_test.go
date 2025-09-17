@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/metadata"
 
@@ -295,4 +296,99 @@ func (m *mockFlowServiceStreamFlowServer) SendMsg(_ interface{}) error {
 
 func (m *mockFlowServiceStreamFlowServer) RecvMsg(_ interface{}) error {
 	return nil
+}
+
+func TestFlowServiceStreamFlowEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("stream_flow_placeholder_implementation", func(t *testing.T) {
+		t.Parallel()
+
+		server := NewServer(":0")
+		flowService := NewFlowService(server)
+
+		// Create a mock stream that will return EOF on first Recv
+		stream := &mockFlowServiceStreamFlowServer{
+			requests: []*calquepb.StreamingFlowRequest{}, // Empty requests will cause EOF
+		}
+
+		// StreamFlow is a placeholder implementation that should return nil on EOF
+		err := flowService.StreamFlow(stream)
+		if err != nil {
+			t.Errorf("Expected no error for EOF, got: %v", err)
+		}
+	})
+}
+
+func TestServerStart(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(":0") // Use port 0 for testing
+
+	// Start server in a goroutine
+	errChan := make(chan error, 1)
+	started := make(chan struct{})
+
+	go func() {
+		// Signal that we're about to start
+		close(started)
+		errChan <- server.Start()
+	}()
+
+	// Wait for the goroutine to start
+	<-started
+
+	// Stop the server immediately
+	server.Stop()
+
+	// Check if start returned an error (it should be nil or a graceful shutdown error)
+	select {
+	case err := <-errChan:
+		if err != nil && err.Error() != "server stopped" && err.Error() != "grpc: the server has been stopped" {
+			t.Errorf("Unexpected error from Start(): %v", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Start() did not return within timeout")
+	}
+}
+
+func TestServerStop(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(":0")
+
+	// Stop should not panic even if server wasn't started
+	server.Stop()
+
+	// Test stopping multiple times
+	server.Stop()
+	server.Stop()
+}
+
+func TestServerGetUptime(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(":0")
+
+	// Uptime should be very small (just created)
+	uptime := server.GetUptime()
+	if uptime < 0 {
+		t.Errorf("Expected uptime >= 0, got %v", uptime)
+	}
+
+	// Uptime should be reasonable (less than 1 second for a new server)
+	if uptime > time.Second {
+		t.Errorf("Expected uptime < 1s for new server, got %v", uptime)
+	}
+}
+
+func TestServerGetHealthServer(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(":0")
+
+	healthServer := server.GetHealthServer()
+	if healthServer == nil {
+		t.Error("Expected non-nil health server")
+	}
 }
