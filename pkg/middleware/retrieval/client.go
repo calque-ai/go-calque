@@ -64,7 +64,7 @@ type AutoEmbeddingCapable interface {
 	// SupportsAutoEmbedding returns true if the provider handles embeddings automatically
 	// This is used by middleware to detect capability and adapt behavior
 	SupportsAutoEmbedding() bool
-	
+
 	// GetEmbeddingConfig returns information about the auto-embedding configuration
 	// Such as the embedding model being used, vector dimensions, etc.
 	GetEmbeddingConfig() EmbeddingConfig
@@ -72,9 +72,9 @@ type AutoEmbeddingCapable interface {
 
 // EmbeddingConfig describes auto-embedding capabilities
 type EmbeddingConfig struct {
-	Model      string `json:"model"`       // Embedding model name (e.g., "text2vec-openai")
-	Dimensions int    `json:"dimensions"`  // Vector dimensions
-	Provider   string `json:"provider"`    // Provider name (e.g., "openai", "cohere")
+	Model      string `json:"model"`      // Embedding model name (e.g., "text2vec-openai")
+	Dimensions int    `json:"dimensions"` // Vector dimensions
+	Provider   string `json:"provider"`   // Provider name (e.g., "openai", "cohere")
 }
 
 // DiversificationProvider interface for native diversification capabilities.

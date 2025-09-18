@@ -1,6 +1,7 @@
 package retrieval
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,9 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+)
+
+const (
+	maxConcurrency = 3
+	httpTimeout    = 30 * time.Second
 )
 
 // DocumentLoader creates a document loading middleware.
@@ -35,37 +42,15 @@ import (
 //	    ))
 func DocumentLoader(sources ...string) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
-		var inputSources []string
-
-		// If no sources provided as parameters, read from input
-		if len(sources) == 0 {
-			var input string
-			err := calque.Read(r, &input)
-			if err != nil {
-				return err
-			}
-
-			// Try to parse as JSON array first
-			if strings.HasPrefix(strings.TrimSpace(input), "[") {
-				if err := json.Unmarshal([]byte(input), &inputSources); err != nil {
-					// If JSON parsing fails, treat as single source
-					inputSources = []string{input}
-				}
-			} else {
-				inputSources = []string{input}
-			}
-		} else {
-			inputSources = sources
+		inputSources, err := resolveInputSources(r, sources)
+		if err != nil {
+			return err
 		}
 
 		// Load documents from all sources
-		var allDocuments []Document
-		for _, source := range inputSources {
-			docs, err := loadFromSource(source)
-			if err != nil {
-				return fmt.Errorf("failed to load from source %s: %w", source, err)
-			}
-			allDocuments = append(allDocuments, docs...)
+		allDocuments, err := loadDocuments(r.Context, inputSources)
+		if err != nil {
+			return err
 		}
 
 		// Write documents as JSON array
@@ -78,21 +63,115 @@ func DocumentLoader(sources ...string) calque.Handler {
 	})
 }
 
-// loadFromSource loads documents from a single source (file path or URL)
-func loadFromSource(source string) ([]Document, error) {
-	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
-		return loadFromURL(source)
+// loadDocuments loads documents from multiple sources using concurrent workers
+func loadDocuments(ctx context.Context, sources []string) ([]Document, error) {
+	var allDocuments []Document
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	// Limit concurrent workers to avoid overwhelming system
+	semaphore := make(chan struct{}, maxConcurrency)
+	errors := make(chan error, len(sources))
+
+	for _, source := range sources {
+		wg.Add(1)
+		go func(src string) {
+			defer wg.Done()
+			semaphore <- struct{}{}        // Acquire worker slot
+			defer func() { <-semaphore }() // Release worker slot
+
+			docs, err := loadFromSource(ctx, src)
+			if err != nil {
+				errors <- fmt.Errorf("failed to load from source %s: %w", src, err)
+				return
+			}
+
+			mu.Lock()
+			allDocuments = append(allDocuments, docs...)
+			mu.Unlock()
+		}(source)
 	}
-	return loadFromFilePattern(source)
+
+	wg.Wait()
+	close(errors)
+
+	// Check for any errors
+	if err := <-errors; err != nil {
+		return nil, err
+	}
+
+	return allDocuments, nil
 }
 
-// loadFromURL loads document from HTTP/HTTPS URL
-func loadFromURL(url string) ([]Document, error) {
-	resp, err := http.Get(url)
+// resolveInputSources determines the list of sources to load from, either from parameters or input
+func resolveInputSources(r *calque.Request, paramSources []string) ([]string, error) {
+	if len(paramSources) > 0 {
+		return paramSources, nil
+	}
+
+	var input string
+	err := calque.Read(r, &input)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+
+	return parseSourceString(input)
+}
+
+// parseSourceString parses a string input into a list of sources
+func parseSourceString(input string) ([]string, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil, fmt.Errorf("no input sources provided")
+	}
+
+	// Try to parse as JSON array first
+	if strings.HasPrefix(input, "[") {
+		var sources []string
+		if err := json.Unmarshal([]byte(input), &sources); err == nil {
+			return sources, nil
+		}
+	}
+
+	// Fall back to single source
+	return []string{input}, nil
+}
+
+// loadFromSource loads documents from a single source (file path or URL)
+func loadFromSource(ctx context.Context, source string) ([]Document, error) {
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		return loadFromURL(ctx, source)
+	}
+	return loadFromFilePattern(ctx, source)
+}
+
+// loadFromURL loads document from HTTP/HTTPS URL
+func loadFromURL(ctx context.Context, url string) ([]Document, error) {
+	client := &http.Client{
+		Timeout: httpTimeout,
+		Transport: &http.Transport{
+			MaxIdleConns:      10,
+			IdleConnTimeout:   30 * time.Second,
+			DisableKeepAlives: false,
+		},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			fmt.Printf("warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, resp.Status)
@@ -119,9 +198,15 @@ func loadFromURL(url string) ([]Document, error) {
 }
 
 // loadFromFilePattern loads documents from file path (supports glob patterns)
-func loadFromFilePattern(pattern string) ([]Document, error) {
+func loadFromFilePattern(ctx context.Context, pattern string) ([]Document, error) {
+	// Path sanitization - prevent directory traversal attacks
+	cleanPattern := filepath.Clean(pattern)
+	if strings.Contains(cleanPattern, "..") {
+		return nil, fmt.Errorf("invalid path pattern: %s (contains directory traversal)", pattern)
+	}
+
 	// Handle glob patterns
-	matches, err := filepath.Glob(pattern)
+	matches, err := filepath.Glob(cleanPattern)
 	if err != nil {
 		return nil, err
 	}
@@ -133,8 +218,21 @@ func loadFromFilePattern(pattern string) ([]Document, error) {
 
 	documents := make([]Document, 0, len(matches))
 	for _, path := range matches {
+		// Check for context cancellation
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		// Additional path sanitization for each match
+		cleanPath := filepath.Clean(path)
+		if strings.Contains(cleanPath, "..") {
+			continue // Skip potentially dangerous paths
+		}
+
 		// Check if it's a file (skip directories)
-		info, err := os.Stat(path)
+		info, err := os.Stat(cleanPath)
 		if err != nil {
 			continue // Skip files that can't be accessed
 		}
@@ -143,19 +241,19 @@ func loadFromFilePattern(pattern string) ([]Document, error) {
 		}
 
 		// Load file content
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(cleanPath)
 		if err != nil {
 			continue // Skip files that can't be read
 		}
 
 		// Create document from file
 		doc := Document{
-			ID:      path,
+			ID:      cleanPath,
 			Content: string(content),
 			Metadata: map[string]any{
-				"source":    path,
+				"source":    cleanPath,
 				"size":      info.Size(),
-				"extension": filepath.Ext(path),
+				"extension": filepath.Ext(cleanPath),
 			},
 			Created: info.ModTime(),
 			Updated: info.ModTime(),

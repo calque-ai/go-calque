@@ -253,9 +253,9 @@ func (c *Client) GetEmbeddingConfig() retrieval.EmbeddingConfig {
 	// In a real implementation, this could query Weaviate's schema to get actual config
 	// For now, return default configuration
 	return retrieval.EmbeddingConfig{
-		Model:      "text2vec-openai",  // Default model - could be detected from schema
-		Dimensions: 1536,               // Default OpenAI dimensions - could be detected
-		Provider:   "weaviate",         // Provider is Weaviate itself
+		Model:      "text2vec-openai", // Default model - could be detected from schema
+		Dimensions: 1536,              // Default OpenAI dimensions - could be detected
+		Provider:   "weaviate",        // Provider is Weaviate itself
 	}
 }
 

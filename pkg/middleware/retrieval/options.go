@@ -13,10 +13,12 @@ type SearchOptions struct {
 	StrategyProcessing StrategyProcessingMode `json:"strategy_processing,omitempty"` // How to apply strategies (default: StrategyAuto)
 
 	// Diversification options (for StrategyDiverse)
-	DiversityLambda     *float64 `json:"diversity_lambda,omitempty"`      // MMR balance parameter (0-1, default: 0.5)
-	CandidatesMultipler *float64 `json:"candidates_multiplier,omitempty"` // Multiplier for candidates limit (default: 2.0)
-	MaxDiverseResults   *int     `json:"max_diverse_results,omitempty"`   // Max results for MMR (default: 10)
-	DiversityStrategy   *string  `json:"diversity_strategy,omitempty"`    // Strategy for native diversification (default: "mmr")
+	DiversityLambda     *float64            `json:"diversity_lambda,omitempty"`      // MMR balance parameter (0-1, default: 0.5)
+	SimilarityAlgorithm SimilarityAlgorithm `json:"similarity_algorithm,omitempty"`  // Algorithm for content similarity (default: CosineSimilarity)
+	AdaptiveAlgorithm   *bool               `json:"adaptive_algorithm,omitempty"`    // Auto-select best algorithm based on content (default: false)
+	CandidatesMultipler *float64            `json:"candidates_multiplier,omitempty"` // Multiplier for candidates limit (default: 2.0)
+	MaxDiverseResults   *int                `json:"max_diverse_results,omitempty"`   // Max results for MMR (default: 10)
+	DiversityStrategy   *string             `json:"diversity_strategy,omitempty"`    // Strategy for native diversification (default: "mmr")
 
 	// Reranking options (for StrategyRelevant with native support)
 	RerankMultiplier *float64 `json:"rerank_multiplier,omitempty"` // Multiplier for rerank candidates (default: 2.0)
@@ -43,11 +45,14 @@ type EmbeddingProvider interface {
 type StrategyProcessingMode string
 
 const (
-	// Strategy processing modes
-	StrategyAuto   StrategyProcessingMode = "auto"   // Use native if available, otherwise post-search (default)
-	StrategyNative StrategyProcessingMode = "native" // Use native DB processing only, fail if not available
-	StrategyPost   StrategyProcessingMode = "post"   // Use post-search processing only, skip native
-	StrategyBoth   StrategyProcessingMode = "both"   // Use both native AND post-search processing
+	// StrategyAuto uses native if available, otherwise post-search (default)
+	StrategyAuto StrategyProcessingMode = "auto"
+	// StrategyNative uses native DB processing only, fail if not available
+	StrategyNative StrategyProcessingMode = "native"
+	// StrategyPost uses post-search processing only, skip native
+	StrategyPost StrategyProcessingMode = "post"
+	// StrategyBoth uses both native AND post-search processing
+	StrategyBoth StrategyProcessingMode = "both"
 )
 
 // Default configuration values
@@ -132,4 +137,20 @@ func (opts *SearchOptions) GetStrategyProcessing() StrategyProcessingMode {
 		return opts.StrategyProcessing
 	}
 	return StrategyAuto
+}
+
+// GetSimilarityAlgorithm returns the configured similarity algorithm or default
+func (opts *SearchOptions) GetSimilarityAlgorithm() SimilarityAlgorithm {
+	if opts.SimilarityAlgorithm != "" {
+		return opts.SimilarityAlgorithm
+	}
+	return CosineSimilarity
+}
+
+// GetAdaptiveAlgorithm returns the configured adaptive algorithm setting or default
+func (opts *SearchOptions) GetAdaptiveAlgorithm() bool {
+	if opts.AdaptiveAlgorithm != nil {
+		return *opts.AdaptiveAlgorithm
+	}
+	return false
 }

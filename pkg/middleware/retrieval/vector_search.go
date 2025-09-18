@@ -11,6 +11,22 @@ import (
 	"github.com/hbollon/go-edlib"
 )
 
+// SimilarityAlgorithm defines available similarity algorithms
+type SimilarityAlgorithm string
+
+const (
+	// CosineSimilarity uses n-gram cosine similarity for document comparison
+	CosineSimilarity SimilarityAlgorithm = "cosine"
+	// JaccardSimilarity uses Jaccard index for word-level document comparison
+	JaccardSimilarity SimilarityAlgorithm = "jaccard"
+	// JaroWinklerSimilarity uses Jaro-Winkler distance for string similarity
+	JaroWinklerSimilarity SimilarityAlgorithm = "jaro-winkler"
+	// SorensenDiceSimilarity uses Sorensen-Dice coefficient for document comparison
+	SorensenDiceSimilarity SimilarityAlgorithm = "sorensen-dice"
+	// HybridSimilarity combines multiple algorithms for robust similarity calculation
+	HybridSimilarity SimilarityAlgorithm = "hybrid"
+)
+
 // VectorSearch creates a vector similarity search middleware with optional context building.
 //
 // Input: string query text
@@ -79,6 +95,42 @@ func VectorSearch(store VectorStore, opts *SearchOptions) calque.Handler {
 
 		return calque.Write(w, context)
 	})
+}
+
+// handleEmbeddingForQuery determines how to handle embedding generation based on store capabilities
+func handleEmbeddingForQuery(ctx context.Context, store VectorStore, query *SearchQuery, opts *SearchOptions) error {
+	// Check if store supports auto-embedding (like Weaviate)
+	if autoEmbedder, ok := store.(AutoEmbeddingCapable); ok && autoEmbedder.SupportsAutoEmbedding() {
+		// Store handles embeddings automatically - no vector needed in query
+		// The store will generate embeddings from query.Text internally
+		return nil
+	}
+
+	// Check if store can generate embeddings (like Qdrant with external service)
+	if embedder, ok := store.(EmbeddingCapable); ok {
+		// Use store's embedding capability
+		vector, err := embedder.GetEmbedding(ctx, query.Text)
+		if err != nil {
+			return fmt.Errorf("failed to generate embedding using store capability: %w", err)
+		}
+		query.Vector = vector
+		return nil
+	}
+
+	// Check if user provided custom embedding provider in options
+	if opts.EmbeddingProvider != nil {
+		// Use custom embedding provider
+		vector, err := opts.EmbeddingProvider.Embed(ctx, query.Text)
+		if err != nil {
+			return fmt.Errorf("failed to generate embedding using custom provider: %w", err)
+		}
+		query.Vector = vector
+		return nil
+	}
+
+	// No embedding capability available - let store handle text-based search if supported
+	// Some stores might support text search without embeddings
+	return nil
 }
 
 // strategySearch executes search using native capabilities when available
@@ -272,6 +324,12 @@ func selectDiverse(documents []Document, opts *SearchOptions) []Document {
 		return documents
 	}
 
+	// Determine similarity algorithm
+	algorithm := opts.GetSimilarityAlgorithm()
+	if opts.GetAdaptiveAlgorithm() {
+		algorithm = selectOptimalSimilarity(documents)
+	}
+
 	// MMR algorithm: balance relevance and diversity
 	lambda := opts.GetDiversityLambda()
 	maxResults := min(len(documents), opts.GetMaxDiverseResults())
@@ -295,7 +353,7 @@ func selectDiverse(documents []Document, opts *SearchOptions) []Document {
 			// Find maximum similarity to any selected document
 			maxSimilarity := 0.0
 			for _, selected := range selected {
-				similarity := contentSimilarity(candidate.Content, selected.Content)
+				similarity := contentSimilarity(candidate.Content, selected.Content, algorithm)
 				if similarity > maxSimilarity {
 					maxSimilarity = similarity
 				}
@@ -318,12 +376,120 @@ func selectDiverse(documents []Document, opts *SearchOptions) []Document {
 	return selected
 }
 
-// contentSimilarity provides accurate content similarity using cosine similarity
-func contentSimilarity(a, b string) float64 {
-	// Use cosine similarity with 2-grams for better semantic comparison
-	// 2-grams work well for document-level text similarity
-	similarity := edlib.CosineSimilarity(a, b, 2)
-	return float64(similarity)
+// selectOptimalSimilarity chooses best algorithm based on document properties
+func selectOptimalSimilarity(docs []Document) SimilarityAlgorithm {
+	if len(docs) == 0 {
+		return CosineSimilarity
+	}
+
+	// Analyze document characteristics
+	avgLength := calculateAverageLength(docs)
+	vocabularyOverlap := calculateVocabularyOverlap(docs, 25)
+
+	switch {
+	case avgLength < 100: // Short documents
+		return JaccardSimilarity // Better for keyword matching
+	case vocabularyOverlap > 0.8: // High vocabulary overlap
+		return CosineSimilarity // Better for semantic similarity
+	case avgLength > 1000: // Long documents
+		return HybridSimilarity // Combine approaches
+	default:
+		return SorensenDiceSimilarity // Balanced approach
+	}
+}
+
+// calculateAverageLength computes the average character length of documents
+func calculateAverageLength(docs []Document) float64 {
+	if len(docs) == 0 {
+		return 0
+	}
+
+	totalLength := 0
+	for _, doc := range docs {
+		totalLength += len(doc.Content)
+	}
+
+	return float64(totalLength) / float64(len(docs))
+}
+
+// calculateVocabularyOverlap measures vocabulary similarity across documents
+func calculateVocabularyOverlap(docs []Document, sampleSize int) float64 {
+	if len(docs) < 2 {
+		return 0.0
+	}
+
+	// Adaptive sample size based on document count
+	if sampleSize <= 0 {
+		sampleSize = min(100, 1000/len(docs)) // Reasonable default
+	}
+
+	wordDocCount := make(map[string]int, sampleSize*len(docs)/2)
+	totalWords := 0
+
+	for _, doc := range docs {
+		words := strings.Fields(strings.ToLower(doc.Content))
+		if len(words) == 0 {
+			continue
+		}
+
+		// Deterministic sampling - every nth word
+		step := max(1, len(words)/sampleSize)
+		docWords := make(map[string]bool, sampleSize)
+
+		for i := 0; i < len(words) && len(docWords) < sampleSize; i += step {
+			word := words[i]
+			if !docWords[word] {
+				docWords[word] = true
+				wordDocCount[word]++
+				totalWords++
+			}
+		}
+	}
+
+	// Count words appearing in multiple documents
+	sharedWords := 0
+	for _, count := range wordDocCount {
+		if count > 1 {
+			sharedWords++
+		}
+	}
+
+	uniqueWords := len(wordDocCount)
+	if uniqueWords == 0 {
+		return 0.0
+	}
+
+	return float64(sharedWords) / float64(uniqueWords)
+}
+
+// contentSimilarity provides accurate content similarity with algorithm selection
+func contentSimilarity(a, b string, algorithm SimilarityAlgorithm) float64 {
+	switch algorithm {
+	case JaccardSimilarity:
+		// Use word-level splitting (split=0) for document similarity
+		return float64(edlib.JaccardSimilarity(a, b, 0))
+	case CosineSimilarity:
+		return float64(edlib.CosineSimilarity(a, b, 2)) // 2-grams
+	case JaroWinklerSimilarity:
+		sim := edlib.JaroWinklerSimilarity(a, b)
+		return float64(1.0 - sim) // Convert distance to similarity
+	case SorensenDiceSimilarity:
+		// Use word-level splitting (split=0) for document similarity
+		return float64(edlib.SorensenDiceCoefficient(a, b, 0))
+	case HybridSimilarity:
+		return hybridSimilarity(a, b)
+	default:
+		return float64(edlib.CosineSimilarity(a, b, 2))
+	}
+}
+
+// Hybrid approach combining multiple algorithms
+func hybridSimilarity(a, b string) float64 {
+	jaccard := edlib.JaccardSimilarity(a, b, 0) // Word-level splitting
+	cosine := edlib.CosineSimilarity(a, b, 2)   // 2-grams
+
+	// Weight semantic (cosine) more than lexical (jaccard) for documents
+	return float64(0.7*cosine + 0.3*jaccard)
 }
 
 // truncateDocuments truncates document content to specified word limit (fallback)
@@ -346,40 +512,4 @@ func estimateTokens(text string, opts *SearchOptions) int {
 	words := strings.Fields(text)
 	ratio := opts.GetTokenEstimationRatio()
 	return int(float64(len(words)) * ratio)
-}
-
-// handleEmbeddingForQuery determines how to handle embedding generation based on store capabilities
-func handleEmbeddingForQuery(ctx context.Context, store VectorStore, query *SearchQuery, opts *SearchOptions) error {
-	// Check if store supports auto-embedding (like Weaviate)
-	if autoEmbedder, ok := store.(AutoEmbeddingCapable); ok && autoEmbedder.SupportsAutoEmbedding() {
-		// Store handles embeddings automatically - no vector needed in query
-		// The store will generate embeddings from query.Text internally
-		return nil
-	}
-
-	// Check if store can generate embeddings (like Qdrant with external service)
-	if embedder, ok := store.(EmbeddingCapable); ok {
-		// Use store's embedding capability
-		vector, err := embedder.GetEmbedding(ctx, query.Text)
-		if err != nil {
-			return fmt.Errorf("failed to generate embedding using store capability: %w", err)
-		}
-		query.Vector = vector
-		return nil
-	}
-
-	// Check if user provided custom embedding provider in options
-	if opts.EmbeddingProvider != nil {
-		// Use custom embedding provider
-		vector, err := opts.EmbeddingProvider.Embed(ctx, query.Text)
-		if err != nil {
-			return fmt.Errorf("failed to generate embedding using custom provider: %w", err)
-		}
-		query.Vector = vector
-		return nil
-	}
-
-	// No embedding capability available - let store handle text-based search if supported
-	// Some stores might support text search without embeddings
-	return nil
 }
