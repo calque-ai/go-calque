@@ -1,0 +1,185 @@
+package helpers
+
+import (
+	"errors"
+	"testing"
+)
+
+func TestWrapError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		message  string
+		expected string
+		isNil    bool
+	}{
+		{
+			name:     "wrap non-nil error",
+			err:      errors.New("original error"),
+			message:  "failed to process",
+			expected: "failed to process: original error",
+			isNil:    false,
+		},
+		{
+			name:     "wrap nil error",
+			err:      nil,
+			message:  "failed to process",
+			expected: "",
+			isNil:    true,
+		},
+		{
+			name:     "wrap with empty message",
+			err:      errors.New("original error"),
+			message:  "",
+			expected: ": original error",
+			isNil:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := WrapError(tt.err, tt.message)
+
+			if tt.isNil {
+				if result != nil {
+					t.Errorf("WrapError() = %v, want nil", result)
+				}
+				return
+			}
+
+			if result == nil {
+				t.Fatal("WrapError() = nil, want non-nil error")
+			}
+
+			if result.Error() != tt.expected {
+				t.Errorf("WrapError() = %q, want %q", result.Error(), tt.expected)
+			}
+
+			// Test that the original error can be unwrapped
+			if tt.err != nil && !errors.Is(result, tt.err) {
+				t.Error("WrapError() should preserve original error for errors.Is()")
+			}
+		})
+	}
+}
+
+func TestWrapErrorf(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		format   string
+		args     []interface{}
+		expected string
+		isNil    bool
+	}{
+		{
+			name:     "wrap with formatted message",
+			err:      errors.New("connection failed"),
+			format:   "failed to connect to %s service",
+			args:     []interface{}{"database"},
+			expected: "failed to connect to database service: connection failed",
+			isNil:    false,
+		},
+		{
+			name:     "wrap nil error",
+			err:      nil,
+			format:   "failed to connect to %s service",
+			args:     []interface{}{"database"},
+			expected: "",
+			isNil:    true,
+		},
+		{
+			name:     "wrap with multiple args",
+			err:      errors.New("not found"),
+			format:   "user %d in organization %s not found",
+			args:     []interface{}{123, "acme"},
+			expected: "user 123 in organization acme not found: not found",
+			isNil:    false,
+		},
+		{
+			name:     "wrap with no args",
+			err:      errors.New("timeout"),
+			format:   "operation timed out",
+			args:     []interface{}{},
+			expected: "operation timed out: timeout",
+			isNil:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := WrapErrorf(tt.err, tt.format, tt.args...)
+
+			if tt.isNil {
+				if result != nil {
+					t.Errorf("WrapErrorf() = %v, want nil", result)
+				}
+				return
+			}
+
+			if result == nil {
+				t.Fatal("WrapErrorf() = nil, want non-nil error")
+			}
+
+			if result.Error() != tt.expected {
+				t.Errorf("WrapErrorf() = %q, want %q", result.Error(), tt.expected)
+			}
+
+			// Test that the original error can be unwrapped
+			if tt.err != nil && !errors.Is(result, tt.err) {
+				t.Error("WrapErrorf() should preserve original error for errors.Is()")
+			}
+		})
+	}
+}
+
+func TestNewError(t *testing.T) {
+	tests := []struct {
+		name     string
+		format   string
+		args     []interface{}
+		expected string
+	}{
+		{
+			name:     "simple message",
+			format:   "something went wrong",
+			args:     []interface{}{},
+			expected: "something went wrong",
+		},
+		{
+			name:     "formatted message",
+			format:   "user %d not found",
+			args:     []interface{}{123},
+			expected: "user 123 not found",
+		},
+		{
+			name:     "multiple args",
+			format:   "failed to connect to %s:%d",
+			args:     []interface{}{"localhost", 8080},
+			expected: "failed to connect to localhost:8080",
+		},
+		{
+			name:     "empty message",
+			format:   "",
+			args:     []interface{}{},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := NewError(tt.format, tt.args...)
+
+			if result == nil {
+				t.Fatal("NewError() = nil, want non-nil error")
+			}
+
+			if result.Error() != tt.expected {
+				t.Errorf("NewError() = %q, want %q", result.Error(), tt.expected)
+			}
+		})
+	}
+}
