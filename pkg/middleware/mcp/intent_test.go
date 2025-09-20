@@ -1,44 +1,69 @@
 package mcp
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+	"text/template"
 
-	googleschema "github.com/google/jsonschema-go/jsonschema"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/invopop/jsonschema"
 )
+
+// parseToolSelectionResponse extracts the tool selection from structured LLM JSON response (test helper)
+func parseToolSelectionResponse(llmResponse string) (*ToolSelectionResponse, error) {
+	var response ToolSelectionResponse
+
+	// Clean up any potential JSON wrapper or extra text
+	responseText := strings.TrimSpace(llmResponse)
+
+	// Try to find JSON in the response (in case LLM adds extra text)
+	jsonStart := strings.Index(responseText, "{")
+	jsonEnd := strings.LastIndex(responseText, "}") + 1
+
+	if jsonStart >= 0 && jsonEnd > jsonStart {
+		responseText = responseText[jsonStart:jsonEnd]
+	}
+
+	if err := json.Unmarshal([]byte(responseText), &response); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+	}
+
+	// Handle null/empty tool selection
+	if response.SelectedTool == "null" || response.SelectedTool == "none" {
+		response.SelectedTool = ""
+	}
+
+	return &response, nil
+}
 
 func TestBuildStructuredToolSelectionPrompt(t *testing.T) {
 	t.Parallel()
 
 	// Create test tools
-	tools := []*MCPTool{
+	tools := []*Tool{
 		{
-			Tool: &mcp.Tool{
-				Name:        "search",
-				Description: "Search for information",
-				InputSchema: &googleschema.Schema{
-					Type:        "object",
-					Description: "Search parameters",
-				},
+			Name:        "search",
+			Description: "Search for information",
+			InputSchema: &jsonschema.Schema{
+				Type:        "object",
+				Description: "Search parameters",
 			},
 		},
 		{
-			Tool: &mcp.Tool{
-				Name:        "connect",
-				Description: "Connect to server",
-				InputSchema: &googleschema.Schema{
-					Type:        "object",
-					Description: "Connection parameters",
-				},
+			Name:        "connect",
+			Description: "Connect to server",
+			InputSchema: &jsonschema.Schema{
+				Type:        "object",
+				Description: "Connection parameters",
 			},
 		},
 	}
 
 	tests := []struct {
-		name        string
-		userInput   string
-		tools       []*MCPTool
+		name          string
+		userInput     string
+		tools         []*Tool
 		shouldContain []string
 	}{
 		{
@@ -52,19 +77,17 @@ func TestBuildStructuredToolSelectionPrompt(t *testing.T) {
 				"Search for information",
 				"Connect to server",
 				"I want to search for golang",
-				"JSON object",
-				"selected_tool",
-				"confidence",
+				"Return valid JSON only",
 			},
 		},
 		{
 			name:      "empty tools",
 			userInput: "test input",
-			tools:     []*MCPTool{},
+			tools:     []*Tool{},
 			shouldContain: []string{
 				"tool selection assistant",
 				"test input",
-				"JSON object",
+				"Return valid JSON only",
 			},
 		},
 		{
@@ -83,7 +106,19 @@ func TestBuildStructuredToolSelectionPrompt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			prompt := buildStructuredToolSelectionPrompt(tt.userInput, tt.tools)
+			// Build prompt using template
+			tmpl, err := template.New("test").Parse(toolSelectionPromptTemplate)
+			if err != nil {
+				t.Fatalf("Failed to parse template: %v", err)
+			}
+
+			templateData := getToolSelectionTemplateData(tt.userInput, tt.tools)
+			var promptBuilder strings.Builder
+			err = tmpl.Execute(&promptBuilder, templateData)
+			if err != nil {
+				t.Fatalf("Failed to execute template: %v", err)
+			}
+			prompt := promptBuilder.String()
 
 			for _, expected := range tt.shouldContain {
 				if !strings.Contains(prompt, expected) {
@@ -104,7 +139,7 @@ func TestSummarizeSchema(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		schema   *googleschema.Schema
+		schema   *jsonschema.Schema
 		expected string
 	}{
 		{
@@ -114,7 +149,7 @@ func TestSummarizeSchema(t *testing.T) {
 		},
 		{
 			name: "schema with description",
-			schema: &googleschema.Schema{
+			schema: &jsonschema.Schema{
 				Description: "Custom description",
 				Type:        "object",
 			},
@@ -122,21 +157,21 @@ func TestSummarizeSchema(t *testing.T) {
 		},
 		{
 			name: "schema with type only",
-			schema: &googleschema.Schema{
+			schema: &jsonschema.Schema{
 				Type: "string",
 			},
 			expected: "string",
 		},
 		{
 			name: "schema with object type",
-			schema: &googleschema.Schema{
+			schema: &jsonschema.Schema{
 				Type: "object",
 			},
 			expected: "object",
 		},
 		{
 			name:     "empty schema",
-			schema:   &googleschema.Schema{},
+			schema:   &jsonschema.Schema{},
 			expected: "structured data",
 		},
 	}
@@ -277,22 +312,22 @@ func TestValidateToolSelection(t *testing.T) {
 	t.Parallel()
 
 	// Create test tools
-	tools := []*MCPTool{
+	tools := []*Tool{
 		{
-			Tool: &mcp.Tool{Name: "search"},
+			Name: "search",
 		},
 		{
-			Tool: &mcp.Tool{Name: "connect"},
+			Name: "connect",
 		},
 		{
-			Tool: &mcp.Tool{Name: "analyze_data"},
+			Name: "analyze_data",
 		},
 	}
 
 	tests := []struct {
 		name         string
 		selectedTool string
-		tools        []*MCPTool
+		tools        []*Tool
 		expected     string
 	}{
 		{
@@ -340,7 +375,7 @@ func TestValidateToolSelection(t *testing.T) {
 		{
 			name:         "empty tools",
 			selectedTool: "search",
-			tools:        []*MCPTool{},
+			tools:        []*Tool{},
 			expected:     "",
 		},
 		{

@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -10,20 +9,6 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-// Mock AI client for testing
-type mockAIClient struct {
-	response    string
-	shouldError bool
-}
-
-func (m *mockAIClient) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
-	if m.shouldError {
-		return errors.New("mock LLM error")
-	}
-	_, err := w.Data.Write([]byte(m.response))
-	return err
-}
 
 func TestDetectHandler(t *testing.T) {
 	t.Parallel()
@@ -131,9 +116,12 @@ func TestDetectHandler(t *testing.T) {
 			}
 
 			// Setup mock LLM
-			mockLLM := &mockAIClient{
-				response:    tt.llmResponse,
-				shouldError: tt.llmShouldError,
+			var mockLLM ai.Client
+			if tt.llmShouldError {
+				mockLLM = ai.NewMockClientWithError("mock LLM error")
+			} else {
+				// Use the exact response from the test case
+				mockLLM = ai.NewMockClient(tt.llmResponse)
 			}
 
 			// Create handler
@@ -252,21 +240,27 @@ func TestHasSelectedTool(t *testing.T) {
 
 // Helper function to create test context with mock tools
 func createTestContext() context.Context {
-	tools := []*MCPTool{
+	tools := []*Tool{
 		{
-			Tool: &mcp.Tool{
+			Name:        "search",
+			Description: "Search for information",
+			MCPTool: &mcp.Tool{
 				Name:        "search",
 				Description: "Search for information",
 			},
 		},
 		{
-			Tool: &mcp.Tool{
+			Name:        "connect",
+			Description: "Connect to server",
+			MCPTool: &mcp.Tool{
 				Name:        "connect",
 				Description: "Connect to server",
 			},
 		},
 		{
-			Tool: &mcp.Tool{
+			Name:        "analyze_data",
+			Description: "Analyze data",
+			MCPTool: &mcp.Tool{
 				Name:        "analyze_data",
 				Description: "Analyze data",
 			},

@@ -30,28 +30,28 @@ func TestExecuteHandler(t *testing.T) {
 			expectError:    false,
 		},
 		{
-			name:           "tool selected but not found",
-			input:          "search for something",
-			hasTools:       true,
-			selectedTool:   "nonexistent",
-			expectError:    true,
-			errorContains:  "not found in registry",
+			name:          "tool selected but not found",
+			input:         "search for something",
+			hasTools:      true,
+			selectedTool:  "nonexistent",
+			expectError:   true,
+			errorContains: "not found in registry",
 		},
 		{
-			name:           "tool selected but no tools in context",
-			input:          "search for something",
-			hasTools:       false,
-			selectedTool:   "search",
-			expectError:    true,
-			errorContains:  "not found in registry",
+			name:          "tool selected but no tools in context",
+			input:         "search for something",
+			hasTools:      false,
+			selectedTool:  "search",
+			expectError:   true,
+			errorContains: "not found in registry",
 		},
 		{
-			name:           "valid tool selected - execution attempted",
-			input:          "search for golang",
-			hasTools:       true,
-			selectedTool:   "search",
-			expectError:    true, // Will fail because we have no real client
-			errorContains:  "MCP client is nil", // Expected from nil client
+			name:          "valid tool selected - execution attempted",
+			input:         "search for golang",
+			hasTools:      true,
+			selectedTool:  "search",
+			expectError:   true,                // Will fail because we have no real client
+			errorContains: "MCP client is nil", // Expected from nil client
 		},
 		{
 			name:           "empty input with no tool selected",
@@ -198,16 +198,20 @@ func TestExecuteHandlerInputReading(t *testing.T) {
 
 // Helper function to create test context with mock tools for execute tests
 func createTestContextForExecute() context.Context {
-	tools := []*MCPTool{
+	tools := []*Tool{
 		{
-			Tool: &mcp.Tool{
+			Name:        "search",
+			Description: "Search for information",
+			MCPTool: &mcp.Tool{
 				Name:        "search",
 				Description: "Search for information",
 			},
 			Client: nil, // Nil client will cause controlled errors
 		},
 		{
-			Tool: &mcp.Tool{
+			Name:        "connect",
+			Description: "Connect to server",
+			MCPTool: &mcp.Tool{
 				Name:        "connect",
 				Description: "Connect to server",
 			},

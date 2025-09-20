@@ -2,10 +2,12 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/invopop/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -43,21 +45,21 @@ func Registry(client *Client) calque.Handler {
 			return client.handleError(fmt.Errorf("failed to list MCP tools: %w", err))
 		}
 
-		// Convert MCP tools to our MCPTool format
-		mcpTools := make([]*MCPTool, len(listResult.Tools))
+		// Convert MCP tools to our Tool format with schema conversion
+		mcpTools := make([]*Tool, len(listResult.Tools))
 		for i, tool := range listResult.Tools {
-			mcpTools[i] = &MCPTool{
-				Tool:   tool,
-				Client: client,
+			mcpTools[i] = &Tool{
+				MCPTool:     tool,
+				Client:      client,
+				InputSchema: convertGoogleSchemaToInvopop(tool.InputSchema),
+				Name:        tool.Name,
+				Description: tool.Description,
 			}
 		}
 
 		// Store tools in context (similar to tools.Registry)
-		contextWithTools := context.WithValue(req.Context, mcpToolsContextKey{}, mcpTools)
+		contextWithTools := context.WithValue(ctx, mcpToolsContextKey{}, mcpTools)
 		req.Context = contextWithTools
-
-		// Debug: Log discovered tools (minimal)
-		fmt.Printf("DEBUG: Discovered %d MCP tools\n", len(mcpTools))
 
 		// Pass input through unchanged
 		_, err = io.Copy(res.Data, req.Data)
@@ -68,8 +70,8 @@ func Registry(client *Client) calque.Handler {
 // GetTools retrieves MCP tools from the context.
 // Returns nil if no tools are registered.
 // This is the MCP equivalent of tools.GetTools().
-func GetTools(ctx context.Context) []*MCPTool {
-	if tools, ok := ctx.Value(mcpToolsContextKey{}).([]*MCPTool); ok {
+func GetTools(ctx context.Context) []*Tool {
+	if tools, ok := ctx.Value(mcpToolsContextKey{}).([]*Tool); ok {
 		return tools
 	}
 	return nil
@@ -78,14 +80,14 @@ func GetTools(ctx context.Context) []*MCPTool {
 // GetTool retrieves a specific MCP tool by name from the context.
 // Returns nil if the tool is not found.
 // This is the MCP equivalent of tools.GetTool().
-func GetTool(ctx context.Context, name string) *MCPTool {
+func GetTool(ctx context.Context, name string) *Tool {
 	tools := GetTools(ctx)
 	if tools == nil {
 		return nil
 	}
 
 	for _, tool := range tools {
-		if tool.Name() == name {
+		if tool.Name == name {
 			return tool
 		}
 	}
@@ -98,6 +100,29 @@ func HasTool(ctx context.Context, name string) bool {
 	return GetTool(ctx, name) != nil
 }
 
+// convertGoogleSchemaToInvopop converts a Google JSON Schema to invopop format
+// Both libraries implement JSON Schema spec, so we can marshal/unmarshal between them
+func convertGoogleSchemaToInvopop(googleSchema any) *jsonschema.Schema {
+	if googleSchema == nil {
+		return nil
+	}
+
+	// Marshal the Google schema to JSON bytes
+	schemaBytes, err := json.Marshal(googleSchema)
+	if err != nil {
+		return nil
+	}
+
+	// Unmarshal into invopop schema
+	var invopopSchema jsonschema.Schema
+	err = json.Unmarshal(schemaBytes, &invopopSchema)
+	if err != nil {
+		return nil
+	}
+
+	return &invopopSchema
+}
+
 // ListToolNames returns a slice of all MCP tool names available in the context.
 // This is the MCP equivalent of tools.ListToolNames().
 func ListToolNames(ctx context.Context) []string {
@@ -108,28 +133,7 @@ func ListToolNames(ctx context.Context) []string {
 
 	names := make([]string, len(tools))
 	for i, tool := range tools {
-		names[i] = tool.Name()
+		names[i] = tool.Name
 	}
 	return names
-}
-
-// ListTools returns metadata about all MCP tools available in the context.
-// Useful for generating tool descriptions for LLMs or documentation.
-// This is the MCP equivalent of tools.ListTools().
-func ListTools(ctx context.Context) []ToolInfo {
-	tools := GetTools(ctx)
-	if tools == nil {
-		return nil
-	}
-
-	infos := make([]ToolInfo, len(tools))
-	for i, tool := range tools {
-		infos[i] = ToolInfo{
-			Name:         tool.Name(),
-			Description:  tool.Description(),
-			InputSchema:  tool.InputSchema(),
-			OutputSchema: tool.OutputSchema(),
-		}
-	}
-	return infos
 }

@@ -2,29 +2,14 @@ package mcp
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
-	googleschema "github.com/google/jsonschema-go/jsonschema"
+	"github.com/invopop/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-// mockAIClientForIntegration is a specialized AI client for integration tests
-type mockAIClientForIntegration struct {
-	response    string
-	shouldError bool
-}
-
-func (m *mockAIClientForIntegration) Chat(_ *calque.Request, w *calque.Response, _ *ai.AgentOptions) error {
-	if m.shouldError {
-		return errors.New("mock LLM error")
-	}
-	_, err := w.Data.Write([]byte(m.response))
-	return err
-}
 
 func TestCompleteFlowIntegration(t *testing.T) {
 	t.Parallel()
@@ -104,10 +89,7 @@ func TestCompleteFlowIntegration(t *testing.T) {
 			ctx := createIntegrationTestContext()
 
 			// Create mock LLM
-			mockLLM := &mockAIClientForIntegration{
-				response:    tt.llmResponse,
-				shouldError: false,
-			}
+			mockLLM := ai.NewMockClient(tt.llmResponse)
 
 			// Step 1: Detection - Analyze intent and select tool
 			detectHandler := Detect(mockLLM)
@@ -140,23 +122,9 @@ func TestCompleteFlowIntegration(t *testing.T) {
 			err = executeHandler.ServeFlow(req2, res2)
 
 			if tt.expectExecution {
-				// Should attempt to execute the tool (will fail with nil client, but that's expected)
-				if err == nil {
-					t.Error("Expected execution to fail with nil client")
-				}
-				// Error should mention the selected tool or be related to nil client
-				if !strings.Contains(err.Error(), "panic") && !strings.Contains(err.Error(), "nil") && !strings.Contains(tt.expectedTool, "") {
-					t.Logf("Execution failed as expected with nil client: %v", err)
-				}
+				verifyExecutionAttempted(t, err)
 			} else {
-				// Should pass through without error
-				if err != nil {
-					t.Fatalf("Execution should not fail for pass-through: %v", err)
-				}
-
-				if executeOutput.String() != tt.input {
-					t.Errorf("Expected pass-through result %q, got %q", tt.input, executeOutput.String())
-				}
+				verifyPassThrough(t, err, executeOutput.String(), tt.input)
 			}
 
 			t.Logf("✅ %s", tt.description)
@@ -220,9 +188,11 @@ func TestFlowErrorHandling(t *testing.T) {
 			ctx := createIntegrationTestContext()
 
 			// Create mock LLM with potentially problematic response
-			mockLLM := &mockAIClientForIntegration{
-				response:    tt.llmResponse,
-				shouldError: tt.llmError,
+			var mockLLM ai.Client
+			if tt.llmError {
+				mockLLM = ai.NewMockClientWithError("mock LLM error")
+			} else {
+				mockLLM = ai.NewMockClient(tt.llmResponse)
 			}
 
 			// Test the complete flow
@@ -298,7 +268,7 @@ func TestMultipleToolsFromDifferentClients(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockLLM := &mockAIClientForIntegration{response: tt.llmResponse}
+			mockLLM := ai.NewMockClient(tt.llmResponse)
 
 			// Detection
 			detectHandler := Detect(mockLLM)
@@ -325,44 +295,40 @@ func TestMultipleToolsFromDifferentClients(t *testing.T) {
 // Helper functions for integration tests
 
 func createIntegrationTestContext() context.Context {
-	tools := []*MCPTool{
+	tools := []*Tool{
 		{
-			Tool: &mcp.Tool{
+			Name:        "search",
+			Description: "Search for information online",
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+			},
+			MCPTool: &mcp.Tool{
 				Name:        "search",
 				Description: "Search for information online",
-				InputSchema: &googleschema.Schema{
-					Type: "object",
-					Properties: map[string]*googleschema.Schema{
-						"query": {Type: "string", Description: "Search query"},
-					},
-				},
 			},
 			Client: nil, // Nil client will cause controlled errors in execution
 		},
 		{
-			Tool: &mcp.Tool{
+			Name:        "connect",
+			Description: "Connect to a remote server",
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+			},
+			MCPTool: &mcp.Tool{
 				Name:        "connect",
 				Description: "Connect to a remote server",
-				InputSchema: &googleschema.Schema{
-					Type: "object",
-					Properties: map[string]*googleschema.Schema{
-						"host": {Type: "string", Description: "Server hostname"},
-						"port": {Type: "integer", Description: "Server port"},
-					},
-				},
 			},
 			Client: nil,
 		},
 		{
-			Tool: &mcp.Tool{
+			Name:        "analyze",
+			Description: "Analyze data and generate insights",
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+			},
+			MCPTool: &mcp.Tool{
 				Name:        "analyze",
 				Description: "Analyze data and generate insights",
-				InputSchema: &googleschema.Schema{
-					Type: "object",
-					Properties: map[string]*googleschema.Schema{
-						"data": {Type: "string", Description: "Data to analyze"},
-					},
-				},
 			},
 			Client: nil,
 		},
@@ -373,19 +339,23 @@ func createIntegrationTestContext() context.Context {
 
 func createMultiClientTestContext() context.Context {
 	// Simulate tools from different MCP servers/clients
-	var allTools []*MCPTool
+	var allTools []*Tool
 
 	// Tools from "server 1"
-	server1Tools := []*MCPTool{
+	server1Tools := []*Tool{
 		{
-			Tool: &mcp.Tool{
+			Name:        "search",
+			Description: "Search engine tool",
+			MCPTool: &mcp.Tool{
 				Name:        "search",
 				Description: "Search engine tool",
 			},
 			Client: nil, // Mock client 1
 		},
 		{
-			Tool: &mcp.Tool{
+			Name:        "translate",
+			Description: "Translation tool",
+			MCPTool: &mcp.Tool{
 				Name:        "translate",
 				Description: "Translation tool",
 			},
@@ -394,16 +364,20 @@ func createMultiClientTestContext() context.Context {
 	}
 
 	// Tools from "server 2"
-	server2Tools := []*MCPTool{
+	server2Tools := []*Tool{
 		{
-			Tool: &mcp.Tool{
+			Name:        "deploy",
+			Description: "Deployment tool",
+			MCPTool: &mcp.Tool{
 				Name:        "deploy",
 				Description: "Deployment tool",
 			},
 			Client: nil, // Mock client 2
 		},
 		{
-			Tool: &mcp.Tool{
+			Name:        "monitor",
+			Description: "Monitoring tool",
+			MCPTool: &mcp.Tool{
 				Name:        "monitor",
 				Description: "Monitoring tool",
 			},
@@ -415,4 +389,28 @@ func createMultiClientTestContext() context.Context {
 	allTools = append(allTools, server2Tools...)
 
 	return context.WithValue(context.Background(), mcpToolsContextKey{}, allTools)
+}
+
+// verifyExecutionAttempted checks that tool execution was attempted and failed as expected
+func verifyExecutionAttempted(t *testing.T, err error) {
+	// Should attempt to execute the tool (will fail with nil client, but that's expected)
+	if err == nil {
+		t.Error("Expected execution to fail with nil client")
+	}
+	// Error should be related to nil client or panic
+	if !strings.Contains(err.Error(), "panic") && !strings.Contains(err.Error(), "nil") {
+		t.Logf("Execution failed as expected with nil client: %v", err)
+	}
+}
+
+// verifyPassThrough checks that input was passed through unchanged without error
+func verifyPassThrough(t *testing.T, err error, output, expectedInput string) {
+	// Should pass through without error
+	if err != nil {
+		t.Fatalf("Execution should not fail for pass-through: %v", err)
+	}
+
+	if output != expectedInput {
+		t.Errorf("Expected pass-through result %q, got %q", expectedInput, output)
+	}
 }

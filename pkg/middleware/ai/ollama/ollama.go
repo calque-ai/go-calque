@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -392,9 +393,7 @@ func (o *Client) applyChatConfig(req *api.ChatRequest, schema *ai.ResponseFormat
 
 	// Apply custom options (these override individual fields above)
 	if len(o.config.Options) > 0 {
-		for key, value := range o.config.Options {
-			req.Options[key] = value
-		}
+		maps.Copy(req.Options, o.config.Options)
 	}
 
 	// Apply response format - request override takes priority

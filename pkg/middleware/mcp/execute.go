@@ -45,11 +45,17 @@ func Execute() calque.Handler {
 			return fmt.Errorf("MCP tool '%s' not found in registry", selectedToolName)
 		}
 
-		// Check if we have extracted parameters from ExtractParams handler
-		extractedParams := GetExtractedParams(req.Context)
-		if extractedParams != nil {
+		// Check if we have parameter extraction response from ExtractParams handler
+		paramResponse := GetParameterExtractionResponse(req.Context)
+		if paramResponse != nil {
+			// Check if more information is needed from the user
+			if paramResponse.NeedsMoreInfo {
+				// Return the user prompt asking for missing information
+				return calque.Write(res, paramResponse.UserPrompt)
+			}
+
 			// Use extracted parameters - convert to JSON and create new request
-			paramsJSON, err := json.Marshal(extractedParams)
+			paramsJSON, err := json.Marshal(paramResponse.ExtractedParams)
 			if err != nil {
 				return fmt.Errorf("failed to marshal extracted parameters: %w", err)
 			}

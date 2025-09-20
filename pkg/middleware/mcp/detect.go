@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/convert"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
 
 // Detect creates a handler that uses LLM-based intent detection to select the appropriate MCP tool.
@@ -44,41 +46,26 @@ func Detect(llmClient ai.Client) calque.Handler {
 		// Get available MCP tools from Registry context
 		mcpTools := GetTools(req.Context)
 		if len(mcpTools) == 0 {
-			fmt.Println("DEBUG: No MCP tools available for detection")
 			// No tools available - just pass through
 			return calque.Write(res, userInput)
 		}
 
 		if strings.TrimSpace(userInput) == "" {
-			fmt.Println("DEBUG: Empty user input received")
 			// Empty input - just pass through
 			return calque.Write(res, userInput)
 		}
 
-		// Build structured LLM prompt with complete tool information including schemas
-		prompt := buildStructuredToolSelectionPrompt(userInput, mcpTools)
+		// Use prompt template pipeline for tool selection
+		templateData := getToolSelectionTemplateData(userInput, mcpTools)
 
-		// Use LLM with structured output to select the most appropriate tool
-		promptReq := calque.NewRequest(req.Context, strings.NewReader(prompt))
-		var responseBuilder strings.Builder
-		promptRes := calque.NewResponse(&responseBuilder)
+		pipe := calque.NewFlow()
+		pipe.Use(prompt.Template(toolSelectionPromptTemplate, templateData)).
+			Use(ai.Agent(llmClient, ai.WithSchemaFor[ToolSelectionResponse]()))
 
-		// Force structured JSON response using schema
-		opts := &ai.AgentOptions{}
-		ai.WithSchemaFor[ToolSelectionResponse]().Apply(opts)
-
-		if err := llmClient.Chat(promptReq, promptRes, opts); err != nil {
-			// LLM error - just pass through without tool selection
-			return calque.Write(res, userInput)
-		}
-
-		// Get the LLM response
-		llmResponse := responseBuilder.String()
-
-		// Parse structured JSON response
-		selectionResponse, err := parseToolSelectionResponse(llmResponse)
+		var selectionResponse ToolSelectionResponse
+		err := pipe.Run(req.Context, userInput, convert.FromJSON(&selectionResponse))
 		if err != nil {
-			// JSON parsing error - just pass through without tool selection
+			// Pipeline error - just pass through without tool selection
 			return calque.Write(res, userInput)
 		}
 
@@ -86,9 +73,6 @@ func Detect(llmClient ai.Client) calque.Handler {
 		validatedTool := validateToolSelection(selectionResponse.SelectedTool, mcpTools)
 
 		if validatedTool != "" {
-			// Debug: Log successful tool selection
-			fmt.Printf("DEBUG: Selected tool '%s' for input: %s\n", validatedTool, userInput)
-
 			// Store selected tool in context for Execute handler
 			contextWithTool := context.WithValue(req.Context, selectedToolContextKey{}, validatedTool)
 			req.Context = contextWithTool
