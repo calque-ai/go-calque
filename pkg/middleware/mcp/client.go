@@ -36,6 +36,7 @@ type Client struct {
 	progressCallbacks map[string][]func(*ProgressNotificationParams)
 	subscriptions     map[string]func(*ResourceUpdatedNotificationParams)
 	completionEnabled bool
+	env               map[string]string
 	mu                sync.RWMutex
 }
 
