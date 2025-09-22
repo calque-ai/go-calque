@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"net/http"
 	"os/exec"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -29,6 +30,16 @@ func NewStdio(command string, args []string, opts ...Option) (*Client, error) {
 
 	// Create CommandTransport following MCP SDK pattern
 	cmd := exec.Command(command, args...)
+
+	// Set environment variables for stdio transport
+	if len(client.env) > 0 {
+		// Set only the client-specific environment variables
+		cmd.Env = make([]string, 0, len(client.env))
+		for key, value := range client.env {
+			cmd.Env = append(cmd.Env, key+"="+value)
+		}
+	}
+
 	client.transport = &mcp.CommandTransport{
 		Command: cmd,
 	}
@@ -58,9 +69,39 @@ func NewSSE(url string, opts ...Option) (*Client, error) {
 	client := newClient(mcpClient, opts...)
 
 	// Create SSEClientTransport following MCP SDK pattern
-	client.transport = &mcp.SSEClientTransport{
+	sseTransport := &mcp.SSEClientTransport{
 		Endpoint: url,
 	}
 
+	// Set custom HTTP client with environment variables as headers for SSE transport
+	if len(client.env) > 0 {
+		sseTransport.HTTPClient = &http.Client{
+			Transport: &envHeaderTransport{
+				base: http.DefaultTransport,
+				env:  client.env,
+			},
+		}
+	}
+
+	client.transport = sseTransport
+
 	return client, nil
+}
+
+// envHeaderTransport is an http.RoundTripper that adds environment variables as headers
+type envHeaderTransport struct {
+	base http.RoundTripper
+	env  map[string]string
+}
+
+func (t *envHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Clone the request to avoid modifying the original
+	reqCopy := req.Clone(req.Context())
+
+	// Add environment variables as headers
+	for key, value := range t.env {
+		reqCopy.Header.Set(key, value)
+	}
+
+	return t.base.RoundTrip(reqCopy)
 }

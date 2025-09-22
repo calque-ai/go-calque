@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"maps"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -108,5 +109,30 @@ func WithOnError(callback func(error)) Option {
 func WithCompletion(enabled bool) Option {
 	return func(c *Client) {
 		c.completionEnabled = enabled
+	}
+}
+
+// WithEnv configures environment variables for MCP transport.
+//
+// Input: map of environment variable names to values
+// Output: Option function
+// Behavior: Sets environment variables for transport-specific usage
+//
+// For stdio transports, these are passed as environment variables to the subprocess.
+// For SSE transports, these are passed as HTTP headers in requests.
+//
+// Example:
+//
+//	client, _ := mcp.NewStdio("python", []string{"server.py"},
+//		mcp.WithEnv(map[string]string{
+//			"API_KEY": "your-api-key",
+//			"DEBUG": "true",
+//		}))
+func WithEnv(env map[string]string) Option {
+	return func(c *Client) {
+		if c.env == nil {
+			c.env = make(map[string]string)
+		}
+		maps.Copy(c.env, env)
 	}
 }
