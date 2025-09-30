@@ -88,6 +88,48 @@ func NewSSE(url string, opts ...Option) (*Client, error) {
 	return client, nil
 }
 
+// NewStreamableHTTP creates an MCP client using streamable HTTP transport.
+//
+// Input: HTTP endpoint URL, optional configuration
+// Output: *Client, error
+// Behavior: Creates client that communicates via streamable HTTP
+//
+// Connects to an MCP server that exposes itself over HTTP using
+// the streamable HTTP transport defined by the 2025-03-26 version
+// of the MCP specification. This is the recommended transport for
+// HTTP-based MCP servers.
+//
+// Example:
+//
+//	client, err := mcp.NewStreamableHTTP("http://localhost:3000/mcp",
+//		mcp.WithCapabilities("tools"))
+//	if err != nil { return err }
+//	flow.Use(client.Tool("search", map[string]any{"query": "golang"}))
+func NewStreamableHTTP(url string, opts ...Option) (*Client, error) {
+	mcpClient := mcp.NewClient(defaultImplementation(), nil)
+
+	client := newClient(mcpClient, opts...)
+
+	// Create StreamableClientTransport following MCP SDK pattern
+	streamableTransport := &mcp.StreamableClientTransport{
+		Endpoint: url,
+	}
+
+	// Set custom HTTP client with environment variables as headers for streamable transport
+	if len(client.env) > 0 {
+		streamableTransport.HTTPClient = &http.Client{
+			Transport: &envHeaderTransport{
+				base: http.DefaultTransport,
+				env:  client.env,
+			},
+		}
+	}
+
+	client.transport = streamableTransport
+
+	return client, nil
+}
+
 // envHeaderTransport is an http.RoundTripper that adds environment variables as headers
 type envHeaderTransport struct {
 	base http.RoundTripper
