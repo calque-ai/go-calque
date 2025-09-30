@@ -530,15 +530,9 @@ func TestNewClient(t *testing.T) {
 			t.Errorf("Expected default implementation name, got '%s'", client.implementation.Name)
 		}
 
-		expectedCaps := []string{"tools", "resources", "prompts"}
+		expectedCaps := []string{} // No default capabilities
 		if len(client.capabilities) != len(expectedCaps) {
 			t.Errorf("Expected %d capabilities, got %d", len(expectedCaps), len(client.capabilities))
-		}
-
-		for i, cap := range expectedCaps {
-			if client.capabilities[i] != cap {
-				t.Errorf("Expected capability[%d] = '%s', got '%s'", i, cap, client.capabilities[i])
-			}
 		}
 
 		if client.progressCallbacks == nil {

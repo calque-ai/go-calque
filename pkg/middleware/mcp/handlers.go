@@ -81,24 +81,20 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 		// Collect all content and write in one operation for efficiency
 		var output strings.Builder
 
-		// Collect text content
-		for _, content := range result.Content {
-			if textContent, ok := content.(*mcp.TextContent); ok {
-				output.WriteString(textContent.Text)
-			}
-		}
-
-		// Add structured content if available
+		// Prioritize structured content over text content to avoid duplication
 		if result.StructuredContent != nil {
 			structuredJSON, err := json.Marshal(result.StructuredContent)
 			if err != nil {
 				return c.handleError(fmt.Errorf("failed to marshal structured content: %w", err))
 			}
-
-			if output.Len() > 0 {
-				output.WriteString("\n")
-			}
 			output.Write(structuredJSON)
+		} else {
+			// Only collect text content if no structured content is available
+			for _, content := range result.Content {
+				if textContent, ok := content.(*mcp.TextContent); ok {
+					output.WriteString(textContent.Text)
+				}
+			}
 		}
 
 		if output.Len() > 0 {

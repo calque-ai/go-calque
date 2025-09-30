@@ -54,7 +54,7 @@ func newClient(mcpClient *mcp.Client, opts ...Option) *Client {
 		client:            mcpClient,
 		timeout:           30 * time.Second,
 		implementation:    defaultImplementation(),
-		capabilities:      []string{"tools", "resources", "prompts"},
+		capabilities:      []string{}, // Empty by default - no required capabilities
 		progressCallbacks: make(map[string][]func(*ProgressNotificationParams)),
 		subscriptions:     make(map[string]func(*ResourceUpdatedNotificationParams)),
 		completionEnabled: false,
@@ -99,8 +99,13 @@ func (c *Client) connect(ctx context.Context) error {
 	return nil
 }
 
-// validateCapabilities checks if server supports required capabilities
+// validateCapabilities checks if server supports the specified capabilities
 func (c *Client) validateCapabilities(ctx context.Context) error {
+	// If no capabilities are specified, skip validation
+	if len(c.capabilities) == 0 {
+		return nil
+	}
+
 	// Check tools capability
 	if slices.Contains(c.capabilities, "tools") {
 		if _, err := c.session.ListTools(ctx, &mcp.ListToolsParams{}); err != nil {

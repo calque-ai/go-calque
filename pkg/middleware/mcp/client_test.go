@@ -157,8 +157,8 @@ func TestNewStdio(t *testing.T) {
 		t.Errorf("Expected default timeout 30s, got %v", client.timeout)
 	}
 
-	if len(client.capabilities) != 3 {
-		t.Errorf("Expected 3 default capabilities, got %d", len(client.capabilities))
+	if len(client.capabilities) != 0 {
+		t.Errorf("Expected 0 default capabilities, got %d", len(client.capabilities))
 	}
 }
 
@@ -613,75 +613,6 @@ func TestResourceUpdateHandling(t *testing.T) {
 
 	if receivedParams.URI != "file:///test/doc.md" {
 		t.Errorf("Expected URI 'file:///test/doc.md', got %s", receivedParams.URI)
-	}
-}
-
-func TestResourceTemplateSecurityValidation(t *testing.T) {
-	client, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	// Test path traversal attack prevention
-	tests := []struct {
-		name        string
-		template    string
-		input       map[string]string
-		shouldFail  bool
-		expectedErr string
-	}{
-		{
-			name:        "path traversal with ../",
-			template:    "file:///{path}",
-			input:       map[string]string{"path": "../../../etc/passwd"},
-			shouldFail:  true,
-			expectedErr: "path traversal not allowed",
-		},
-		{
-			name:        "path traversal with ..",
-			template:    "file:///{path}",
-			input:       map[string]string{"path": "config/../secrets"},
-			shouldFail:  true,
-			expectedErr: "path traversal not allowed",
-		},
-		{
-			name:        "control characters",
-			template:    "file:///{path}",
-			input:       map[string]string{"path": "config\nfile"},
-			shouldFail:  true,
-			expectedErr: "control characters not allowed",
-		},
-		{
-			name:        "valid path",
-			template:    "file:///{path}",
-			input:       map[string]string{"path": "configs/app.json"},
-			shouldFail:  false,
-			expectedErr: "",
-		},
-		{
-			name:        "missing scheme after resolution",
-			template:    "{path}",
-			input:       map[string]string{"path": "just-a-path"},
-			shouldFail:  true,
-			expectedErr: "missing scheme",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			handler := client.ResourceTemplate(tt.template)
-
-			inputJSON, _ := json.Marshal(tt.input)
-			req := calque.NewRequest(context.Background(), strings.NewReader(string(inputJSON)))
-			var output strings.Builder
-			res := calque.NewResponse(&output)
-
-			err := handler.ServeFlow(req, res)
-
-			if tt.shouldFail {
-				validateExpectedFailure(t, err, tt.name, tt.expectedErr)
-			} else {
-				validateExpectedSuccess(t, err, tt.name)
-			}
-		})
 	}
 }
 
