@@ -615,22 +615,3 @@ func TestResourceUpdateHandling(t *testing.T) {
 		t.Errorf("Expected URI 'file:///test/doc.md', got %s", receivedParams.URI)
 	}
 }
-
-func validateExpectedFailure(t *testing.T, err error, testName, expectedErr string) {
-	if err == nil {
-		t.Errorf("Expected test '%s' to fail but it succeeded", testName)
-	} else if !strings.Contains(err.Error(), expectedErr) {
-		t.Errorf("Expected error containing '%s', got: %v", expectedErr, err)
-	}
-}
-
-func validateExpectedSuccess(t *testing.T, err error, testName string) {
-	if err != nil {
-		// For valid path test, we expect URI validation to pass but resource might not exist
-		if testName == "valid path" && strings.Contains(err.Error(), "Resource not found") {
-			// This is expected - URI validation passed, resource just doesn't exist
-			return
-		}
-		t.Errorf("Expected test '%s' to succeed but got error: %v", testName, err)
-	}
-}

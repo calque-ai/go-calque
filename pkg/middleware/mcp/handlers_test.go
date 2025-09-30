@@ -369,11 +369,9 @@ func TestResourceTemplateSecurityValidation(t *testing.T) {
 				if tt.errorContains != "" && !strings.Contains(err.Error(), tt.errorContains) {
 					t.Errorf("Expected error to contain '%s', got: %s", tt.errorContains, err.Error())
 				}
-			} else {
-				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
-					return
-				}
+			} else if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
 			}
 
 			t.Logf("✅ %s", tt.description)
@@ -506,7 +504,7 @@ func setupMockClientWithTool(t *testing.T, toolName string, result *mcp.CallTool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        toolName,
 		Description: "Test tool",
-	}, func(_ context.Context, _ *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
+	}, func(_ context.Context, _ *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
 		if result.IsError {
 			return result, nil, fmt.Errorf("tool error")
 		}
