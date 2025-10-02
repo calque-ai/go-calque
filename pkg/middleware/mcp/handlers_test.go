@@ -168,6 +168,111 @@ func TestToolHandlerContentDeduplication(t *testing.T) {
 	}
 }
 
+// TestToolErrorMessageExtraction specifically tests the error message formatting fix
+// This test ensures that when an MCP tool returns an error, the error message
+// contains actual text content instead of memory addresses like [0x7feaf45974e0]
+func TestToolErrorMessageExtraction(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		errorContent  []mcp.Content
+		expectedError string
+		description   string
+	}{
+		{
+			name: "single text error content",
+			errorContent: []mcp.Content{
+				&mcp.TextContent{Text: "Authentication failed: invalid API key"},
+			},
+			expectedError: "Authentication failed: invalid API key",
+			description:   "Should extract single text error message correctly",
+		},
+		{
+			name: "multiple text error content pieces",
+			errorContent: []mcp.Content{
+				&mcp.TextContent{Text: "Error: "},
+				&mcp.TextContent{Text: "Database connection failed"},
+			},
+			expectedError: "Error: Database connection failed",
+			description:   "Should concatenate multiple text error pieces",
+		},
+		{
+			name:          "empty error content",
+			errorContent:  []mcp.Content{},
+			expectedError: "unknown error (no text content in error response)",
+			description:   "Should provide fallback message for empty error content",
+		},
+		{
+			name: "non-text error content",
+			errorContent: []mcp.Content{
+				// Simulate non-text content that would previously show as memory address
+				&mcp.ImageContent{},
+			},
+			expectedError: "unknown error (no text content in error response)",
+			description:   "Should provide fallback message when no text content is available",
+		},
+		{
+			name: "mixed text and non-text error content",
+			errorContent: []mcp.Content{
+				&mcp.TextContent{Text: "Validation failed: "},
+				&mcp.ImageContent{}, // This would previously show as memory address
+				&mcp.TextContent{Text: "Invalid file format"},
+			},
+			expectedError: "Validation failed: Invalid file format",
+			description:   "Should extract only text content and ignore non-text content",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Create mock client with tool that returns error with specific content
+			toolResult := &mcp.CallToolResult{
+				IsError: true,
+				Content: tt.errorContent,
+			}
+
+			client, cleanup := setupMockClientWithTool(t, "error_tool", toolResult)
+			defer cleanup()
+
+			// Create handler
+			handler := client.Tool("error_tool")
+
+			// Execute handler
+			req := calque.NewRequest(context.Background(), strings.NewReader(`{"test": "input"}`))
+			var output strings.Builder
+			res := calque.NewResponse(&output)
+
+			err := handler.ServeFlow(req, res)
+
+			// Should always return an error for IsError=true tools
+			if err == nil {
+				t.Fatalf("Expected error but got none")
+			}
+
+			// Check that error message contains the expected text (not memory addresses)
+			if !strings.Contains(err.Error(), tt.expectedError) {
+				t.Errorf("Expected error to contain '%s', got: %s", tt.expectedError, err.Error())
+			}
+
+			// Ensure error message doesn't contain memory addresses like [0x...]
+			if strings.Contains(err.Error(), "[0x") {
+				t.Errorf("Error message contains memory address instead of text: %s", err.Error())
+			}
+
+			// Verify the error message format
+			expectedPrefix := "tool error_tool returned error: "
+			if !strings.HasPrefix(err.Error(), expectedPrefix) {
+				t.Errorf("Expected error to start with '%s', got: %s", expectedPrefix, err.Error())
+			}
+
+			t.Logf("✅ %s - Error message: %s", tt.description, err.Error())
+		})
+	}
+}
+
 func TestResourceHandlerAugmentation(t *testing.T) {
 	t.Parallel()
 
@@ -505,9 +610,8 @@ func setupMockClientWithTool(t *testing.T, toolName string, result *mcp.CallTool
 		Name:        toolName,
 		Description: "Test tool",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
-		if result.IsError {
-			return result, nil, fmt.Errorf("tool error")
-		}
+		// Return the result as-is, whether it's an error or not
+		// When result.IsError is true, the MCP client should handle it properly
 		return result, nil, nil
 	})
 

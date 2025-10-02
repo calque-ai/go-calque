@@ -432,3 +432,160 @@ func TestMCPPerformanceCharacteristics(t *testing.T) {
 		t.Errorf("Expected output 'fast result', got '%s'", output)
 	}
 }
+
+// TestErrorSimulatorTool tests the error simulator tool with different error types
+func TestErrorSimulatorTool(t *testing.T) {
+	t.Parallel()
+
+	// Create mock MCP client
+	mockClient := NewMockMCPClient()
+
+	// Register the error simulator tool
+	mockClient.tools["error_simulator"] = func(input interface{}) (string, error) { //nolint:unparam
+		// Parse the input to determine error type and custom message
+		inputStr := fmt.Sprintf("%v", input)
+
+		// Extract custom message if present
+		var customMessage string
+		if strings.Contains(inputStr, "Missing required field") {
+			customMessage = "Missing required field 'username'"
+		}
+
+		// Return different errors based on the input to simulate the actual tool behavior
+		switch {
+		case strings.Contains(inputStr, "validation"):
+			if customMessage != "" {
+				return "", fmt.Errorf("Validation Error: %s", customMessage)
+			}
+			return "", fmt.Errorf("Validation Error: Invalid input parameters provided")
+		case strings.Contains(inputStr, "auth"):
+			return "", fmt.Errorf("Authentication Error: Invalid API key or insufficient permissions")
+		case strings.Contains(inputStr, "network"):
+			return "", fmt.Errorf("Network Error: Unable to connect to external service")
+		case strings.Contains(inputStr, "internal"):
+			return "", fmt.Errorf("Internal Server Error: An unexpected error occurred")
+		default:
+			return "", fmt.Errorf("Error: Unknown error type specified. Valid types: validation, auth, network, internal")
+		}
+	}
+
+	testCases := []struct {
+		name          string
+		input         string
+		expectedError string
+		description   string
+	}{
+		{
+			name:          "validation error",
+			input:         `{"error_type": "validation"}`,
+			expectedError: "Validation Error: Invalid input parameters provided",
+			description:   "Should return validation error message",
+		},
+		{
+			name:          "authentication error",
+			input:         `{"error_type": "auth"}`,
+			expectedError: "Authentication Error: Invalid API key or insufficient permissions",
+			description:   "Should return authentication error message",
+		},
+		{
+			name:          "network error",
+			input:         `{"error_type": "network"}`,
+			expectedError: "Network Error: Unable to connect to external service",
+			description:   "Should return network error message",
+		},
+		{
+			name:          "internal server error",
+			input:         `{"error_type": "internal"}`,
+			expectedError: "Internal Server Error: An unexpected error occurred",
+			description:   "Should return internal server error message",
+		},
+		{
+			name:          "unknown error type",
+			input:         `{"error_type": "unknown"}`,
+			expectedError: "Error: Unknown error type specified. Valid types: validation, auth, network, internal",
+			description:   "Should return unknown error type message",
+		},
+		{
+			name:          "custom validation error",
+			input:         `{"error_type": "validation", "message": "Missing required field 'username'"}`,
+			expectedError: "Validation Error: Missing required field 'username'",
+			description:   "Should return custom validation error message",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Create the flow
+			flow := calque.NewFlow()
+			flow.Use(mockClient.Tool("error_simulator"))
+
+			var output string
+
+			err := flow.Run(context.Background(), tc.input, &output)
+
+			// Should always return an error for error simulator
+			if err == nil {
+				t.Fatalf("Expected error but got none")
+			}
+
+			// Check that the error message contains the expected text
+			if !strings.Contains(err.Error(), tc.expectedError) {
+				t.Errorf("Expected error to contain '%s', got: %s", tc.expectedError, err.Error())
+			}
+
+			// Verify that the error message is readable and doesn't contain memory addresses
+			if strings.Contains(err.Error(), "[0x") {
+				t.Errorf("Error message contains memory address instead of text: %s", err.Error())
+			}
+
+			t.Logf("✅ %s - Error: %s", tc.description, err.Error())
+		})
+	}
+}
+
+// TestErrorSimulatorToolWithCustomMessage tests the error simulator with custom messages
+func TestErrorSimulatorToolWithCustomMessage(t *testing.T) {
+	t.Parallel()
+
+	// Create mock MCP client
+	mockClient := NewMockMCPClient()
+
+	// Register the error simulator tool with custom message handling
+	mockClient.tools["error_simulator"] = func(input interface{}) (string, error) { //nolint:unparam
+		inputStr := fmt.Sprintf("%v", input)
+
+		if strings.Contains(inputStr, "Database connection timeout") {
+			return "", fmt.Errorf("Network Error: Database connection timeout after 30 seconds")
+		}
+
+		return "", fmt.Errorf("Error: Test error with custom message")
+	}
+
+	// Create the flow
+	flow := calque.NewFlow()
+	flow.Use(mockClient.Tool("error_simulator"))
+
+	input := `{"error_type": "network", "message": "Database connection timeout after 30 seconds"}`
+	var output string
+
+	err := flow.Run(context.Background(), input, &output)
+
+	// Should return an error
+	if err == nil {
+		t.Fatalf("Expected error but got none")
+	}
+
+	expectedError := "Database connection timeout after 30 seconds"
+	if !strings.Contains(err.Error(), expectedError) {
+		t.Errorf("Expected error to contain '%s', got: %s", expectedError, err.Error())
+	}
+
+	// Verify that the error is properly formatted and readable
+	if strings.Contains(err.Error(), "[0x") {
+		t.Errorf("Error message contains memory address instead of text: %s", err.Error())
+	}
+
+	t.Logf("✅ Custom error message test passed - Error: %s", err.Error())
+}

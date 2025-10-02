@@ -75,7 +75,17 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 
 		// Handle tool errors
 		if result.IsError {
-			return c.handleError(fmt.Errorf("tool %s returned error: %v", name, result.Content))
+			var errorText strings.Builder
+			for _, content := range result.Content {
+				if textContent, ok := content.(*mcp.TextContent); ok {
+					errorText.WriteString(textContent.Text)
+				}
+			}
+			errorMessage := errorText.String()
+			if errorMessage == "" {
+				errorMessage = "unknown error (no text content in error response)"
+			}
+			return c.handleError(fmt.Errorf("tool %s returned error: %s", name, errorMessage))
 		}
 
 		// Collect all content and write in one operation for efficiency
