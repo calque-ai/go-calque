@@ -518,8 +518,8 @@ func TestNewClient(t *testing.T) {
 			t.Error("Expected client.client to be set to provided mcpClient")
 		}
 
-		if client.timeout != 30*time.Second {
-			t.Errorf("Expected default timeout 30s, got %v", client.timeout)
+		if client.timeout != 0*time.Second {
+			t.Errorf("Expected default timeout 0s, got %v", client.timeout)
 		}
 
 		if client.implementation == nil {

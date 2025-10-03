@@ -52,7 +52,7 @@ func defaultImplementation() *mcp.Implementation {
 func newClient(mcpClient *mcp.Client, opts ...Option) *Client {
 	client := &Client{
 		client:            mcpClient,
-		timeout:           30 * time.Second,
+		timeout:           0, // No timeout by default
 		implementation:    defaultImplementation(),
 		capabilities:      []string{}, // Empty by default - no required capabilities
 		progressCallbacks: make(map[string][]func(*ProgressNotificationParams)),

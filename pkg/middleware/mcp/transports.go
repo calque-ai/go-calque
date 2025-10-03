@@ -1,8 +1,10 @@
 package mcp
 
 import (
+	"net"
 	"net/http"
 	"os/exec"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -70,19 +72,9 @@ func NewSSE(url string, opts ...Option) (*Client, error) {
 
 	// Create SSEClientTransport following MCP SDK pattern
 	sseTransport := &mcp.SSEClientTransport{
-		Endpoint: url,
+		Endpoint:   url,
+		HTTPClient: createHTTPClientForStreaming(client.timeout, client.env),
 	}
-
-	// Set custom HTTP client with environment variables as headers for SSE transport
-	if len(client.env) > 0 {
-		sseTransport.HTTPClient = &http.Client{
-			Transport: &envHeaderTransport{
-				base: http.DefaultTransport,
-				env:  client.env,
-			},
-		}
-	}
-
 	client.transport = sseTransport
 
 	return client, nil
@@ -112,22 +104,45 @@ func NewStreamableHTTP(url string, opts ...Option) (*Client, error) {
 
 	// Create StreamableClientTransport following MCP SDK pattern
 	streamableTransport := &mcp.StreamableClientTransport{
-		Endpoint: url,
+		Endpoint:   url,
+		HTTPClient: createHTTPClientForStreaming(client.timeout, client.env),
 	}
-
-	// Set custom HTTP client with environment variables as headers for streamable transport
-	if len(client.env) > 0 {
-		streamableTransport.HTTPClient = &http.Client{
-			Transport: &envHeaderTransport{
-				base: http.DefaultTransport,
-				env:  client.env,
-			},
-		}
-	}
-
 	client.transport = streamableTransport
 
 	return client, nil
+}
+
+// createHTTPClientForStreaming creates an HTTP client optimized for streaming MCP operations
+func createHTTPClientForStreaming(timeout time.Duration, env map[string]string) *http.Client {
+	baseTransport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second, // Connection establishment timeout
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 0, // No timeout for streaming
+		ExpectContinueTimeout: 1 * time.Second,
+		IdleConnTimeout:       300 * time.Second, // 5 minutes
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   10,
+		DisableKeepAlives:     false,
+	}
+
+	// Apply the timeout to the HTTP client
+	httpClient := &http.Client{
+		Timeout:   timeout,
+		Transport: baseTransport,
+	}
+
+	// Set custom transport with environment variables as headers if needed
+	if len(env) > 0 {
+		httpClient.Transport = &envHeaderTransport{
+			base: baseTransport,
+			env:  env,
+		}
+	}
+
+	return httpClient
 }
 
 // envHeaderTransport is an http.RoundTripper that adds environment variables as headers

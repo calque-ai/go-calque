@@ -153,8 +153,8 @@ func TestNewStdio(t *testing.T) {
 		t.Fatal("Client is nil")
 	}
 
-	if client.timeout != 30*time.Second {
-		t.Errorf("Expected default timeout 30s, got %v", client.timeout)
+	if client.timeout != 0*time.Second {
+		t.Errorf("Expected default timeout 0s, got %v", client.timeout)
 	}
 
 	if len(client.capabilities) != 0 {
