@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/cache"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -335,7 +336,7 @@ func TestResourceHandlerAugmentation(t *testing.T) {
 					},
 				},
 			},
-			expectedOutput: "=== User Query ===\nShow me all configs\n\n=== Resource 1 ===\n{\"name\": \"myapp\"}\n\n=== Resource 2 ===\n{\"host\": \"localhost\"}\n\n",
+			expectedOutput: "=== User Query ===\nShow me all configs\n\n=== Resource 1.1 ===\n{\"name\": \"myapp\"}\n\n=== Resource 1.2 ===\n{\"host\": \"localhost\"}\n\n",
 			expectError:    false,
 			description:    "Should handle multiple resource contents",
 		},
@@ -731,4 +732,575 @@ func setupMockClientWithPrompt(t *testing.T, promptName string, result *mcp.GetP
 			client.session.Close()
 		}
 	}
+}
+
+func TestResourceHandlerCaching(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		resourceURI   string
+		input1        string
+		input2        string
+		expectedCalls int // How many times the MCP server should be called
+		description   string
+	}{
+		{
+			name:          "cache hit on identical input",
+			resourceURI:   "file:///docs/api.md",
+			input1:        "How do I use the API?",
+			input2:        "How do I use the API?",
+			expectedCalls: 1, // Should only call server once
+			description:   "Identical inputs should result in cache hit",
+		},
+		{
+			name:          "cache miss on different input",
+			resourceURI:   "file:///docs/api.md",
+			input1:        "How do I use the API?",
+			input2:        "What are the best practices?",
+			expectedCalls: 2, // Should call server twice
+			description:   "Different inputs should result in cache miss",
+		},
+		{
+			name:          "cache hit on empty input",
+			resourceURI:   "file:///docs/help.md",
+			input1:        "",
+			input2:        "",
+			expectedCalls: 1,
+			description:   "Empty inputs should cache correctly",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			callCount := 0
+			ctx := context.Background()
+			clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+			server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
+
+			server.AddResource(&mcp.Resource{
+				URI:         tt.resourceURI,
+				Name:        "Test Resource",
+				Description: "Test resource for caching",
+			}, func(_ context.Context, _ *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+				callCount++ // Track how many times server is called
+				return &mcp.ReadResourceResult{
+					Contents: []*mcp.ResourceContents{
+						{
+							URI:  tt.resourceURI,
+							Text: "API Documentation",
+						},
+					},
+				}, nil
+			})
+
+			// Start server
+			_, err := server.Connect(ctx, serverTransport, nil)
+			if err != nil {
+				t.Fatalf("Failed to start test server: %v", err)
+			}
+
+			// Create client with caching enabled
+			mcpClient := mcp.NewClient(defaultImplementation(), nil)
+			client := &Client{
+				client:            mcpClient,
+				transport:         clientTransport,
+				timeout:           30 * time.Second,
+				capabilities:      []string{"resources"},
+				implementation:    defaultImplementation(),
+				progressCallbacks: make(map[string][]func(*ProgressNotificationParams)),
+				subscriptions:     make(map[string]func(*ResourceUpdatedNotificationParams)),
+			}
+
+			// Apply caching with default config
+			cacheStore := cache.NewInMemoryStore()
+			cacheConfig := &CacheConfig{
+				ResourceTTL: 5 * time.Minute,
+			}
+			WithCache(cacheStore, cacheConfig)(client)
+
+			if err := client.connect(ctx); err != nil {
+				t.Fatalf("Failed to connect: %v", err)
+			}
+			defer client.session.Close()
+
+			// Create handler
+			handler := client.Resource(tt.resourceURI)
+
+			// First request
+			req1 := calque.NewRequest(context.Background(), strings.NewReader(tt.input1))
+			var output1 strings.Builder
+			res1 := calque.NewResponse(&output1)
+
+			err = handler.ServeFlow(req1, res1)
+			if err != nil {
+				t.Fatalf("First request failed: %v", err)
+			}
+
+			// Second request
+			req2 := calque.NewRequest(context.Background(), strings.NewReader(tt.input2))
+			var output2 strings.Builder
+			res2 := calque.NewResponse(&output2)
+
+			err = handler.ServeFlow(req2, res2)
+			if err != nil {
+				t.Fatalf("Second request failed: %v", err)
+			}
+
+			// Verify call count
+			if callCount != tt.expectedCalls {
+				t.Errorf("Expected %d server calls, got %d", tt.expectedCalls, callCount)
+			}
+
+			// For cache hits, outputs should be identical
+			if tt.expectedCalls == 1 && output1.String() != output2.String() {
+				t.Errorf("Cache hit should produce identical outputs.\nFirst: %s\nSecond: %s",
+					output1.String(), output2.String())
+			}
+
+			t.Logf("✅ %s - Server called %d times", tt.description, callCount)
+		})
+	}
+}
+
+func TestPromptHandlerCaching(t *testing.T) {
+	t.Parallel()
+
+	callCount := 0
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
+
+	server.AddPrompt(&mcp.Prompt{
+		Name:        "code_review",
+		Description: "Code review prompt",
+	}, func(_ context.Context, _ *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		callCount++ // Track server calls
+		return &mcp.GetPromptResult{
+			Description: "Code review prompt",
+			Messages: []*mcp.PromptMessage{
+				{
+					Role: "user",
+					Content: &mcp.TextContent{
+						Text: "Please review this code.",
+					},
+				},
+			},
+		}, nil
+	})
+
+	// Start server
+	_, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("Failed to start test server: %v", err)
+	}
+
+	// Create client with caching
+	mcpClient := mcp.NewClient(defaultImplementation(), nil)
+	client := &Client{
+		client:            mcpClient,
+		transport:         clientTransport,
+		timeout:           30 * time.Second,
+		capabilities:      []string{"prompts"},
+		implementation:    defaultImplementation(),
+		progressCallbacks: make(map[string][]func(*ProgressNotificationParams)),
+		subscriptions:     make(map[string]func(*ResourceUpdatedNotificationParams)),
+	}
+
+	cacheStore := cache.NewInMemoryStore()
+	WithCache(cacheStore)(client) // Use defaults
+
+	if err := client.connect(ctx); err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer client.session.Close()
+
+	handler := client.Prompt("code_review")
+
+	// First request
+	req1 := calque.NewRequest(context.Background(), strings.NewReader(`{"language": "Go"}`))
+	var output1 strings.Builder
+	res1 := calque.NewResponse(&output1)
+
+	err = handler.ServeFlow(req1, res1)
+	if err != nil {
+		t.Fatalf("First request failed: %v", err)
+	}
+
+	// Second request with same input
+	req2 := calque.NewRequest(context.Background(), strings.NewReader(`{"language": "Go"}`))
+	var output2 strings.Builder
+	res2 := calque.NewResponse(&output2)
+
+	err = handler.ServeFlow(req2, res2)
+	if err != nil {
+		t.Fatalf("Second request failed: %v", err)
+	}
+
+	// Should only call server once due to caching
+	if callCount != 1 {
+		t.Errorf("Expected 1 server call (cache hit), got %d", callCount)
+	}
+
+	// Outputs should be identical
+	if output1.String() != output2.String() {
+		t.Errorf("Cached outputs should be identical.\nFirst: %s\nSecond: %s",
+			output1.String(), output2.String())
+	}
+
+	t.Logf("✅ Prompt caching working correctly - Server called %d time(s)", callCount)
+}
+
+func TestToolHandlerCaching(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		toolTTL       time.Duration
+		expectedCalls int
+		description   string
+	}{
+		{
+			name:          "caching disabled by default (TTL=0)",
+			toolTTL:       0,
+			expectedCalls: 2, // No caching
+			description:   "Tools should not be cached by default",
+		},
+		{
+			name:          "caching enabled with TTL > 0",
+			toolTTL:       5 * time.Minute,
+			expectedCalls: 1, // Cached
+			description:   "Tools should be cached when TTL > 0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			callCount := 0
+			ctx := context.Background()
+			clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+			server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
+
+			mcp.AddTool(server, &mcp.Tool{
+				Name:        "test_tool",
+				Description: "Test tool",
+			}, func(_ context.Context, _ *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
+				callCount++
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{
+						&mcp.TextContent{Text: "Tool result"},
+					},
+				}, nil, nil
+			})
+
+			// Start server
+			_, err := server.Connect(ctx, serverTransport, nil)
+			if err != nil {
+				t.Fatalf("Failed to start test server: %v", err)
+			}
+
+			// Create client
+			mcpClient := mcp.NewClient(defaultImplementation(), nil)
+			client := &Client{
+				client:            mcpClient,
+				transport:         clientTransport,
+				timeout:           30 * time.Second,
+				capabilities:      []string{"tools"},
+				implementation:    defaultImplementation(),
+				progressCallbacks: make(map[string][]func(*ProgressNotificationParams)),
+				subscriptions:     make(map[string]func(*ResourceUpdatedNotificationParams)),
+			}
+
+			// Apply caching with specific TTL
+			cacheStore := cache.NewInMemoryStore()
+			cacheConfig := &CacheConfig{
+				ToolTTL: tt.toolTTL,
+			}
+			WithCache(cacheStore, cacheConfig)(client)
+
+			if err := client.connect(ctx); err != nil {
+				t.Fatalf("Failed to connect: %v", err)
+			}
+			defer client.session.Close()
+
+			handler := client.Tool("test_tool")
+
+			// Make two identical requests
+			input := `{"query": "test"}`
+
+			req1 := calque.NewRequest(context.Background(), strings.NewReader(input))
+			var output1 strings.Builder
+			res1 := calque.NewResponse(&output1)
+
+			err = handler.ServeFlow(req1, res1)
+			if err != nil {
+				t.Fatalf("First request failed: %v", err)
+			}
+
+			req2 := calque.NewRequest(context.Background(), strings.NewReader(input))
+			var output2 strings.Builder
+			res2 := calque.NewResponse(&output2)
+
+			err = handler.ServeFlow(req2, res2)
+			if err != nil {
+				t.Fatalf("Second request failed: %v", err)
+			}
+
+			// Verify call count
+			if callCount != tt.expectedCalls {
+				t.Errorf("Expected %d server calls, got %d", tt.expectedCalls, callCount)
+			}
+
+			t.Logf("✅ %s - Server called %d time(s)", tt.description, callCount)
+		})
+	}
+}
+
+func TestCachingWithNilConfig(t *testing.T) {
+	t.Parallel()
+
+	// Test that cache works without config (uses defaults)
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
+
+	callCount := 0
+	server.AddResource(&mcp.Resource{
+		URI:         "file:///test.md",
+		Name:        "Test",
+		Description: "Test",
+	}, func(_ context.Context, _ *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		callCount++
+		return &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{
+				{URI: "file:///test.md", Text: "content"},
+			},
+		}, nil
+	})
+
+	_, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("Failed to start test server: %v", err)
+	}
+
+	mcpClient := mcp.NewClient(defaultImplementation(), nil)
+	client := &Client{
+		client:            mcpClient,
+		transport:         clientTransport,
+		timeout:           30 * time.Second,
+		capabilities:      []string{"resources"},
+		implementation:    defaultImplementation(),
+		progressCallbacks: make(map[string][]func(*ProgressNotificationParams)),
+		subscriptions:     make(map[string]func(*ResourceUpdatedNotificationParams)),
+	}
+
+	// Apply cache with no config (should use defaults)
+	WithCache(cache.NewInMemoryStore())(client)
+
+	if err := client.connect(ctx); err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer client.session.Close()
+
+	// Verify default config was applied
+	if client.cacheConfig == nil {
+		t.Fatal("Expected default cache config to be applied")
+	}
+
+	if client.cacheConfig.ResourceTTL != 5*time.Minute {
+		t.Errorf("Expected default ResourceTTL of 5 minutes, got %v", client.cacheConfig.ResourceTTL)
+	}
+
+	handler := client.Resource("file:///test.md")
+
+	// Make two requests
+	for i := 0; i < 2; i++ {
+		req := calque.NewRequest(context.Background(), strings.NewReader("test"))
+		var output strings.Builder
+		res := calque.NewResponse(&output)
+
+		err := handler.ServeFlow(req, res)
+		if err != nil {
+			t.Fatalf("Request %d failed: %v", i+1, err)
+		}
+	}
+
+	// Should only call server once (cached)
+	if callCount != 1 {
+		t.Errorf("Expected 1 server call with default config, got %d", callCount)
+	}
+
+	t.Logf("✅ Default cache config working correctly")
+}
+
+func TestMultipleResourcesCaching(t *testing.T) {
+	t.Parallel()
+
+	// Test caching with variadic Resource() function
+	callCount1 := 0
+	callCount2 := 0
+
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
+
+	server.AddResource(&mcp.Resource{
+		URI:         "file:///doc1.md",
+		Name:        "Doc 1",
+		Description: "First doc",
+	}, func(_ context.Context, _ *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		callCount1++
+		return &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{
+				{URI: "file:///doc1.md", Text: "Content 1"},
+			},
+		}, nil
+	})
+
+	server.AddResource(&mcp.Resource{
+		URI:         "file:///doc2.md",
+		Name:        "Doc 2",
+		Description: "Second doc",
+	}, func(_ context.Context, _ *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		callCount2++
+		return &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{
+				{URI: "file:///doc2.md", Text: "Content 2"},
+			},
+		}, nil
+	})
+
+	_, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("Failed to start test server: %v", err)
+	}
+
+	mcpClient := mcp.NewClient(defaultImplementation(), nil)
+	client := &Client{
+		client:            mcpClient,
+		transport:         clientTransport,
+		timeout:           30 * time.Second,
+		capabilities:      []string{"resources"},
+		implementation:    defaultImplementation(),
+		progressCallbacks: make(map[string][]func(*ProgressNotificationParams)),
+		subscriptions:     make(map[string]func(*ResourceUpdatedNotificationParams)),
+	}
+
+	WithCache(cache.NewInMemoryStore())(client)
+
+	if err := client.connect(ctx); err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer client.session.Close()
+
+	// Create handler with multiple resources
+	handler := client.Resource("file:///doc1.md", "file:///doc2.md")
+
+	// Make two identical requests
+	for i := range 2 {
+		req := calque.NewRequest(context.Background(), strings.NewReader("query"))
+		var output strings.Builder
+		res := calque.NewResponse(&output)
+
+		err := handler.ServeFlow(req, res)
+		if err != nil {
+			t.Fatalf("Request %d failed: %v", i+1, err)
+		}
+
+		// Verify output contains both resources
+		result := output.String()
+		if !strings.Contains(result, "Content 1") {
+			t.Errorf("Request %d: Expected output to contain 'Content 1'", i+1)
+		}
+		if !strings.Contains(result, "Content 2") {
+			t.Errorf("Request %d: Expected output to contain 'Content 2'", i+1)
+		}
+	}
+
+	// Both resources should only be called once (cache hit on second request)
+	if callCount1 != 1 {
+		t.Errorf("Expected doc1 to be called 1 time, got %d", callCount1)
+	}
+	if callCount2 != 1 {
+		t.Errorf("Expected doc2 to be called 1 time, got %d", callCount2)
+	}
+
+	t.Logf("✅ Multiple resources caching working correctly")
+}
+
+func TestCachingWithoutCacheEnabled(t *testing.T) {
+	t.Parallel()
+
+	// Verify that handlers work correctly when caching is NOT enabled
+	callCount := 0
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
+
+	server.AddResource(&mcp.Resource{
+		URI:         "file:///test.md",
+		Name:        "Test",
+		Description: "Test",
+	}, func(_ context.Context, _ *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		callCount++
+		return &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{
+				{URI: "file:///test.md", Text: "content"},
+			},
+		}, nil
+	})
+
+	_, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("Failed to start test server: %v", err)
+	}
+
+	mcpClient := mcp.NewClient(defaultImplementation(), nil)
+	client := &Client{
+		client:            mcpClient,
+		transport:         clientTransport,
+		timeout:           30 * time.Second,
+		capabilities:      []string{"resources"},
+		implementation:    defaultImplementation(),
+		progressCallbacks: make(map[string][]func(*ProgressNotificationParams)),
+		subscriptions:     make(map[string]func(*ResourceUpdatedNotificationParams)),
+	}
+
+	// NOTE: No caching enabled!
+
+	if err := client.connect(ctx); err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer client.session.Close()
+
+	handler := client.Resource("file:///test.md")
+
+	// Make two requests
+	for i := range 2 {
+		req := calque.NewRequest(context.Background(), strings.NewReader("test"))
+		var output strings.Builder
+		res := calque.NewResponse(&output)
+
+		err := handler.ServeFlow(req, res)
+		if err != nil {
+			t.Fatalf("Request %d failed: %v", i+1, err)
+		}
+	}
+
+	// Should call server twice (no caching)
+	if callCount != 2 {
+		t.Errorf("Expected 2 server calls without caching, got %d", callCount)
+	}
+
+	t.Logf("✅ Handlers work correctly without caching enabled")
 }

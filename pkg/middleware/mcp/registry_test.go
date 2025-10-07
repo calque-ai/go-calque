@@ -275,7 +275,7 @@ func TestRegistry(t *testing.T) {
 
 		// Test that Registry returns a valid handler
 		client := &Client{}
-		handler := Registry(client)
+		handler := ToolRegistry(client)
 
 		if handler == nil {
 			t.Fatal("Registry() returned nil handler")
@@ -302,7 +302,7 @@ func TestRegistryContextHandling(t *testing.T) {
 			timeout: 30 * time.Second,
 		}
 
-		handler := Registry(client)
+		handler := ToolRegistry(client)
 
 		if handler == nil {
 			t.Fatal("Registry() returned nil handler")

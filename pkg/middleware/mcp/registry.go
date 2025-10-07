@@ -11,7 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Registry creates a handler that discovers and makes MCP tools available in the execution context.
+// ToolRegistry creates a handler that discovers and makes MCP tools available in the execution context.
 // This is the MCP equivalent of tools.Registry().
 //
 // Input: any data type (streaming - passes through unchanged)
@@ -24,11 +24,11 @@ import (
 // Example:
 //
 //	client, _ := mcp.NewStdio("python", []string{"server.py"})
-//	registry := mcp.Registry(client)
+//	registry := mcp.ToolRegistry(client)
 //	flow.Use(registry)
 //	// Tools are now available via mcp.GetTools(ctx)
-func Registry(client *Client) calque.Handler {
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+func ToolRegistry(client *Client) calque.Handler {
+	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Establish connection if needed
 		ctx := req.Context
 		if ctx == nil {
@@ -65,39 +65,119 @@ func Registry(client *Client) calque.Handler {
 		_, err = io.Copy(res.Data, req.Data)
 		return err
 	})
-}
 
-// GetTools retrieves MCP tools from the context.
-// Returns nil if no tools are registered.
-// This is the MCP equivalent of tools.GetTools().
-func GetTools(ctx context.Context) []*Tool {
-	if tools, ok := ctx.Value(mcpToolsContextKey{}).([]*Tool); ok {
-		return tools
-	}
-	return nil
-}
-
-// GetTool retrieves a specific MCP tool by name from the context.
-// Returns nil if the tool is not found.
-// This is the MCP equivalent of tools.GetTool().
-func GetTool(ctx context.Context, name string) *Tool {
-	tools := GetTools(ctx)
-	if tools == nil {
-		return nil
+	// Apply caching if enabled - cache key includes client pointer to separate different MCP servers
+	if client.cache != nil && client.cacheConfig != nil && client.cacheConfig.RegistryTTL > 0 {
+		return client.cache.CacheWithKey(handler, client.cacheConfig.RegistryTTL, func(_ *calque.Request) string {
+			return fmt.Sprintf("mcp:tool-registry:%p", client)
+		})
 	}
 
-	for _, tool := range tools {
-		if tool.Name == name {
-			return tool
+	return handler
+}
+
+// ResourceRegistry creates a handler that discovers and makes MCP resources available in the execution context.
+//
+// Input: any data type (streaming - passes through unchanged)
+// Output: same as input (pass-through)
+// Behavior: STREAMING - discovers MCP resources and makes them available via GetResources()
+//
+// The registry connects to the MCP server, discovers all available resources via ListResources(),
+// and stores them in the request context for use by downstream handlers like DetectResource() and ExecuteResource().
+//
+// Example:
+//
+//	client, _ := mcp.NewStdio("python", []string{"server.py"})
+//	registry := mcp.ResourceRegistry(client)
+//	flow.Use(registry)
+//	// Resources are now available via mcp.GetResources(ctx)
+func ResourceRegistry(client *Client) calque.Handler {
+	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		// Establish connection if needed
+		ctx := req.Context
+		if ctx == nil {
+			ctx = context.Background()
 		}
+
+		if err := client.connect(ctx); err != nil {
+			return client.handleError(fmt.Errorf("failed to connect for resource registry: %w", err))
+		}
+
+		// Discover all available MCP resources
+		listResult, err := client.session.ListResources(ctx, &mcp.ListResourcesParams{})
+		if err != nil {
+			return client.handleError(fmt.Errorf("failed to list MCP resources: %w", err))
+		}
+
+		// Store resources in context
+		contextWithResources := context.WithValue(ctx, mcpResourcesContextKey{}, listResult.Resources)
+		req.Context = contextWithResources
+
+		// Pass input through unchanged
+		_, err = io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	// Apply caching if enabled
+	if client.cache != nil && client.cacheConfig != nil && client.cacheConfig.RegistryTTL > 0 {
+		return client.cache.CacheWithKey(handler, client.cacheConfig.RegistryTTL, func(_ *calque.Request) string {
+			return fmt.Sprintf("resource-registry:%p", client)
+		})
 	}
-	return nil
+
+	return handler
 }
 
-// HasTool checks if an MCP tool with the given name exists in the context.
-// This is the MCP equivalent of tools.HasTool().
-func HasTool(ctx context.Context, name string) bool {
-	return GetTool(ctx, name) != nil
+// PromptRegistry creates a handler that discovers and makes MCP prompts available in the execution context.
+//
+// Input: any data type (streaming - passes through unchanged)
+// Output: same as input (pass-through)
+// Behavior: STREAMING - discovers MCP prompts and makes them available via GetPrompts()
+//
+// The registry connects to the MCP server, discovers all available prompts via ListPrompts(),
+// and stores them in the request context for use by downstream handlers like DetectPrompt() and ExecutePrompt().
+//
+// Example:
+//
+//	client, _ := mcp.NewStdio("python", []string{"server.py"})
+//	registry := mcp.PromptRegistry(client)
+//	flow.Use(registry)
+//	// Prompts are now available via mcp.GetPrompts(ctx)
+func PromptRegistry(client *Client) calque.Handler {
+	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		// Establish connection if needed
+		ctx := req.Context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+
+		if err := client.connect(ctx); err != nil {
+			return client.handleError(fmt.Errorf("failed to connect for prompt registry: %w", err))
+		}
+
+		// Discover all available MCP prompts
+		listResult, err := client.session.ListPrompts(ctx, &mcp.ListPromptsParams{})
+		if err != nil {
+			return client.handleError(fmt.Errorf("failed to list MCP prompts: %w", err))
+		}
+
+		// Store prompts in context
+		contextWithPrompts := context.WithValue(ctx, mcpPromptsContextKey{}, listResult.Prompts)
+		req.Context = contextWithPrompts
+
+		// Pass input through unchanged
+		_, err = io.Copy(res.Data, req.Data)
+		return err
+	})
+
+	// Apply caching if enabled
+	if client.cache != nil && client.cacheConfig != nil && client.cacheConfig.RegistryTTL > 0 {
+		return client.cache.CacheWithKey(handler, client.cacheConfig.RegistryTTL, func(_ *calque.Request) string {
+			return fmt.Sprintf("prompt-registry:%p", client)
+		})
+	}
+
+	return handler
 }
 
 // convertGoogleSchemaToInvopop converts a Google JSON Schema to invopop format
@@ -121,19 +201,4 @@ func convertGoogleSchemaToInvopop(googleSchema any) *jsonschema.Schema {
 	}
 
 	return &invopopSchema
-}
-
-// ListToolNames returns a slice of all MCP tool names available in the context.
-// This is the MCP equivalent of tools.ListToolNames().
-func ListToolNames(ctx context.Context) []string {
-	tools := GetTools(ctx)
-	if tools == nil {
-		return nil
-	}
-
-	names := make([]string, len(tools))
-	for i, tool := range tools {
-		names[i] = tool.Name
-	}
-	return names
 }

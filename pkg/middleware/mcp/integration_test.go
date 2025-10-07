@@ -92,7 +92,7 @@ func TestCompleteFlowIntegration(t *testing.T) {
 			mockLLM := ai.NewMockClient(tt.llmResponse)
 
 			// Step 1: Detection - Analyze intent and select tool
-			detectHandler := Detect(mockLLM)
+			detectHandler := DetectTool(mockLLM)
 			req1 := calque.NewRequest(ctx, strings.NewReader(tt.input))
 			var detectOutput strings.Builder
 			res1 := calque.NewResponse(&detectOutput)
@@ -114,7 +114,7 @@ func TestCompleteFlowIntegration(t *testing.T) {
 			}
 
 			// Step 2: Execution - Execute selected tool or pass through
-			executeHandler := Execute()
+			executeHandler := ExecuteTool()
 			req2 := calque.NewRequest(req1.Context, strings.NewReader(detectOutput.String()))
 			var executeOutput strings.Builder
 			res2 := calque.NewResponse(&executeOutput)
@@ -196,8 +196,8 @@ func TestFlowErrorHandling(t *testing.T) {
 			}
 
 			// Test the complete flow
-			detectHandler := Detect(mockLLM)
-			executeHandler := Execute()
+			detectHandler := DetectTool(mockLLM)
+			executeHandler := ExecuteTool()
 
 			// Detection
 			req1 := calque.NewRequest(ctx, strings.NewReader(tt.input))
@@ -271,7 +271,7 @@ func TestMultipleToolsFromDifferentClients(t *testing.T) {
 			mockLLM := ai.NewMockClient(tt.llmResponse)
 
 			// Detection
-			detectHandler := Detect(mockLLM)
+			detectHandler := DetectTool(mockLLM)
 			req := calque.NewRequest(ctx, strings.NewReader(tt.input))
 			var detectOutput strings.Builder
 			res := calque.NewResponse(&detectOutput)

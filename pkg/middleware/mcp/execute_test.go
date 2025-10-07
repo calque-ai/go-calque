@@ -81,7 +81,7 @@ func TestExecuteHandler(t *testing.T) {
 			}
 
 			// Create handler
-			handler := Execute()
+			handler := ExecuteTool()
 
 			// Execute
 			req := calque.NewRequest(ctx, strings.NewReader(tt.input))
@@ -123,7 +123,7 @@ func TestExecuteHandlerPanicRecovery(t *testing.T) {
 	ctx := createTestContextForExecute()
 	ctx = context.WithValue(ctx, selectedToolContextKey{}, "search")
 
-	handler := Execute()
+	handler := ExecuteTool()
 	req := calque.NewRequest(ctx, strings.NewReader("test input"))
 	var output strings.Builder
 	res := calque.NewResponse(&output)
@@ -173,7 +173,7 @@ func TestExecuteHandlerInputReading(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background() // No tools, should pass through
-			handler := Execute()
+			handler := ExecuteTool()
 
 			req := calque.NewRequest(ctx, strings.NewReader(tt.input))
 			var output strings.Builder

@@ -125,7 +125,7 @@ func TestDetectHandler(t *testing.T) {
 			}
 
 			// Create handler
-			handler := Detect(mockLLM)
+			handler := DetectTool(mockLLM)
 
 			// Execute
 			req := calque.NewRequest(ctx, strings.NewReader(tt.input))

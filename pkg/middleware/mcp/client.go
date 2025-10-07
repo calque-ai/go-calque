@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/calque-ai/go-calque/pkg/middleware/cache"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -37,6 +38,8 @@ type Client struct {
 	subscriptions     map[string]func(*ResourceUpdatedNotificationParams)
 	completionEnabled bool
 	env               map[string]string
+	cache             *cache.Memory
+	cacheConfig       *CacheConfig
 	mu                sync.RWMutex
 }
 

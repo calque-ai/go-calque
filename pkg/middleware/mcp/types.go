@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -14,14 +15,23 @@ type ProgressNotificationParams = mcp.ProgressNotificationParams
 // ResourceUpdatedNotificationParams is a type alias for MCP resource update notifications
 type ResourceUpdatedNotificationParams = mcp.ResourceUpdatedNotificationParams
 
-// mcpToolsContextKey is used to store discovered MCP tools in context
-type mcpToolsContextKey struct{}
+// Context keys for MCP operations
+type (
+	// Tool-related context keys
+	mcpToolsContextKey        struct{}
+	selectedToolContextKey    struct{}
+	extractedParamsContextKey struct{}
 
-// selectedToolContextKey is used to store the selected tool name in context
-type selectedToolContextKey struct{}
+	// Resource-related context keys
+	mcpResourcesContextKey     struct{}
+	selectedResourceContextKey struct{}
+	resourceContentContextKey  struct{}
 
-// extractedParamsContextKey is used to store extracted parameters in context
-type extractedParamsContextKey struct{}
+	// Prompt-related context keys
+	mcpPromptsContextKey     struct{}
+	selectedPromptContextKey struct{}
+	promptContentContextKey  struct{}
+)
 
 // ToolSelectionResponse represents the response from the LLM for tool selection
 type ToolSelectionResponse struct {
@@ -58,4 +68,130 @@ func (t *Tool) ServeFlow(req *calque.Request, res *calque.Response) error {
 	// Delegate to the client's Tool handler
 	handler := t.Client.Tool(t.Name)
 	return handler.ServeFlow(req, res)
+}
+
+// Tool helper functions
+
+// GetTools retrieves MCP tools from the context.
+// Returns nil if no tools are registered.
+// This is the MCP equivalent of tools.GetTools().
+func GetTools(ctx context.Context) []*Tool {
+	if tools, ok := ctx.Value(mcpToolsContextKey{}).([]*Tool); ok {
+		return tools
+	}
+	return nil
+}
+
+// GetSelectedTool retrieves the tool name selected by Detect from the context.
+// Returns empty string if no tool was selected.
+func GetSelectedTool(ctx context.Context) string {
+	if tool, ok := ctx.Value(selectedToolContextKey{}).(string); ok {
+		return tool
+	}
+	return ""
+}
+
+// HasSelectedTool checks if a tool was selected by Detect and stored in the context.
+func HasSelectedTool(ctx context.Context) bool {
+	return GetSelectedTool(ctx) != ""
+}
+
+// GetTool retrieves a specific MCP tool by name from the context.
+// Returns nil if the tool is not found.
+// This is the MCP equivalent of tools.GetTool().
+func GetTool(ctx context.Context, name string) *Tool {
+	tools := GetTools(ctx)
+	if tools == nil {
+		return nil
+	}
+
+	for _, tool := range tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	return nil
+}
+
+// HasTool checks if an MCP tool with the given name exists in the context.
+// This is the MCP equivalent of tools.HasTool().
+func HasTool(ctx context.Context, name string) bool {
+	return GetTool(ctx, name) != nil
+}
+
+// ListToolNames returns a slice of all MCP tool names available in the context.
+// This is the MCP equivalent of tools.ListToolNames().
+func ListToolNames(ctx context.Context) []string {
+	tools := GetTools(ctx)
+	if tools == nil {
+		return nil
+	}
+
+	names := make([]string, len(tools))
+	for i, tool := range tools {
+		names[i] = tool.Name
+	}
+	return names
+}
+
+// Resource helper functions
+
+// GetResources retrieves the list of available MCP resources from context
+func GetResources(ctx context.Context) []*mcp.Resource {
+	if resources, ok := ctx.Value(mcpResourcesContextKey{}).([]*mcp.Resource); ok {
+		return resources
+	}
+	return nil
+}
+
+// GetSelectedResource retrieves the selected resource URI from context
+func GetSelectedResource(ctx context.Context) string {
+	if uri, ok := ctx.Value(selectedResourceContextKey{}).(string); ok {
+		return uri
+	}
+	return ""
+}
+
+// HasSelectedResource checks if a resource was selected
+func HasSelectedResource(ctx context.Context) bool {
+	return GetSelectedResource(ctx) != ""
+}
+
+// GetResourceContent retrieves the fetched resource content from context
+func GetResourceContent(ctx context.Context) *mcp.ReadResourceResult {
+	if content, ok := ctx.Value(resourceContentContextKey{}).(*mcp.ReadResourceResult); ok {
+		return content
+	}
+	return nil
+}
+
+// Prompt helper functions
+
+// GetPrompts retrieves the list of available MCP prompts from context
+func GetPrompts(ctx context.Context) []*mcp.Prompt {
+	if prompts, ok := ctx.Value(mcpPromptsContextKey{}).([]*mcp.Prompt); ok {
+		return prompts
+	}
+	return nil
+}
+
+// GetSelectedPrompt retrieves the selected prompt name from context
+func GetSelectedPrompt(ctx context.Context) string {
+	if name, ok := ctx.Value(selectedPromptContextKey{}).(string); ok {
+		return name
+	}
+	return ""
+}
+
+// HasSelectedPrompt checks if a prompt was selected
+func HasSelectedPrompt(ctx context.Context) bool {
+	return GetSelectedPrompt(ctx) != ""
+}
+
+// GetPromptContent retrieves the fetched prompt content from context
+func GetPromptContent(ctx context.Context) *mcp.GetPromptResult {
+	if content, ok := ctx.Value(promptContentContextKey{}).(*mcp.GetPromptResult); ok {
+		return content
+	}
+	return nil
 }
