@@ -167,10 +167,10 @@ func runNaturalLanguageExample() {
 	// Create flow that converts natural language to tool calls
 	flow := calque.NewFlow()
 	flow.Use(ctrl.Chain(
-		mcp.ToolRegistry(mcpClient), // 1. Discover available MCP tools
-		mcp.DetectTool(aiClient),    // 2. Use AI to select appropriate tool
-		mcp.ExtractParams(aiClient), // 3. Extract parameters from natural language
-		mcp.ExecuteTool(),           // 4. Execute the tool with extracted parameters
+		mcp.ToolRegistry(mcpClient),     // 1. Discover available MCP tools
+		mcp.DetectTool(aiClient),        // 2. Use AI to select appropriate tool
+		mcp.ExtractToolParams(aiClient), // 3. Extract parameters from natural language
+		mcp.ExecuteTool(),               // 4. Execute the tool with extracted parameters
 	))
 
 	// Test natural language inputs

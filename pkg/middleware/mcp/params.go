@@ -20,7 +20,7 @@ Tool: {{.toolDesc}}
 
 Return valid JSON only.`
 
-// ExtractParams creates a handler that extracts parameters from natural language
+// ExtractToolParams creates a handler that extracts parameters from natural language
 // input using the selected tool's exact input schema for precise parameter extraction.
 //
 // Input: Natural language user request
@@ -32,13 +32,13 @@ Return valid JSON only.`
 //
 // Example:
 //
-//	flow.Use(mcp.Registry(client)).
-//	     Use(mcp.Detect(aiClient)).
-//	     Use(mcp.ExtractParams(aiClient)).
-//	     Use(mcp.Execute())
+//	flow.Use(mcp.ToolRegistry(client)).
+//	     Use(mcp.DetectTool(aiClient)).
+//	     Use(mcp.ExtractToolParams(aiClient)).
+//	     Use(mcp.ExecuteTool())
 //
 //	// Input: "What is 6 times 7?" → Output: {"a": 6, "b": 7}
-func ExtractParams(llmClient ai.Client) calque.Handler {
+func ExtractToolParams(llmClient ai.Client) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var userInput string
 		if err := calque.Read(req, &userInput); err != nil {

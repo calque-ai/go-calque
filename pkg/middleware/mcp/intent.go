@@ -7,7 +7,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var toolSelectionPromptTemplate = `You are a tool selection assistant. Analyze the user request and select the most appropriate tool.
+var toolSelectionPromptTemplate = `You are a tool selection assistant. Analyze the user request and select the most appropriate tool if needed.
 
 User request: {{.Input}}
 
@@ -15,7 +15,9 @@ Available tools:
 {{range .Tools}}- {{.Name}}: {{.Description}}
 {{if .InputSchemaSummary}}  Input: {{.InputSchemaSummary}}{{end}}
 
-{{end}}Return valid JSON only.`
+{{end}}
+If none of the available tools are appropriate or necessary for this request, return an empty string for selected_tool.
+Return valid JSON only.`
 
 // ToolTemplateData represents tool data for the template
 type ToolTemplateData struct {
@@ -87,13 +89,15 @@ func validateToolSelection(selectedTool string, mcpTools []*Tool) string {
 
 // Resource selection
 
-var resourceSelectionPromptTemplate = `You are a resource selection assistant. Analyze the user request and select the most appropriate resource.
+var resourceSelectionPromptTemplate = `You are a resource selection assistant. Analyze the user request and select the most appropriate resource if needed.
 
 User request: {{.Input}}
 
 Available resources:
 {{range .Resources}}- {{.URI}}: {{.Name}}{{if .Description}} - {{.Description}}{{end}}
-{{end}}Return valid JSON only.`
+{{end}}
+If none of the available resources are appropriate or necessary for this request, return an empty string for selected_resource.
+Return valid JSON only.`
 
 // ResourceSelectionResponse represents the response from the LLM for resource selection
 type ResourceSelectionResponse struct {
@@ -159,13 +163,15 @@ func validateResourceSelection(selectedResource string, mcpResources []*mcp.Reso
 
 // Prompt selection
 
-var promptSelectionPromptTemplate = `You are a prompt selection assistant. Analyze the user request and select the most appropriate prompt template.
+var promptSelectionPromptTemplate = `You are a prompt selection assistant. Analyze the user request and select the most appropriate prompt template if needed.
 
 User request: {{.Input}}
 
 Available prompts:
 {{range .Prompts}}- {{.Name}}: {{.Description}}
-{{end}}Return valid JSON only.`
+{{end}}
+If none of the available prompts are appropriate or necessary for this request, return an empty string for selected_prompt.
+Return valid JSON only.`
 
 // PromptSelectionResponse represents the response from the LLM for prompt selection
 type PromptSelectionResponse struct {
