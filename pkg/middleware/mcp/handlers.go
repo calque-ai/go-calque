@@ -9,8 +9,107 @@ import (
 	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// Tools is a convenience function that creates a complete tool detection and execution pipeline.
+// It combines ToolRegistry, DetectTool, ExtractParams, and ExecuteTool into a single handler.
+//
+// This is the recommended way to add MCP tool support for simple use cases.
+// For more control over the pipeline (e.g., adding logging, custom validation), use the
+// individual handlers: ToolRegistry(), DetectTool(), ExtractParams(), ExecuteTool().
+//
+// Input: Natural language user request
+// Output: Tool execution result if tool selected and executed, or original input if no tool appropriate
+// Behavior: BUFFERED - analyzes input, selects tool, extracts parameters, and executes
+//
+// Example:
+//
+//	mcpClient, _ := mcp.NewStdio("python", []string{"server.py"})
+//	aiClient, _ := openai.New("gpt-4o-mini")
+//
+//	flow := calque.NewFlow()
+//	flow.Use(mcp.Tools(mcpClient, aiClient))
+//	flow.Use(ai.Agent(aiClient)) // Handle response if no tool was executed
+//
+//	// Input: "search for golang tutorials" → detects "search" tool, extracts params, executes
+//	// Input: "hello world" → no tool appropriate, passes through to Agent
+func Tools(mcpClient *Client, aiClient ai.Client) calque.Handler {
+	return ctrl.Chain(
+		ToolRegistry(mcpClient), // 1. Discover available MCP tools
+		DetectTool(aiClient),    // 2. Use AI to select appropriate tool
+		ExtractParams(aiClient), // 3. Extract parameters from natural language
+		ExecuteTool(),           // 4. Execute the tool with extracted parameters
+	)
+}
+
+// Resources is a convenience function that creates a complete resource detection and retrieval pipeline.
+// It combines ResourceRegistry, DetectResource, and ExecuteResource into a single handler.
+//
+// This is the recommended way to add MCP resource support for simple use cases.
+// For more control over the pipeline (e.g., adding logging, custom validation), use the
+// individual handlers: ResourceRegistry(), DetectResource(), ExecuteResource().
+//
+// Input: Natural language user request
+// Output: Original input (unchanged) with resource content stored in context if appropriate
+// Behavior: BUFFERED - analyzes input, selects resource, fetches content, stores in context
+//
+// The selected resource content is stored in the request context and can be accessed
+// by downstream handlers using GetResourceContent(ctx).
+//
+// Example:
+//
+//	mcpClient, _ := mcp.NewStdio("python", []string{"server.py"})
+//	aiClient, _ := openai.New("gpt-4o-mini")
+//
+//	flow := calque.NewFlow()
+//	flow.Use(mcp.Resources(mcpClient, aiClient))
+//	flow.Use(ai.Agent(aiClient)) // Agent can access resource content from context
+//
+//	// Input: "summarize the API documentation" → detects docs resource, fetches content
+//	// The agent can then use the resource content to answer the question
+func Resources(mcpClient *Client, aiClient ai.Client) calque.Handler {
+	return ctrl.Chain(
+		ResourceRegistry(mcpClient), // 1. Discover available MCP resources
+		DetectResource(aiClient),    // 2. Use AI to select appropriate resource
+		ExecuteResource(mcpClient),  // 3. Fetch resource and store in context
+	)
+}
+
+// Prompts is a convenience function that creates a complete prompt detection and retrieval pipeline.
+// It combines PromptRegistry, DetectPrompt, and ExecutePrompt into a single handler.
+//
+// This is the recommended way to add MCP prompt support for simple use cases.
+// For more control over the pipeline (e.g., adding logging, custom validation), use the
+// individual handlers: PromptRegistry(), DetectPrompt(), ExecutePrompt().
+//
+// Input: Natural language user request
+// Output: Original input (unchanged) with prompt content stored in context if appropriate
+// Behavior: BUFFERED - analyzes input, selects prompt, fetches content, stores in context
+//
+// The selected prompt content is stored in the request context and can be accessed
+// by downstream handlers using GetPromptContent(ctx).
+//
+// Example:
+//
+//	mcpClient, _ := mcp.NewStdio("python", []string{"server.py"})
+//	aiClient, _ := openai.New("gpt-4o-mini")
+//
+//	flow := calque.NewFlow()
+//	flow.Use(mcp.Prompts(mcpClient, aiClient))
+//	flow.Use(ai.Agent(aiClient)) // Agent can access prompt content from context
+//
+//	// Input: "help me write a blog post" → detects blog-writer prompt, fetches template
+//	// The agent can then use the prompt template to guide the response
+func Prompts(mcpClient *Client, aiClient ai.Client) calque.Handler {
+	return ctrl.Chain(
+		PromptRegistry(mcpClient), // 1. Discover available MCP prompts
+		DetectPrompt(aiClient),    // 2. Use AI to select appropriate prompt
+		ExecutePrompt(mcpClient),  // 3. Fetch prompt and store in context
+	)
+}
 
 // Tool creates a handler that calls an MCP tool using input as arguments.
 //
@@ -28,7 +127,7 @@ import (
 //	handler := client.Tool("search")
 //	flow.Use(handler) // Input: {"query": "golang"} → Output: search results
 func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificationParams)) calque.Handler {
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Establish connection if needed
 		ctx := req.Context
 		if ctx == nil {
@@ -75,30 +174,36 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 
 		// Handle tool errors
 		if result.IsError {
-			return c.handleError(fmt.Errorf("tool %s returned error: %v", name, result.Content))
+			var errorText strings.Builder
+			for _, content := range result.Content {
+				if textContent, ok := content.(*mcp.TextContent); ok {
+					errorText.WriteString(textContent.Text)
+				}
+			}
+			errorMessage := errorText.String()
+			if errorMessage == "" {
+				errorMessage = "unknown error (no text content in error response)"
+			}
+			return c.handleError(fmt.Errorf("tool %s returned error: %s", name, errorMessage))
 		}
 
 		// Collect all content and write in one operation for efficiency
 		var output strings.Builder
 
-		// Collect text content
-		for _, content := range result.Content {
-			if textContent, ok := content.(*mcp.TextContent); ok {
-				output.WriteString(textContent.Text)
-			}
-		}
-
-		// Add structured content if available
+		// Prioritize structured content over text content to avoid duplication
 		if result.StructuredContent != nil {
 			structuredJSON, err := json.Marshal(result.StructuredContent)
 			if err != nil {
 				return c.handleError(fmt.Errorf("failed to marshal structured content: %w", err))
 			}
-
-			if output.Len() > 0 {
-				output.WriteString("\n")
-			}
 			output.Write(structuredJSON)
+		} else {
+			// Only collect text content if no structured content is available
+			for _, content := range result.Content {
+				if textContent, ok := content.(*mcp.TextContent); ok {
+					output.WriteString(textContent.Text)
+				}
+			}
 		}
 
 		if output.Len() > 0 {
@@ -109,71 +214,20 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 
 		return nil
 	})
-}
 
-// resourceHandler is the shared implementation for both Resource and ResourceTemplate
-func (c *Client) resourceHandler(getURI func([]byte) (string, error), description string) calque.Handler {
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		// Establish connection if needed
-		ctx := req.Context
-		if ctx == nil {
-			ctx = context.Background()
-		}
+	// Apply caching if enabled and TTL > 0 (tools are usually dynamic)
+	if c.cache != nil && c.cacheConfig != nil && c.cacheConfig.ToolTTL > 0 {
+		return c.cache.Cache(handler, c.cacheConfig.ToolTTL)
+	}
 
-		if err := c.connect(ctx); err != nil {
-			return c.handleError(fmt.Errorf("failed to connect for %s: %w", description, err))
-		}
-
-		// Read original input
-		var input []byte
-		if err := calque.Read(req, &input); err != nil {
-			return c.handleError(fmt.Errorf("failed to read input: %w", err))
-		}
-
-		// Get the URI (either static or resolved from template)
-		uri, err := getURI(input)
-		if err != nil {
-			return c.handleError(err)
-		}
-
-		// Fetch the resource
-		params := &mcp.ReadResourceParams{
-			URI: uri,
-		}
-
-		result, err := c.session.ReadResource(ctx, params)
-		if err != nil {
-			return c.handleError(fmt.Errorf("resource %s read failed: %w", uri, err))
-		}
-
-		// Build augmented output: input + resource contents (RAG pattern)
-		var output strings.Builder
-
-		// Add user input first
-		output.WriteString("=== User Query ===\n")
-		output.Write(input)
-		output.WriteString("\n\n")
-
-		// Add all resource contents
-		for i, content := range result.Contents {
-			output.WriteString(fmt.Sprintf("=== Resource %d ===\n", i+1))
-			if content.Text != "" {
-				output.WriteString(content.Text)
-			} else if len(content.Blob) > 0 {
-				output.WriteString(fmt.Sprintf("[Binary content: %d bytes, type: %s]", len(content.Blob), content.MIMEType))
-			}
-			output.WriteString("\n\n")
-		}
-
-		return calque.Write(res, output.String())
-	})
+	return handler
 }
 
 // Resource creates a handler that augments input with MCP resource content.
 //
 // Input: User query/content (any text)
 // Output: Input content + Resource content (RAG pattern)
-// Behavior: AUGMENT - fetches MCP resource and combines with input
+// Behavior: AUGMENT - fetches MCP resource(s) and combines with input
 //
 // Follows RAG pattern: fetches resource content and prepends it to user input
 // to provide additional context for AI processing. Perfect for adding file
@@ -182,65 +236,86 @@ func (c *Client) resourceHandler(getURI func([]byte) (string, error), descriptio
 // Example:
 //
 //	client, _ := mcp.NewStdio("python", []string{"server.py"})
-//	handler := client.Resource("file:///docs/api.md")
-//	flow.Use(handler) // Input: "How do I use the API?" → Output: [API docs] + user query
-func (c *Client) Resource(uri string) calque.Handler {
-	return c.resourceHandler(func(_ []byte) (string, error) {
-		return uri, nil
-	}, fmt.Sprintf("resource %s", uri))
+//	handler := client.Resource("file:///docs/api.md", "file:///docs/guide.md")
+//	flow.Use(handler) // Input: "How do I use the API?" → Output: [API docs] + [guide] + user query
+func (c *Client) Resource(uris ...string) calque.Handler {
+	handler := c.multiResourceHandler(func(_ []byte) ([]string, error) {
+		return uris, nil
+	}, "resources")
+
+	// Apply caching if enabled
+	if c.cache != nil && c.cacheConfig != nil && c.cacheConfig.ResourceTTL > 0 {
+		return c.cache.Cache(handler, c.cacheConfig.ResourceTTL)
+	}
+
+	return handler
 }
 
 // ResourceTemplate creates a handler that resolves MCP resource templates dynamically.
 //
 // Input: JSON template variables (e.g., {"path": "config.json", "env": "prod"})
 // Output: Input content + Resolved resource content (RAG pattern)
-// Behavior: AUGMENT - resolves template URI and fetches resource content
+// Behavior: AUGMENT - resolves template URI(s) and fetches resource content
 //
 // Resolves resource templates like "file:///{path}" using input variables,
-// then fetches the resolved resource and augments input with its content.
+// then fetches the resolved resource(s) and augments input with their content.
 // Perfect for dynamic resource access based on runtime parameters.
 //
 // Example:
 //
 //	client, _ := mcp.NewStdio("python", []string{"server.py"})
-//	handler := client.ResourceTemplate("file:///{path}")
-//	flow.Use(handler) // Input: {"path": "config.json"} → Output: [config content] + input
-func (c *Client) ResourceTemplate(uriTemplate string) calque.Handler {
-	return c.resourceHandler(func(input []byte) (string, error) {
+//	handler := client.ResourceTemplate("file:///{path}", "file:///{env}/config.json")
+//	flow.Use(handler) // Input: {"path": "config.json", "env": "prod"} → Output: [config content] + [env config] + input
+func (c *Client) ResourceTemplate(uriTemplates ...string) calque.Handler {
+	handler := c.multiResourceHandler(func(input []byte) ([]string, error) {
+		var resolvedURIs []string
+
 		// Parse template variables from input
 		var templateVars map[string]string
 		if len(input) > 0 {
 			if err := json.Unmarshal(input, &templateVars); err != nil {
-				return "", fmt.Errorf("invalid template variables JSON: %w", err)
+				return nil, fmt.Errorf("invalid template variables JSON: %w", err)
 			}
 		}
 
-		// Resolve template URI with security validation
-		resolvedURI := uriTemplate
-		for key, value := range templateVars {
-			// Security: Clean path component to prevent traversal
-			cleanValue := filepath.Clean(value)
-			if cleanValue != value || strings.Contains(cleanValue, "..") {
-				return "", fmt.Errorf("invalid template variable %s: path traversal not allowed", key)
+		// Resolve each template
+		for _, uriTemplate := range uriTemplates {
+			// Resolve template URI with security validation
+			resolvedURI := uriTemplate
+			for key, value := range templateVars {
+				// Security: Clean path component to prevent traversal
+				cleanValue := filepath.Clean(value)
+				if cleanValue != value || strings.Contains(cleanValue, "..") {
+					return nil, fmt.Errorf("invalid template variable %s: path traversal not allowed", key)
+				}
+
+				// Security: Basic URI component validation
+				if strings.ContainsAny(value, "\n\r\t") {
+					return nil, fmt.Errorf("invalid template variable %s: control characters not allowed", key)
+				}
+
+				resolvedURI = strings.ReplaceAll(resolvedURI, "{"+key+"}", value)
 			}
 
-			// Security: Basic URI component validation
-			if strings.ContainsAny(value, "\n\r\t") {
-				return "", fmt.Errorf("invalid template variable %s: control characters not allowed", key)
+			// Security: Validate final resolved URI
+			if parsedURI, err := url.Parse(resolvedURI); err != nil {
+				return nil, fmt.Errorf("invalid resolved URI: %w", err)
+			} else if parsedURI.Scheme == "" {
+				return nil, fmt.Errorf("resolved URI missing scheme: %s", resolvedURI)
 			}
 
-			resolvedURI = strings.ReplaceAll(resolvedURI, "{"+key+"}", value)
+			resolvedURIs = append(resolvedURIs, resolvedURI)
 		}
 
-		// Security: Validate final resolved URI
-		if parsedURI, err := url.Parse(resolvedURI); err != nil {
-			return "", fmt.Errorf("invalid resolved URI: %w", err)
-		} else if parsedURI.Scheme == "" {
-			return "", fmt.Errorf("resolved URI missing scheme: %s", resolvedURI)
-		}
+		return resolvedURIs, nil
+	}, "resource templates")
 
-		return resolvedURI, nil
-	}, fmt.Sprintf("resource template %s", uriTemplate))
+	// Apply caching if enabled
+	if c.cache != nil && c.cacheConfig != nil && c.cacheConfig.ResourceTTL > 0 {
+		return c.cache.Cache(handler, c.cacheConfig.ResourceTTL)
+	}
+
+	return handler
 }
 
 // Prompt creates a handler that executes MCP prompt templates using input as arguments.
@@ -259,7 +334,7 @@ func (c *Client) ResourceTemplate(uriTemplate string) calque.Handler {
 //	handler := client.Prompt("code_review")
 //	flow.Use(handler) // Input: {"code": "func main() {}"} → Output: formatted review prompt
 func (c *Client) Prompt(name string) calque.Handler {
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Establish connection if needed
 		ctx := req.Context
 		if ctx == nil {
@@ -309,6 +384,13 @@ func (c *Client) Prompt(name string) calque.Handler {
 
 		return calque.Write(res, output.String())
 	})
+
+	// Apply caching if enabled
+	if c.cache != nil && c.cacheConfig != nil && c.cacheConfig.PromptTTL > 0 {
+		return c.cache.Cache(handler, c.cacheConfig.PromptTTL)
+	}
+
+	return handler
 }
 
 // SubscribeToResource creates a handler that subscribes to MCP resource changes.
@@ -384,7 +466,7 @@ func (c *Client) SubscribeToResource(uri string, onChange func(*ResourceUpdatedN
 //	handler := client.Complete()
 //	flow.Use(handler) // Input: completion request → Output: suggestion list
 func (c *Client) Complete() calque.Handler {
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		if !c.completionEnabled {
 			return c.handleError(fmt.Errorf("completion not enabled on client"))
 		}
@@ -424,5 +506,82 @@ func (c *Client) Complete() calque.Handler {
 		}
 
 		return calque.Write(res, resultJSON)
+	})
+
+	// Apply caching if enabled
+	if c.cache != nil && c.cacheConfig != nil && c.cacheConfig.CompletionTTL > 0 {
+		return c.cache.Cache(handler, c.cacheConfig.CompletionTTL)
+	}
+
+	return handler
+}
+
+// multiResourceHandler is the shared implementation for both Resource and ResourceTemplate
+func (c *Client) multiResourceHandler(getURIs func([]byte) ([]string, error), description string) calque.Handler {
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
+		// Establish connection if needed
+		ctx := req.Context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+
+		if err := c.connect(ctx); err != nil {
+			return c.handleError(fmt.Errorf("failed to connect for %s: %w", description, err))
+		}
+
+		// Read original input
+		var input []byte
+		if err := calque.Read(req, &input); err != nil {
+			return c.handleError(fmt.Errorf("failed to read input: %w", err))
+		}
+
+		// Get the URIs (either static or resolved from templates)
+		uris, err := getURIs(input)
+		if err != nil {
+			return c.handleError(err)
+		}
+
+		// Build augmented output: input + resource contents (RAG pattern)
+		var output strings.Builder
+
+		// Add user input first
+		output.WriteString("=== User Query ===\n")
+		output.Write(input)
+		output.WriteString("\n\n")
+
+		// Fetch each resource
+		resourceNum := 1
+		for _, uri := range uris {
+			params := &mcp.ReadResourceParams{
+				URI: uri,
+			}
+
+			result, err := c.session.ReadResource(ctx, params)
+			if err != nil {
+				// Continue with error note rather than failing completely
+				output.WriteString(fmt.Sprintf("=== Resource %d (Error) ===\n", resourceNum))
+				output.WriteString(fmt.Sprintf("Failed to read %s: %v\n\n", uri, err))
+				resourceNum++
+				continue
+			}
+
+			// Add all contents from this resource
+			for i, content := range result.Contents {
+				if len(result.Contents) == 1 {
+					output.WriteString(fmt.Sprintf("=== Resource %d ===\n", resourceNum))
+				} else {
+					output.WriteString(fmt.Sprintf("=== Resource %d.%d ===\n", resourceNum, i+1))
+				}
+				if content.Text != "" {
+					output.WriteString(content.Text)
+				} else if len(content.Blob) > 0 {
+					output.WriteString(fmt.Sprintf("[Binary content: %d bytes, type: %s]", len(content.Blob), content.MIMEType))
+				}
+				output.WriteString("\n\n")
+			}
+			resourceNum++
+		}
+
+		return calque.Write(res, output.String())
 	})
 }

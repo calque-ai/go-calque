@@ -1,11 +1,14 @@
 package convert
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
 	"net/http"
+	"sync"
+	"time"
 )
 
 // SSEEvent represents a Server-Sent Event.
@@ -131,11 +134,12 @@ func ToSSE(w http.ResponseWriter) *SSEConverter {
 	}
 
 	return &SSEConverter{
-		writer:      w,
-		flusher:     flusher,
-		chunkBy:     SSEChunkByWord,
-		formatter:   RawContentFormatter, // Default: send raw content
-		eventFields: nil,                 // No additional fields by default
+		writer:           w,
+		flusher:          flusher,
+		chunkBy:          SSEChunkByWord,
+		formatter:        RawContentFormatter, // Default: send raw content
+		eventFields:      nil,                 // No additional fields by default
+		keepAliveEnabled: false,               // Keep-alive disabled by default
 	}
 }
 
@@ -154,6 +158,12 @@ type SSEConverter struct {
 	chunkBy     SSEChunkMode
 	formatter   SSEEventFormatter // RawContentFormatter or MapEventFormatter
 	eventFields map[string]any    // Additional fields to include in events
+
+	// Keep-alive configuration
+	keepAliveInterval time.Duration
+	keepAliveEnabled  bool
+	keepAliveCancel   context.CancelFunc
+	mu                sync.Mutex
 }
 
 // Close forcefully terminates the SSE connection and releases resources.
@@ -178,6 +188,9 @@ type SSEConverter struct {
 //		log.Printf("SSE close error: %v", err)
 //	}
 func (s *SSEConverter) Close() error {
+	// Stop keep-alive first
+	s.stopKeepAlive()
+
 	// Final flush
 	if s.flusher != nil {
 		s.flusher.Flush()
@@ -237,6 +250,29 @@ func (s *SSEConverter) WithEventFields(fields map[string]any) *SSEConverter {
 	return s
 }
 
+// WithKeepAlive enables periodic keep-alive messages to prevent connection timeouts.
+//
+// Input: keep-alive interval (recommended: 30 * time.Second)
+// Output: *SSEConverter for chaining
+// Behavior: Sends periodic comment messages to maintain connection
+//
+// Keep-alive messages are sent as SSE comments (": keep-alive\n\n") which
+// are ignored by clients but prevent proxy/firewall timeouts. Common
+// interval is 30 seconds to handle most proxy timeout configurations.
+//
+// Example:
+//
+//	sse.WithKeepAlive(30 * time.Second) // Recommended interval
+//	sse.WithKeepAlive(15 * time.Second) // More frequent
+func (s *SSEConverter) WithKeepAlive(interval time.Duration) *SSEConverter {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.keepAliveEnabled = true
+	s.keepAliveInterval = interval
+	return s
+}
+
 // FromReader implements OutputConverter interface for streaming SSE responses.
 //
 // Input: io.Reader data source
@@ -245,11 +281,18 @@ func (s *SSEConverter) WithEventFields(fields map[string]any) *SSEConverter {
 //
 // Streams data according to configured chunk mode, sending SSE events
 // as data arrives. Handles completion and error events automatically.
+// Starts keep-alive if enabled.
 //
 // Example:
 //
 //	err := sse.FromReader(llmResponseStream)
 func (s *SSEConverter) FromReader(reader io.Reader) error {
+	// Start keep-alive if enabled
+	if s.keepAliveEnabled {
+		s.startKeepAlive()
+		defer s.stopKeepAlive()
+	}
+
 	switch s.chunkBy {
 	case SSEChunkByWord:
 		return s.streamByWord(reader)
@@ -261,6 +304,60 @@ func (s *SSEConverter) FromReader(reader io.Reader) error {
 		return s.streamComplete(reader)
 	default:
 		return s.streamByWord(reader)
+	}
+}
+
+// startKeepAlive starts the keep-alive goroutine
+func (s *SSEConverter) startKeepAlive() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.keepAliveEnabled || s.keepAliveCancel != nil {
+		return
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.keepAliveCancel = cancel
+
+	go func() {
+		ticker := time.NewTicker(s.keepAliveInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := s.sendKeepAlive(); err != nil {
+					// Keep-alive failed, likely connection is broken
+					return
+				}
+			}
+		}
+	}()
+}
+
+// sendKeepAlive safely sends a keep-alive message with proper locking
+func (s *SSEConverter) sendKeepAlive() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Send keep-alive as SSE comment
+	if _, err := fmt.Fprintf(s.writer, ": keep-alive\n\n"); err != nil {
+		return err
+	}
+	s.flusher.Flush()
+	return nil
+}
+
+// stopKeepAlive stops the keep-alive goroutine
+func (s *SSEConverter) stopKeepAlive() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.keepAliveCancel != nil {
+		s.keepAliveCancel()
+		s.keepAliveCancel = nil
 	}
 }
 
@@ -441,6 +538,9 @@ func (s *SSEConverter) writeSSEEvent(event string, data any) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal SSE data: %w", err)
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	_, err = fmt.Fprintf(s.writer, "event: %s\ndata: %s\n\n", event, jsonData)
 	if err != nil {

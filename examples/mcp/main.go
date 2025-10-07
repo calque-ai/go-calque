@@ -7,8 +7,17 @@ import (
 	"log"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
+	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
 	"github.com/calque-ai/go-calque/pkg/middleware/mcp"
 )
+
+func main() {
+	runBasicExample()
+	runRealisticExample()
+	runAdvancedExample()
+	runNaturalLanguageExample()
+}
 
 func runBasicExample() {
 	fmt.Println("=== Example 1: Basic MCP Tool Calling ===")
@@ -135,8 +144,52 @@ func runAdvancedExample() {
 	}
 }
 
-func main() {
-	runBasicExample()
-	runRealisticExample()
-	runAdvancedExample()
+// runNaturalLanguageExample demonstrates natural language MCP tool interaction
+func runNaturalLanguageExample() {
+	fmt.Println("\n=== Example 4: Natural Language MCP ===")
+
+	// Create MCP client
+	mcpClient, err := mcp.NewStdio("go", []string{"run", "cmd/server/main.go"})
+	if err != nil {
+		log.Printf("Failed to create MCP client: %v", err)
+		return
+	}
+	defer mcpClient.Close()
+
+	// Create AI client for natural language processing
+	aiClient, err := ollama.New("llama3.2:1b")
+	if err != nil {
+		log.Printf("AI client not available: %v", err)
+		log.Println("Install and run ollama with llama3.2:1b model to try this feature")
+		return
+	}
+
+	// Create flow that converts natural language to tool calls
+	flow := calque.NewFlow()
+	flow.Use(ctrl.Chain(
+		mcp.ToolRegistry(mcpClient), // 1. Discover available MCP tools
+		mcp.DetectTool(aiClient),    // 2. Use AI to select appropriate tool
+		mcp.ExtractParams(aiClient), // 3. Extract parameters from natural language
+		mcp.ExecuteTool(),           // 4. Execute the tool with extracted parameters
+	))
+
+	// Test natural language inputs
+	examples := []string{
+		"Search for golang tutorials",
+		"What is 6 times 7?",
+		"Say hello to Bob",
+		"Read the file /etc/hosts",
+	}
+
+	fmt.Println("Converting natural language to tool calls...")
+	for i, input := range examples {
+		fmt.Printf("\n%d. Input: \"%s\"\n", i+1, input)
+
+		var output string
+		if err := flow.Run(context.Background(), input, &output); err != nil {
+			log.Printf("Error: %v", err)
+		} else {
+			fmt.Printf("   Output: %s\n", output)
+		}
+	}
 }

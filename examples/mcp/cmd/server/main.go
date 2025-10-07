@@ -114,6 +114,55 @@ func progressTool(_ context.Context, _ *mcp.CallToolRequest, args ProgressParams
 	}, nil, nil
 }
 
+type ErrorParams struct {
+	ErrorType string `json:"error_type" jsonschema:"type of error to simulate (validation, auth, network, internal)"`
+	Message   string `json:"message" jsonschema:"custom error message (optional)"`
+}
+
+func errorTool(_ context.Context, _ *mcp.CallToolRequest, args ErrorParams) (*mcp.CallToolResult, any, error) {
+	var errorMessage string
+
+	switch args.ErrorType {
+	case "validation":
+		if args.Message != "" {
+			errorMessage = fmt.Sprintf("Validation Error: %s", args.Message)
+		} else {
+			errorMessage = "Validation Error: Invalid input parameters provided"
+		}
+	case "auth":
+		if args.Message != "" {
+			errorMessage = fmt.Sprintf("Authentication Error: %s", args.Message)
+		} else {
+			errorMessage = "Authentication Error: Invalid API key or insufficient permissions"
+		}
+	case "network":
+		if args.Message != "" {
+			errorMessage = fmt.Sprintf("Network Error: %s", args.Message)
+		} else {
+			errorMessage = "Network Error: Unable to connect to external service"
+		}
+	case "internal":
+		if args.Message != "" {
+			errorMessage = fmt.Sprintf("Internal Server Error: %s", args.Message)
+		} else {
+			errorMessage = "Internal Server Error: An unexpected error occurred"
+		}
+	default:
+		if args.Message != "" {
+			errorMessage = fmt.Sprintf("Error: %s", args.Message)
+		} else {
+			errorMessage = "Error: Unknown error type specified. Valid types: validation, auth, network, internal"
+		}
+	}
+
+	return &mcp.CallToolResult{
+		IsError: true,
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: errorMessage},
+		},
+	}, nil, nil
+}
+
 func docResourceHandler(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 	switch req.Params.URI {
 	case "file:///api-docs":
@@ -228,6 +277,11 @@ func NewServer() *mcp.Server {
 		Name:        "progress_demo",
 		Description: "Demonstrate progress tracking",
 	}, progressTool)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "error_simulator",
+		Description: "Simulate various types of errors for testing error handling",
+	}, errorTool)
 
 	// Add static resources
 	server.AddResource(&mcp.Resource{
