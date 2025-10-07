@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -582,4 +583,387 @@ func TestNewClient(t *testing.T) {
 			t.Error("Expected completionEnabled to be true")
 		}
 	})
+}
+
+func TestResourceRegistry(t *testing.T) {
+	t.Parallel()
+
+	t.Run("handler creation", func(t *testing.T) {
+		t.Parallel()
+
+		// Test that ResourceRegistry returns a valid handler
+		client := &Client{}
+		handler := ResourceRegistry(client)
+
+		if handler == nil {
+			t.Fatal("ResourceRegistry() returned nil handler")
+		}
+	})
+
+	// Note: Full integration testing requires a real MCP server connection
+}
+
+func TestPromptRegistry(t *testing.T) {
+	t.Parallel()
+
+	t.Run("handler creation", func(t *testing.T) {
+		t.Parallel()
+
+		// Test that PromptRegistry returns a valid handler
+		client := &Client{}
+		handler := PromptRegistry(client)
+
+		if handler == nil {
+			t.Fatal("PromptRegistry() returned nil handler")
+		}
+	})
+
+	// Note: Full integration testing requires a real MCP server connection
+}
+
+func TestGetResources(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected int
+	}{
+		{
+			name:     "empty context",
+			ctx:      context.Background(),
+			expected: 0,
+		},
+		{
+			name:     "context with resources",
+			ctx:      createContextWithResources(3),
+			expected: 3,
+		},
+		{
+			name:     "context with empty resources slice",
+			ctx:      context.WithValue(context.Background(), mcpResourcesContextKey{}, []*mcp.Resource{}),
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			resources := GetResources(tt.ctx)
+			if len(resources) != tt.expected {
+				t.Errorf("GetResources() returned %d resources, expected %d", len(resources), tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetSelectedResource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected string
+	}{
+		{
+			name:     "no resource selected",
+			ctx:      context.Background(),
+			expected: "",
+		},
+		{
+			name:     "resource selected",
+			ctx:      context.WithValue(context.Background(), selectedResourceContextKey{}, "file:///data/config.json"),
+			expected: "file:///data/config.json",
+		},
+		{
+			name:     "empty resource selected",
+			ctx:      context.WithValue(context.Background(), selectedResourceContextKey{}, ""),
+			expected: "",
+		},
+		{
+			name:     "wrong type in context",
+			ctx:      context.WithValue(context.Background(), selectedResourceContextKey{}, 123),
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := GetSelectedResource(tt.ctx)
+			if result != tt.expected {
+				t.Errorf("GetSelectedResource() = %q, expected %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestHasSelectedResource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected bool
+	}{
+		{
+			name:     "no resource selected",
+			ctx:      context.Background(),
+			expected: false,
+		},
+		{
+			name:     "resource selected",
+			ctx:      context.WithValue(context.Background(), selectedResourceContextKey{}, "file:///data/config.json"),
+			expected: true,
+		},
+		{
+			name:     "empty resource selected",
+			ctx:      context.WithValue(context.Background(), selectedResourceContextKey{}, ""),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := HasSelectedResource(tt.ctx)
+			if result != tt.expected {
+				t.Errorf("HasSelectedResource() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetResourceContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		expectNil bool
+	}{
+		{
+			name:      "no resource content",
+			ctx:       context.Background(),
+			expectNil: true,
+		},
+		{
+			name: "resource content present",
+			ctx: context.WithValue(context.Background(), resourceContentContextKey{}, &mcp.ReadResourceResult{
+				Contents: []*mcp.ResourceContents{{Text: "test content"}},
+			}),
+			expectNil: false,
+		},
+		{
+			name:      "wrong type in context",
+			ctx:       context.WithValue(context.Background(), resourceContentContextKey{}, "invalid"),
+			expectNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := GetResourceContent(tt.ctx)
+			if (result == nil) != tt.expectNil {
+				t.Errorf("GetResourceContent() nil=%v, expected nil=%v", result == nil, tt.expectNil)
+			}
+		})
+	}
+}
+
+func TestGetPrompts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected int
+	}{
+		{
+			name:     "empty context",
+			ctx:      context.Background(),
+			expected: 0,
+		},
+		{
+			name:     "context with prompts",
+			ctx:      createContextWithPrompts(3),
+			expected: 3,
+		},
+		{
+			name:     "context with empty prompts slice",
+			ctx:      context.WithValue(context.Background(), mcpPromptsContextKey{}, []*mcp.Prompt{}),
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			prompts := GetPrompts(tt.ctx)
+			if len(prompts) != tt.expected {
+				t.Errorf("GetPrompts() returned %d prompts, expected %d", len(prompts), tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetSelectedPrompt(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected string
+	}{
+		{
+			name:     "no prompt selected",
+			ctx:      context.Background(),
+			expected: "",
+		},
+		{
+			name:     "prompt selected",
+			ctx:      context.WithValue(context.Background(), selectedPromptContextKey{}, "blog_writer"),
+			expected: "blog_writer",
+		},
+		{
+			name:     "empty prompt selected",
+			ctx:      context.WithValue(context.Background(), selectedPromptContextKey{}, ""),
+			expected: "",
+		},
+		{
+			name:     "wrong type in context",
+			ctx:      context.WithValue(context.Background(), selectedPromptContextKey{}, 123),
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := GetSelectedPrompt(tt.ctx)
+			if result != tt.expected {
+				t.Errorf("GetSelectedPrompt() = %q, expected %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestHasSelectedPrompt(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected bool
+	}{
+		{
+			name:     "no prompt selected",
+			ctx:      context.Background(),
+			expected: false,
+		},
+		{
+			name:     "prompt selected",
+			ctx:      context.WithValue(context.Background(), selectedPromptContextKey{}, "code_review"),
+			expected: true,
+		},
+		{
+			name:     "empty prompt selected",
+			ctx:      context.WithValue(context.Background(), selectedPromptContextKey{}, ""),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := HasSelectedPrompt(tt.ctx)
+			if result != tt.expected {
+				t.Errorf("HasSelectedPrompt() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetPromptContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		expectNil bool
+	}{
+		{
+			name:      "no prompt content",
+			ctx:       context.Background(),
+			expectNil: true,
+		},
+		{
+			name: "prompt content present",
+			ctx: context.WithValue(context.Background(), promptContentContextKey{}, &mcp.GetPromptResult{
+				Description: "test prompt",
+			}),
+			expectNil: false,
+		},
+		{
+			name:      "wrong type in context",
+			ctx:       context.WithValue(context.Background(), promptContentContextKey{}, "invalid"),
+			expectNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := GetPromptContent(tt.ctx)
+			if (result == nil) != tt.expectNil {
+				t.Errorf("GetPromptContent() nil=%v, expected nil=%v", result == nil, tt.expectNil)
+			}
+		})
+	}
+}
+
+// Helper function to create context with mock resources
+func createContextWithResources(count int) context.Context {
+	resources := make([]*mcp.Resource, count)
+	for i := 0; i < count; i++ {
+		uri := fmt.Sprintf("file:///resource_%d.json", i)
+		resources[i] = &mcp.Resource{
+			URI:         uri,
+			Name:        fmt.Sprintf("resource_%d", i),
+			Description: fmt.Sprintf("Description for resource_%d", i),
+		}
+	}
+
+	return context.WithValue(context.Background(), mcpResourcesContextKey{}, resources)
+}
+
+// Helper function to create context with mock prompts
+func createContextWithPrompts(count int) context.Context {
+	prompts := make([]*mcp.Prompt, count)
+	for i := 0; i < count; i++ {
+		name := fmt.Sprintf("prompt_%d", i)
+		prompts[i] = &mcp.Prompt{
+			Name:        name,
+			Description: fmt.Sprintf("Description for prompt_%d", i),
+		}
+	}
+
+	return context.WithValue(context.Background(), mcpPromptsContextKey{}, prompts)
 }

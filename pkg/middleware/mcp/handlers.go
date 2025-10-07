@@ -9,8 +9,107 @@ import (
 	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// Tools is a convenience function that creates a complete tool detection and execution pipeline.
+// It combines ToolRegistry, DetectTool, ExtractParams, and ExecuteTool into a single handler.
+//
+// This is the recommended way to add MCP tool support for simple use cases.
+// For more control over the pipeline (e.g., adding logging, custom validation), use the
+// individual handlers: ToolRegistry(), DetectTool(), ExtractParams(), ExecuteTool().
+//
+// Input: Natural language user request
+// Output: Tool execution result if tool selected and executed, or original input if no tool appropriate
+// Behavior: BUFFERED - analyzes input, selects tool, extracts parameters, and executes
+//
+// Example:
+//
+//	mcpClient, _ := mcp.NewStdio("python", []string{"server.py"})
+//	aiClient, _ := openai.New("gpt-4o-mini")
+//
+//	flow := calque.NewFlow()
+//	flow.Use(mcp.Tools(mcpClient, aiClient))
+//	flow.Use(ai.Agent(aiClient)) // Handle response if no tool was executed
+//
+//	// Input: "search for golang tutorials" → detects "search" tool, extracts params, executes
+//	// Input: "hello world" → no tool appropriate, passes through to Agent
+func Tools(mcpClient *Client, aiClient ai.Client) calque.Handler {
+	return ctrl.Chain(
+		ToolRegistry(mcpClient), // 1. Discover available MCP tools
+		DetectTool(aiClient),    // 2. Use AI to select appropriate tool
+		ExtractParams(aiClient), // 3. Extract parameters from natural language
+		ExecuteTool(),           // 4. Execute the tool with extracted parameters
+	)
+}
+
+// Resources is a convenience function that creates a complete resource detection and retrieval pipeline.
+// It combines ResourceRegistry, DetectResource, and ExecuteResource into a single handler.
+//
+// This is the recommended way to add MCP resource support for simple use cases.
+// For more control over the pipeline (e.g., adding logging, custom validation), use the
+// individual handlers: ResourceRegistry(), DetectResource(), ExecuteResource().
+//
+// Input: Natural language user request
+// Output: Original input (unchanged) with resource content stored in context if appropriate
+// Behavior: BUFFERED - analyzes input, selects resource, fetches content, stores in context
+//
+// The selected resource content is stored in the request context and can be accessed
+// by downstream handlers using GetResourceContent(ctx).
+//
+// Example:
+//
+//	mcpClient, _ := mcp.NewStdio("python", []string{"server.py"})
+//	aiClient, _ := openai.New("gpt-4o-mini")
+//
+//	flow := calque.NewFlow()
+//	flow.Use(mcp.Resources(mcpClient, aiClient))
+//	flow.Use(ai.Agent(aiClient)) // Agent can access resource content from context
+//
+//	// Input: "summarize the API documentation" → detects docs resource, fetches content
+//	// The agent can then use the resource content to answer the question
+func Resources(mcpClient *Client, aiClient ai.Client) calque.Handler {
+	return ctrl.Chain(
+		ResourceRegistry(mcpClient), // 1. Discover available MCP resources
+		DetectResource(aiClient),    // 2. Use AI to select appropriate resource
+		ExecuteResource(mcpClient),  // 3. Fetch resource and store in context
+	)
+}
+
+// Prompts is a convenience function that creates a complete prompt detection and retrieval pipeline.
+// It combines PromptRegistry, DetectPrompt, and ExecutePrompt into a single handler.
+//
+// This is the recommended way to add MCP prompt support for simple use cases.
+// For more control over the pipeline (e.g., adding logging, custom validation), use the
+// individual handlers: PromptRegistry(), DetectPrompt(), ExecutePrompt().
+//
+// Input: Natural language user request
+// Output: Original input (unchanged) with prompt content stored in context if appropriate
+// Behavior: BUFFERED - analyzes input, selects prompt, fetches content, stores in context
+//
+// The selected prompt content is stored in the request context and can be accessed
+// by downstream handlers using GetPromptContent(ctx).
+//
+// Example:
+//
+//	mcpClient, _ := mcp.NewStdio("python", []string{"server.py"})
+//	aiClient, _ := openai.New("gpt-4o-mini")
+//
+//	flow := calque.NewFlow()
+//	flow.Use(mcp.Prompts(mcpClient, aiClient))
+//	flow.Use(ai.Agent(aiClient)) // Agent can access prompt content from context
+//
+//	// Input: "help me write a blog post" → detects blog-writer prompt, fetches template
+//	// The agent can then use the prompt template to guide the response
+func Prompts(mcpClient *Client, aiClient ai.Client) calque.Handler {
+	return ctrl.Chain(
+		PromptRegistry(mcpClient), // 1. Discover available MCP prompts
+		DetectPrompt(aiClient),    // 2. Use AI to select appropriate prompt
+		ExecutePrompt(mcpClient),  // 3. Fetch prompt and store in context
+	)
+}
 
 // Tool creates a handler that calls an MCP tool using input as arguments.
 //

@@ -615,3 +615,158 @@ func TestResourceUpdateHandling(t *testing.T) {
 		t.Errorf("Expected URI 'file:///test/doc.md', got %s", receivedParams.URI)
 	}
 }
+
+func TestNewStreamableHTTP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		url         string
+		opts        []Option
+		expectError bool
+	}{
+		{
+			name:        "basic streamable HTTP client",
+			url:         "http://localhost:3000/mcp",
+			expectError: false,
+		},
+		{
+			name:        "streamable HTTP with timeout",
+			url:         "http://localhost:3000/mcp",
+			opts:        []Option{WithTimeout(30 * time.Second)},
+			expectError: false,
+		},
+		{
+			name:        "streamable HTTP with capabilities",
+			url:         "http://localhost:3000/mcp",
+			opts:        []Option{WithCapabilities("tools", "resources")},
+			expectError: false,
+		},
+		{
+			name: "streamable HTTP with environment variables",
+			url:  "http://localhost:3000/mcp",
+			opts: []Option{WithEnv(map[string]string{
+				"Authorization":   "Bearer token123",
+				"X-Custom-Header": "custom-value",
+			})},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client, err := NewStreamableHTTP(tt.url, tt.opts...)
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if client == nil {
+				t.Fatal("Expected client to be created")
+			}
+
+			// Verify transport is set
+			if client.transport == nil {
+				t.Error("Expected transport to be set")
+			}
+
+			// Verify it's a StreamableClientTransport
+			if _, ok := client.transport.(*mcp.StreamableClientTransport); !ok {
+				t.Errorf("Expected StreamableClientTransport, got %T", client.transport)
+			}
+
+			// Verify options were applied
+			// Options are applied, we just verify client was created successfully
+			// Individual option tests are in other test functions
+		})
+	}
+}
+
+func TestNewSSEWithTimeout(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewSSE("http://localhost:3000/sse",
+		WithTimeout(45*time.Second))
+
+	if err != nil {
+		t.Fatalf("NewSSE with timeout failed: %v", err)
+	}
+
+	if client.timeout != 45*time.Second {
+		t.Errorf("Expected timeout 45s, got %v", client.timeout)
+	}
+
+	// Verify transport is SSEClientTransport
+	if _, ok := client.transport.(*mcp.SSEClientTransport); !ok {
+		t.Errorf("Expected SSEClientTransport, got %T", client.transport)
+	}
+}
+
+func TestCreateHTTPClientForStreaming(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		env     map[string]string
+	}{
+		{
+			name:    "default timeout",
+			timeout: 30 * time.Second,
+			env:     nil,
+		},
+		{
+			name:    "custom timeout",
+			timeout: 60 * time.Second,
+			env:     nil,
+		},
+		{
+			name:    "with environment headers",
+			timeout: 30 * time.Second,
+			env: map[string]string{
+				"Authorization": "Bearer test",
+				"X-API-Key":     "key123",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			httpClient := createHTTPClientForStreaming(tt.timeout, tt.env)
+
+			if httpClient == nil {
+				t.Fatal("Expected HTTP client to be created")
+			}
+
+			// Verify timeout is set
+			if httpClient.Timeout != tt.timeout {
+				t.Errorf("Expected timeout %v, got %v", tt.timeout, httpClient.Timeout)
+			}
+
+			// Verify transport is configured
+			if httpClient.Transport == nil {
+				t.Error("Expected transport to be configured")
+			}
+
+			// If env vars provided, verify custom transport is used
+			if len(tt.env) > 0 {
+				if _, ok := httpClient.Transport.(*envHeaderTransport); !ok {
+					t.Error("Expected envHeaderTransport when environment variables provided")
+				}
+			}
+		})
+	}
+}
