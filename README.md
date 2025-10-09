@@ -233,6 +233,24 @@ Go-Calque includes middleware for common AI and data processing patterns:
 - **Agent Routing**: Route requests to different agents based on content
 - **Load Balancing**: Distribute load across multiple agent instances
 
+### Caching (`cache/`)
+
+- **Response Caching**: `cache.Cache(handler, ttl)` - Cache handler responses with TTL
+- **Pluggable Backends**: In-memory store or custom storage adapters
+- **Input-Based Keys**: Automatic cache key generation from input content hashes
+- **TTL Support**: Time-based expiration with automatic cleanup
+
+### Model Context Protocol (`mcp/`)
+
+- **MCP Client**: Connect to MCP servers to access tools, resources, and prompts
+- **Multiple Transports**: Stdio, SSE, and HTTP streaming support
+- **Tool Registry**: `mcp.ToolRegistry(client)` - List available MCP tools
+- **Resource Access**: `mcp.ResourceRegistry(client)` - Access MCP resources
+- **Prompt Templates**: `mcp.PromptRegistry(client)` - Use MCP prompt templates
+- **Auto Detection**: `mcp.DetectTool(llmClient)` - AI-powered tool/resource/prompt selection
+- **Execution**: `mcp.ExecuteTool()`, `mcp.ExecuteResource()`, `mcp.ExecutePrompt()` - Execute selected capabilities
+- **Caching**: Built-in caching for registry and execution operations
+
 ## Converters
 
 Transform structured data at flow boundaries:
@@ -240,17 +258,21 @@ Transform structured data at flow boundaries:
 **Input Converters** (prepare data for processing):
 
 ```go
-convert.ToJSON(struct)      // Struct → JSON stream
-convert.ToYAML(struct)      // Struct → YAML stream
-convert.ToJSONSchema(struct) // Struct + schema → stream (for AI context)
+convert.ToJSON(struct)         // Struct → JSON stream
+convert.ToYAML(struct)         // Struct → YAML stream
+convert.ToJSONSchema(struct)   // Struct + schema → stream (for AI context)
+convert.ToProtobuf(msg)        // Proto message → binary stream
+convert.ToSSE(data)            // Data → Server-Sent Events stream
 ```
 
 **Output Converters** (parse results):
 
 ```go
 convert.FromJSON(&result)           // JSON stream → struct
-convert.FromYAML(&result)           // Yaml stream → struct
-convert.FromJSONSchema(&result)     // Validates output against schema
+convert.FromYAML(&result)           // YAML stream → struct
+convert.FromJSONSchema(&result)     // JSON stream → struct (validates against schema)
+convert.FromProtobuf(&result)       // Binary stream → proto message
+convert.FromSSE(&result)            // SSE stream → data
 ```
 
 **Usage:**
@@ -259,8 +281,14 @@ convert.FromJSONSchema(&result)     // Validates output against schema
 // JSON processing flow
 err := flow.Run(ctx, convert.ToJSON(data), convert.FromJSON(&result))
 
-// input and output json with schema validation. Useful for AI structured output
+// JSON with schema validation (useful for AI structured output)
 err := flow.Run(ctx, convert.ToJSONSchema(input), convert.FromJSONSchema[Output](&result))
+
+// Protobuf processing
+err := flow.Run(ctx, convert.ToProtobuf(protoMsg), convert.FromProtobuf(&result))
+
+// Server-Sent Events streaming
+err := flow.Run(ctx, convert.ToSSE(data), convert.FromSSE(&result))
 ```
 
 ## Examples
@@ -519,7 +547,7 @@ _Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 **Multi-Agent Collaboration** - 🔲 Agent selection, ✅ load balancing, ✅ conditional routing  
 **Guardrails & Safety** - 🔲 Input filtering, 🔲 output validation, ✅ schema compliance  
 **HTTP/API Integration** - ✅ streaming responses
-**Model Context Protocol** - 🔲 MCP client
+**Model Context Protocol** - ✅ MCP client
 
 ### Framework Improvements
 

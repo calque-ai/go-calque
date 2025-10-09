@@ -12,6 +12,42 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// DetectOptions configures detection behavior for MCP capabilities
+type DetectOptions struct {
+	// PromptTemplate is the LLM prompt template used for selection
+	// If not provided, uses the default template for the capability type
+	PromptTemplate string
+}
+
+// DetectOption configures detection handlers
+type DetectOption interface {
+	Apply(*DetectOptions)
+}
+
+type promptTemplateOption struct{ template string }
+
+func (o promptTemplateOption) Apply(opts *DetectOptions) { opts.PromptTemplate = o.template }
+
+// WithPromptTemplate sets a custom prompt template for detection.
+//
+// Input: template string with {{.Input}} and capability-specific placeholders
+// Output: DetectOption for configuration
+// Behavior: Overrides the default detection prompt template
+//
+// Allows customizing how the LLM analyzes user input to select capabilities.
+// Template must include {{.Input}} for user input and capability-specific
+// placeholders like {{.Tools}}, {{.Resources}}, or {{.Prompts}}.
+//
+// Example:
+//
+//	template := `Custom tool selection prompt...
+//	User request: {{.Input}}
+//	Available tools: {{range .Tools}}...{{end}}`
+//	detector := mcp.DetectTool(llmClient, mcp.WithPromptTemplate(template))
+func WithPromptTemplate(template string) DetectOption {
+	return promptTemplateOption{template: template}
+}
+
 // detectConfig holds configuration for capability detection
 type detectConfig[T any] struct {
 	// capabilityName is the human-readable name of the capability (e.g., "tool", "resource", "prompt")
@@ -71,7 +107,17 @@ type detectConfig[T any] struct {
 //	// Input: "search for golang tutorials" → selects "search" tool
 //	// Input: "connect to localhost:8080" → selects "connect" tool
 //	// Input: "hello world" → no tool selected, passes through
-func DetectTool(llmClient ai.Client) calque.Handler {
+func DetectTool(llmClient ai.Client, opts ...DetectOption) calque.Handler {
+	options := &DetectOptions{}
+	for _, opt := range opts {
+		opt.Apply(options)
+	}
+
+	template := toolSelectionPromptTemplate
+	if options.PromptTemplate != "" {
+		template = options.PromptTemplate
+	}
+
 	return detectCapability(llmClient, detectConfig[ToolSelectionResponse]{
 		capabilityName: "tool",
 		getItems: func(ctx context.Context) any {
@@ -81,7 +127,7 @@ func DetectTool(llmClient ai.Client) calque.Handler {
 			tools, ok := items.([]*Tool)
 			return !ok || len(tools) == 0
 		},
-		promptTemplate: toolSelectionPromptTemplate,
+		promptTemplate: template,
 		getTemplateData: func(userInput string, items any) map[string]any {
 			tools := items.([]*Tool)
 			return getToolSelectionTemplateData(userInput, tools)
@@ -114,7 +160,17 @@ func DetectTool(llmClient ai.Client) calque.Handler {
 //	flow.Use(mcp.ResourceRegistry(client)).
 //	     Use(mcp.DetectResource(llmClient)).
 //	     Use(mcp.ExecuteResource())
-func DetectResource(llmClient ai.Client) calque.Handler {
+func DetectResource(llmClient ai.Client, opts ...DetectOption) calque.Handler {
+	options := &DetectOptions{}
+	for _, opt := range opts {
+		opt.Apply(options)
+	}
+
+	template := resourceSelectionPromptTemplate
+	if options.PromptTemplate != "" {
+		template = options.PromptTemplate
+	}
+
 	return detectCapability(llmClient, detectConfig[ResourceSelectionResponse]{
 		capabilityName: "resource",
 		getItems: func(ctx context.Context) any {
@@ -124,7 +180,7 @@ func DetectResource(llmClient ai.Client) calque.Handler {
 			resources, ok := items.([]*mcpsdk.Resource)
 			return !ok || len(resources) == 0
 		},
-		promptTemplate: resourceSelectionPromptTemplate,
+		promptTemplate: template,
 		getTemplateData: func(userInput string, items any) map[string]any {
 			resources := items.([]*mcpsdk.Resource)
 			return getResourceSelectionTemplateData(userInput, resources)
@@ -157,7 +213,17 @@ func DetectResource(llmClient ai.Client) calque.Handler {
 //	flow.Use(mcp.PromptRegistry(client)).
 //	     Use(mcp.DetectPrompt(llmClient)).
 //	     Use(mcp.ExecutePrompt())
-func DetectPrompt(llmClient ai.Client) calque.Handler {
+func DetectPrompt(llmClient ai.Client, opts ...DetectOption) calque.Handler {
+	options := &DetectOptions{}
+	for _, opt := range opts {
+		opt.Apply(options)
+	}
+
+	template := promptSelectionPromptTemplate
+	if options.PromptTemplate != "" {
+		template = options.PromptTemplate
+	}
+
 	return detectCapability(llmClient, detectConfig[PromptSelectionResponse]{
 		capabilityName: "prompt",
 		getItems: func(ctx context.Context) any {
@@ -167,7 +233,7 @@ func DetectPrompt(llmClient ai.Client) calque.Handler {
 			prompts, ok := items.([]*mcpsdk.Prompt)
 			return !ok || len(prompts) == 0
 		},
-		promptTemplate: promptSelectionPromptTemplate,
+		promptTemplate: template,
 		getTemplateData: func(userInput string, items any) map[string]any {
 			prompts := items.([]*mcpsdk.Prompt)
 			return getPromptSelectionTemplateData(userInput, prompts)

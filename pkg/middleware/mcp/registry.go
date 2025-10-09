@@ -28,8 +28,7 @@ import (
 //	flow.Use(registry)
 //	// Tools are now available via mcp.GetTools(ctx)
 func ToolRegistry(client *Client) calque.Handler {
-	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		// Establish connection if needed
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		ctx := req.Context
 		if ctx == nil {
 			ctx = context.Background()
@@ -39,14 +38,28 @@ func ToolRegistry(client *Client) calque.Handler {
 			return client.handleError(fmt.Errorf("failed to connect for tool registry: %w", err))
 		}
 
-		// Discover all available MCP tools
+		var mcpTools []*Tool
+		cacheKey := makeRegistryCacheKey("tool", client)
+
+		// Try to get from cache
+		if getCachedRegistry(client, cacheKey, &mcpTools) {
+			// Restore client reference (not serialized)
+			for _, tool := range mcpTools {
+				tool.Client = client
+			}
+			req.Context = context.WithValue(ctx, mcpToolsContextKey{}, mcpTools)
+			_, err := io.Copy(res.Data, req.Data)
+			return err
+		}
+
+		// Cache miss - fetch from MCP server
 		listResult, err := client.session.ListTools(ctx, &mcp.ListToolsParams{})
 		if err != nil {
 			return client.handleError(fmt.Errorf("failed to list MCP tools: %w", err))
 		}
 
-		// Convert MCP tools to our Tool format with schema conversion
-		mcpTools := make([]*Tool, len(listResult.Tools))
+		// Convert MCP tools to our Tool format
+		mcpTools = make([]*Tool, len(listResult.Tools))
 		for i, tool := range listResult.Tools {
 			mcpTools[i] = &Tool{
 				MCPTool:     tool,
@@ -57,23 +70,14 @@ func ToolRegistry(client *Client) calque.Handler {
 			}
 		}
 
-		// Store tools in context (similar to tools.Registry)
-		contextWithTools := context.WithValue(ctx, mcpToolsContextKey{}, mcpTools)
-		req.Context = contextWithTools
+		// Store in cache
+		setCachedRegistry(client, cacheKey, mcpTools)
 
-		// Pass input through unchanged
+		// Store in context
+		req.Context = context.WithValue(ctx, mcpToolsContextKey{}, mcpTools)
 		_, err = io.Copy(res.Data, req.Data)
 		return err
 	})
-
-	// Apply caching if enabled - cache key includes client pointer to separate different MCP servers
-	if client.cache != nil && client.cacheConfig != nil && client.cacheConfig.RegistryTTL > 0 {
-		return client.cache.CacheWithKey(handler, client.cacheConfig.RegistryTTL, func(_ *calque.Request) string {
-			return fmt.Sprintf("mcp:tool-registry:%p", client)
-		})
-	}
-
-	return handler
 }
 
 // ResourceRegistry creates a handler that discovers and makes MCP resources available in the execution context.
@@ -92,8 +96,7 @@ func ToolRegistry(client *Client) calque.Handler {
 //	flow.Use(registry)
 //	// Resources are now available via mcp.GetResources(ctx)
 func ResourceRegistry(client *Client) calque.Handler {
-	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		// Establish connection if needed
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		ctx := req.Context
 		if ctx == nil {
 			ctx = context.Background()
@@ -103,29 +106,32 @@ func ResourceRegistry(client *Client) calque.Handler {
 			return client.handleError(fmt.Errorf("failed to connect for resource registry: %w", err))
 		}
 
-		// Discover all available MCP resources
+		var resources []*mcp.Resource
+		cacheKey := makeRegistryCacheKey("resource", client)
+
+		// Try to get from cache
+		if getCachedRegistry(client, cacheKey, &resources) {
+			req.Context = context.WithValue(ctx, mcpResourcesContextKey{}, resources)
+			_, err := io.Copy(res.Data, req.Data)
+			return err
+		}
+
+		// Cache miss - fetch from MCP server
 		listResult, err := client.session.ListResources(ctx, &mcp.ListResourcesParams{})
 		if err != nil {
 			return client.handleError(fmt.Errorf("failed to list MCP resources: %w", err))
 		}
 
-		// Store resources in context
-		contextWithResources := context.WithValue(ctx, mcpResourcesContextKey{}, listResult.Resources)
-		req.Context = contextWithResources
+		resources = listResult.Resources
 
-		// Pass input through unchanged
+		// Store in cache
+		setCachedRegistry(client, cacheKey, resources)
+
+		// Store in context
+		req.Context = context.WithValue(ctx, mcpResourcesContextKey{}, resources)
 		_, err = io.Copy(res.Data, req.Data)
 		return err
 	})
-
-	// Apply caching if enabled
-	if client.cache != nil && client.cacheConfig != nil && client.cacheConfig.RegistryTTL > 0 {
-		return client.cache.CacheWithKey(handler, client.cacheConfig.RegistryTTL, func(_ *calque.Request) string {
-			return fmt.Sprintf("resource-registry:%p", client)
-		})
-	}
-
-	return handler
 }
 
 // PromptRegistry creates a handler that discovers and makes MCP prompts available in the execution context.
@@ -144,8 +150,7 @@ func ResourceRegistry(client *Client) calque.Handler {
 //	flow.Use(registry)
 //	// Prompts are now available via mcp.GetPrompts(ctx)
 func PromptRegistry(client *Client) calque.Handler {
-	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		// Establish connection if needed
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		ctx := req.Context
 		if ctx == nil {
 			ctx = context.Background()
@@ -155,29 +160,32 @@ func PromptRegistry(client *Client) calque.Handler {
 			return client.handleError(fmt.Errorf("failed to connect for prompt registry: %w", err))
 		}
 
-		// Discover all available MCP prompts
+		var prompts []*mcp.Prompt
+		cacheKey := makeRegistryCacheKey("prompt", client)
+
+		// Try to get from cache
+		if getCachedRegistry(client, cacheKey, &prompts) {
+			req.Context = context.WithValue(ctx, mcpPromptsContextKey{}, prompts)
+			_, err := io.Copy(res.Data, req.Data)
+			return err
+		}
+
+		// Cache miss - fetch from MCP server
 		listResult, err := client.session.ListPrompts(ctx, &mcp.ListPromptsParams{})
 		if err != nil {
 			return client.handleError(fmt.Errorf("failed to list MCP prompts: %w", err))
 		}
 
-		// Store prompts in context
-		contextWithPrompts := context.WithValue(ctx, mcpPromptsContextKey{}, listResult.Prompts)
-		req.Context = contextWithPrompts
+		prompts = listResult.Prompts
 
-		// Pass input through unchanged
+		// Store in cache
+		setCachedRegistry(client, cacheKey, prompts)
+
+		// Store in context
+		req.Context = context.WithValue(ctx, mcpPromptsContextKey{}, prompts)
 		_, err = io.Copy(res.Data, req.Data)
 		return err
 	})
-
-	// Apply caching if enabled
-	if client.cache != nil && client.cacheConfig != nil && client.cacheConfig.RegistryTTL > 0 {
-		return client.cache.CacheWithKey(handler, client.cacheConfig.RegistryTTL, func(_ *calque.Request) string {
-			return fmt.Sprintf("prompt-registry:%p", client)
-		})
-	}
-
-	return handler
 }
 
 // convertGoogleSchemaToInvopop converts a Google JSON Schema to invopop format
@@ -201,4 +209,35 @@ func convertGoogleSchemaToInvopop(googleSchema any) *jsonschema.Schema {
 	}
 
 	return &invopopSchema
+}
+
+// getCachedRegistry attempts to retrieve cached registry data and unmarshal it.
+// Returns true if cache hit and unmarshal succeeded, false otherwise.
+func getCachedRegistry[T any](client *Client, cacheKey string, data *T) bool {
+	if client.cache == nil || client.cacheConfig == nil || client.cacheConfig.RegistryTTL <= 0 {
+		return false
+	}
+
+	cached, err := client.cache.Get(cacheKey)
+	if err != nil || cached == nil {
+		return false
+	}
+
+	return json.Unmarshal(cached, data) == nil
+}
+
+// setCachedRegistry stores registry data in cache if caching is enabled.
+func setCachedRegistry[T any](client *Client, cacheKey string, data T) {
+	if client.cache == nil || client.cacheConfig == nil || client.cacheConfig.RegistryTTL <= 0 {
+		return
+	}
+
+	if jsonData, err := json.Marshal(data); err == nil {
+		_ = client.cache.Set(cacheKey, jsonData, client.cacheConfig.RegistryTTL)
+	}
+}
+
+// makeRegistryCacheKey creates a cache key for a registry type, including client pointer for uniqueness.
+func makeRegistryCacheKey(registryType string, client *Client) string {
+	return fmt.Sprintf("mcp:%s-registry:%p", registryType, client)
 }
