@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -89,19 +90,12 @@ func ExecuteTool() calque.Handler {
 //	     Use(mcp.ExecuteResource())
 //	     Use(llm.Chat("gpt-4")) // Can access resource content from context
 func ExecuteResource(client *Client) calque.Handler {
-	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		// Check if a resource was selected by DetectResource
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		selectedResourceURI := GetSelectedResource(req.Context)
 		if selectedResourceURI == "" {
-			// No resource selected - pass through the input
-			var input []byte
-			if err := calque.Read(req, &input); err != nil {
-				return err
-			}
-			return calque.Write(res, input)
+			return passThrough(req, res)
 		}
 
-		// Establish connection if needed
 		ctx := req.Context
 		if ctx == nil {
 			ctx = context.Background()
@@ -111,37 +105,28 @@ func ExecuteResource(client *Client) calque.Handler {
 			return client.handleError(fmt.Errorf("failed to connect for resource execution: %w", err))
 		}
 
-		// Fetch the resource
-		params := &mcp.ReadResourceParams{
-			URI: selectedResourceURI,
+		var result *mcp.ReadResourceResult
+		cacheKey := fmt.Sprintf("mcp:resource:%s", selectedResourceURI)
+
+		// Try to get from cache
+		if getCachedResult(client, cacheKey, client.cacheConfig.ResourceTTL, &result) {
+			return storeInContextAndPassThrough(ctx, req, res, resourceContentContextKey{}, result)
 		}
 
-		result, err := client.session.ReadResource(ctx, params)
+		// Cache miss - fetch from MCP server
+		params := &mcp.ReadResourceParams{URI: selectedResourceURI}
+		var err error
+		result, err = client.session.ReadResource(ctx, params)
 		if err != nil {
 			return client.handleError(fmt.Errorf("failed to read resource %s: %w", selectedResourceURI, err))
 		}
 
-		// Store resource content in context for downstream handlers
-		contextWithResource := context.WithValue(ctx, resourceContentContextKey{}, result)
-		req.Context = contextWithResource
+		// Store in cache
+		setCachedResult(client, cacheKey, client.cacheConfig.ResourceTTL, result)
 
-		// Pass through original input
-		var input []byte
-		if err := calque.Read(req, &input); err != nil {
-			return err
-		}
-		return calque.Write(res, input)
+		// Store in context and pass through
+		return storeInContextAndPassThrough(ctx, req, res, resourceContentContextKey{}, result)
 	})
-
-	// Apply caching if enabled - cache key based on resource URI
-	if client.cache != nil && client.cacheConfig != nil && client.cacheConfig.ResourceTTL > 0 {
-		return client.cache.CacheWithKey(handler, client.cacheConfig.ResourceTTL, func(req *calque.Request) string {
-			uri := GetSelectedResource(req.Context)
-			return fmt.Sprintf("mcp:resource:%s", uri)
-		})
-	}
-
-	return handler
 }
 
 // ExecutePrompt creates a handler that fetches the MCP prompt selected by DetectPrompt, or passes through if none selected.
@@ -161,19 +146,12 @@ func ExecuteResource(client *Client) calque.Handler {
 //	     Use(mcp.ExecutePrompt())
 //	     Use(llm.Chat("gpt-4")) // Can access prompt content from context
 func ExecutePrompt(client *Client) calque.Handler {
-	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		// Check if a prompt was selected by DetectPrompt
+	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		selectedPromptName := GetSelectedPrompt(req.Context)
 		if selectedPromptName == "" {
-			// No prompt selected - pass through the input
-			var input []byte
-			if err := calque.Read(req, &input); err != nil {
-				return err
-			}
-			return calque.Write(res, input)
+			return passThrough(req, res)
 		}
 
-		// Establish connection if needed
 		ctx := req.Context
 		if ctx == nil {
 			ctx = context.Background()
@@ -192,37 +170,93 @@ func ExecutePrompt(client *Client) calque.Handler {
 		// Parse arguments if input is JSON
 		var args map[string]string
 		if len(input) > 0 {
-			// Try to parse as JSON, ignore errors if not JSON
-			_ = json.Unmarshal(input, &args)
+			_ = json.Unmarshal(input, &args) // Ignore errors if not JSON
 		}
 
-		// Fetch the prompt
+		cacheKey := makePromptCacheKey(selectedPromptName, args)
+		var result *mcp.GetPromptResult
+
+		// Try to get from cache
+		if getCachedResult(client, cacheKey, client.cacheConfig.PromptTTL, &result) {
+			req.Context = context.WithValue(ctx, promptContentContextKey{}, result)
+			return calque.Write(res, input)
+		}
+
+		// Cache miss - fetch from MCP server
 		params := &mcp.GetPromptParams{
 			Name:      selectedPromptName,
 			Arguments: args,
 		}
 
-		result, err := client.session.GetPrompt(ctx, params)
+		var err error
+		result, err = client.session.GetPrompt(ctx, params)
 		if err != nil {
 			return client.handleError(fmt.Errorf("failed to get prompt %s: %w", selectedPromptName, err))
 		}
 
-		// Store prompt content in context for downstream handlers
-		contextWithPrompt := context.WithValue(ctx, promptContentContextKey{}, result)
-		req.Context = contextWithPrompt
+		// Store in cache
+		setCachedResult(client, cacheKey, client.cacheConfig.PromptTTL, result)
 
-		// Pass through original input
+		// Store in context and pass through
+		req.Context = context.WithValue(ctx, promptContentContextKey{}, result)
 		return calque.Write(res, input)
 	})
+}
 
-	// Apply caching if enabled - cache key based on prompt name + args hash
-	if client.cache != nil && client.cacheConfig != nil && client.cacheConfig.PromptTTL > 0 {
-		return client.cache.CacheWithKey(handler, client.cacheConfig.PromptTTL, func(req *calque.Request) string {
-			name := GetSelectedPrompt(req.Context)
-			// Note: For simplicity, we cache by name only. Could enhance to include args hash
-			return fmt.Sprintf("mcp:prompt:%s", name)
-		})
+// makePromptCacheKey creates a cache key for a prompt, including args hash if present.
+// This ensures different args produce different cache entries while supporting no-args prompts.
+func makePromptCacheKey(name string, args map[string]string) string {
+	if len(args) == 0 {
+		return fmt.Sprintf("mcp:prompt:%s", name)
 	}
 
-	return handler
+	// Marshal args to JSON for consistent hashing
+	argsJSON, err := json.Marshal(args)
+	if err != nil {
+		// Fallback to name only if marshaling fails
+		return fmt.Sprintf("mcp:prompt:%s", name)
+	}
+
+	return fmt.Sprintf("mcp:prompt:%s:%s", name, string(argsJSON))
+}
+
+// passThrough reads input and writes it to output unchanged.
+func passThrough(req *calque.Request, res *calque.Response) error {
+	var input []byte
+	if err := calque.Read(req, &input); err != nil {
+		return err
+	}
+	return calque.Write(res, input)
+}
+
+// getCachedResult attempts to retrieve and unmarshal cached data.
+// Returns true if cache hit and unmarshal succeeded, false otherwise.
+func getCachedResult[T any](client *Client, cacheKey string, ttl time.Duration, result *T) bool {
+	if client.cache == nil || client.cacheConfig == nil || ttl <= 0 {
+		return false
+	}
+
+	cached, err := client.cache.Get(cacheKey)
+	if err != nil || cached == nil {
+		return false
+	}
+
+	return json.Unmarshal(cached, result) == nil
+}
+
+// setCachedResult stores data in cache if caching is enabled.
+func setCachedResult[T any](client *Client, cacheKey string, ttl time.Duration, data T) {
+	if client.cache == nil || client.cacheConfig == nil || ttl <= 0 {
+		return
+	}
+
+	if jsonData, err := json.Marshal(data); err == nil {
+		_ = client.cache.Set(cacheKey, jsonData, ttl)
+	}
+}
+
+// storeInContextAndPassThrough stores data in context and passes input through unchanged.
+func storeInContextAndPassThrough(ctx context.Context, req *calque.Request, res *calque.Response, key any, value any) error {
+	req.Context = context.WithValue(ctx, key, value)
+	return passThrough(req, res)
 }

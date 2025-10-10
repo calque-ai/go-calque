@@ -4,8 +4,10 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/cache"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -448,4 +450,264 @@ func createTestPromptContextForExecute() context.Context {
 	}
 
 	return context.WithValue(context.Background(), mcpPromptsContextKey{}, prompts)
+}
+
+func TestExecuteCaching(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ExecuteResource caching", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewStdio("go", []string{"run", "./examples/mcp/cmd/server"},
+			WithCache(cache.NewInMemoryStore(), &CacheConfig{
+				ResourceTTL: 5 * time.Minute,
+			}),
+		)
+		if err != nil {
+			t.Skipf("Skipping test - MCP server not available: %v", err)
+		}
+		defer client.Close()
+
+		// Setup pipeline: ResourceRegistry → select resource → ExecuteResource
+		resourceRegistry := ResourceRegistry(client)
+		executeHandler := ExecuteResource(client)
+
+		// First call - cache miss
+		// Setup context with resource registry
+		req1 := calque.NewRequest(context.Background(), strings.NewReader("test input 1"))
+		var registryOutput1 strings.Builder
+		res1 := calque.NewResponse(&registryOutput1)
+
+		err = resourceRegistry.ServeFlow(req1, res1)
+		if err != nil {
+			t.Skipf("Skipping test - MCP server connection failed: %v", err)
+		}
+
+		resources := GetResources(req1.Context)
+		if len(resources) == 0 {
+			t.Skip("No resources available from MCP server")
+		}
+
+		// Select first resource
+		selectedURI := resources[0].URI
+		ctx1 := context.WithValue(req1.Context, selectedResourceContextKey{}, selectedURI)
+
+		// Execute with selected resource - cache miss
+		execReq1 := calque.NewRequest(ctx1, strings.NewReader("fetch this resource"))
+		var execOutput1 strings.Builder
+		execRes1 := calque.NewResponse(&execOutput1)
+
+		err = executeHandler.ServeFlow(execReq1, execRes1)
+		if err != nil {
+			t.Fatalf("First ExecuteResource call failed: %v", err)
+		}
+
+		result1 := execOutput1.String()
+		if result1 == "" {
+			t.Error("Expected resource content on cache miss")
+		}
+
+		// Second call - cache hit
+		ctx2 := context.WithValue(req1.Context, selectedResourceContextKey{}, selectedURI)
+
+		execReq2 := calque.NewRequest(ctx2, strings.NewReader("fetch this resource again"))
+		var execOutput2 strings.Builder
+		execRes2 := calque.NewResponse(&execOutput2)
+
+		err = executeHandler.ServeFlow(execReq2, execRes2)
+		if err != nil {
+			t.Fatalf("Second ExecuteResource call failed: %v", err)
+		}
+
+		result2 := execOutput2.String()
+		if result2 == "" {
+			t.Error("Expected resource content on cache hit (this was the bug!)")
+		}
+
+		// Verify cache hit returned same content
+		if result1 != result2 {
+			t.Error("Cache hit should return same content as cache miss")
+		}
+
+		t.Log("✅ ExecuteResource caching works correctly - content retrieved on both cache miss and hit")
+	})
+
+	t.Run("ExecutePrompt caching", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewStdio("go", []string{"run", "./examples/mcp/cmd/server"},
+			WithCache(cache.NewInMemoryStore(), &CacheConfig{
+				PromptTTL: 5 * time.Minute,
+			}),
+		)
+		if err != nil {
+			t.Skipf("Skipping test - MCP server not available: %v", err)
+		}
+		defer client.Close()
+
+		// Setup pipeline: PromptRegistry → select prompt → ExecutePrompt
+		promptRegistry := PromptRegistry(client)
+		executeHandler := ExecutePrompt(client)
+
+		// First call - cache miss
+		// Setup context with prompt registry
+		req1 := calque.NewRequest(context.Background(), strings.NewReader("test input 1"))
+		var registryOutput1 strings.Builder
+		res1 := calque.NewResponse(&registryOutput1)
+
+		err = promptRegistry.ServeFlow(req1, res1)
+		if err != nil {
+			t.Skipf("Skipping test - MCP server connection failed: %v", err)
+		}
+
+		prompts := GetPrompts(req1.Context)
+		if len(prompts) == 0 {
+			t.Skip("No prompts available from MCP server")
+		}
+
+		// Select first prompt
+		selectedName := prompts[0].Name
+		ctx1 := context.WithValue(req1.Context, selectedPromptContextKey{}, selectedName)
+
+		// Execute with selected prompt - cache miss
+		execReq1 := calque.NewRequest(ctx1, strings.NewReader("{}"))
+		var execOutput1 strings.Builder
+		execRes1 := calque.NewResponse(&execOutput1)
+
+		err = executeHandler.ServeFlow(execReq1, execRes1)
+		if err != nil {
+			t.Fatalf("First ExecutePrompt call failed: %v", err)
+		}
+
+		result1 := execOutput1.String()
+		if result1 == "" {
+			t.Error("Expected prompt content on cache miss")
+		}
+
+		// Second call - cache hit
+		ctx2 := context.WithValue(req1.Context, selectedPromptContextKey{}, selectedName)
+
+		execReq2 := calque.NewRequest(ctx2, strings.NewReader("{}"))
+		var execOutput2 strings.Builder
+		execRes2 := calque.NewResponse(&execOutput2)
+
+		err = executeHandler.ServeFlow(execReq2, execRes2)
+		if err != nil {
+			t.Fatalf("Second ExecutePrompt call failed: %v", err)
+		}
+
+		result2 := execOutput2.String()
+		if result2 == "" {
+			t.Error("Expected prompt content on cache hit (this was the bug!)")
+		}
+
+		// Verify cache hit returned same content
+		if result1 != result2 {
+			t.Error("Cache hit should return same content as cache miss")
+		}
+
+		t.Log("✅ ExecutePrompt caching works correctly - content retrieved on both cache miss and hit")
+	})
+
+	t.Run("ExecutePrompt caching with different args", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewStdio("go", []string{"run", "./examples/mcp/cmd/server"},
+			WithCache(cache.NewInMemoryStore(), &CacheConfig{
+				PromptTTL: 5 * time.Minute,
+			}),
+		)
+		if err != nil {
+			t.Skipf("Skipping test - MCP server not available: %v", err)
+		}
+		defer client.Close()
+
+		// Setup pipeline: PromptRegistry → select prompt → ExecutePrompt
+		promptRegistry := PromptRegistry(client)
+		executeHandler := ExecutePrompt(client)
+
+		// Setup context with prompt registry
+		req1 := calque.NewRequest(context.Background(), strings.NewReader("test input"))
+		var registryOutput1 strings.Builder
+		res1 := calque.NewResponse(&registryOutput1)
+
+		err = promptRegistry.ServeFlow(req1, res1)
+		if err != nil {
+			t.Skipf("Skipping test - MCP server connection failed: %v", err)
+		}
+
+		prompts := GetPrompts(req1.Context)
+		if len(prompts) == 0 {
+			t.Skip("No prompts available from MCP server")
+		}
+
+		// Find a prompt that accepts arguments
+		var selectedPrompt *mcp.Prompt
+		for _, p := range prompts {
+			if len(p.Arguments) > 0 {
+				selectedPrompt = p
+				break
+			}
+		}
+
+		if selectedPrompt == nil {
+			t.Skip("No prompts with arguments available")
+		}
+
+		// Call with first set of args - cache miss
+		args1JSON := `{"` + selectedPrompt.Arguments[0].Name + `":"value1"}`
+		ctx1 := context.WithValue(req1.Context, selectedPromptContextKey{}, selectedPrompt.Name)
+		execReq1 := calque.NewRequest(ctx1, strings.NewReader(args1JSON))
+		var execOutput1 strings.Builder
+		execRes1 := calque.NewResponse(&execOutput1)
+
+		err = executeHandler.ServeFlow(execReq1, execRes1)
+		if err != nil {
+			t.Fatalf("First ExecutePrompt call failed: %v", err)
+		}
+
+		result1 := execOutput1.String()
+
+		// Call with different args - should be cache miss (different key)
+		args2JSON := `{"` + selectedPrompt.Arguments[0].Name + `":"value2"}`
+		ctx2 := context.WithValue(req1.Context, selectedPromptContextKey{}, selectedPrompt.Name)
+		execReq2 := calque.NewRequest(ctx2, strings.NewReader(args2JSON))
+		var execOutput2 strings.Builder
+		execRes2 := calque.NewResponse(&execOutput2)
+
+		err = executeHandler.ServeFlow(execReq2, execRes2)
+		if err != nil {
+			t.Fatalf("Second ExecutePrompt call failed: %v", err)
+		}
+
+		result2 := execOutput2.String()
+
+		// Results might differ based on args, but both should have content
+		if result1 == "" {
+			t.Error("Expected prompt content on first call")
+		}
+		if result2 == "" {
+			t.Error("Expected prompt content on second call")
+		}
+
+		// Call with first args again - should be cache hit
+		ctx3 := context.WithValue(req1.Context, selectedPromptContextKey{}, selectedPrompt.Name)
+		execReq3 := calque.NewRequest(ctx3, strings.NewReader(args1JSON))
+		var execOutput3 strings.Builder
+		execRes3 := calque.NewResponse(&execOutput3)
+
+		err = executeHandler.ServeFlow(execReq3, execRes3)
+		if err != nil {
+			t.Fatalf("Third ExecutePrompt call failed: %v", err)
+		}
+
+		result3 := execOutput3.String()
+
+		// Third call should match first call (same args, cache hit)
+		if result1 != result3 {
+			t.Error("Cache with same args should return same content")
+		}
+
+		t.Log("✅ ExecutePrompt caching correctly differentiates by args in cache key")
+	})
 }

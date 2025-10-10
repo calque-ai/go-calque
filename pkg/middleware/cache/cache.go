@@ -167,6 +167,16 @@ func (cm *Memory) Cache(handler calque.Handler, ttl time.Duration) calque.Handle
 	})
 }
 
+// Get retrieves cached data for a key
+func (cm *Memory) Get(key string) ([]byte, error) {
+	return cm.store.Get(key)
+}
+
+// Set stores data for a key with TTL
+func (cm *Memory) Set(key string, value []byte, ttl time.Duration) error {
+	return cm.store.Set(key, value, ttl)
+}
+
 // Clear removes all cached responses
 func (cm *Memory) Clear() error {
 	return cm.store.Clear()

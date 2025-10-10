@@ -38,10 +38,10 @@ import (
 //	// Input: "hello world" → no tool appropriate, passes through to Agent
 func Tools(mcpClient *Client, aiClient ai.Client) calque.Handler {
 	return ctrl.Chain(
-		ToolRegistry(mcpClient), // 1. Discover available MCP tools
-		DetectTool(aiClient),    // 2. Use AI to select appropriate tool
-		ExtractParams(aiClient), // 3. Extract parameters from natural language
-		ExecuteTool(),           // 4. Execute the tool with extracted parameters
+		ToolRegistry(mcpClient),     // 1. Discover available MCP tools
+		DetectTool(aiClient),        // 2. Use AI to select appropriate tool
+		ExtractToolParams(aiClient), // 3. Extract parameters from natural language
+		ExecuteTool(),               // 4. Execute the tool with extracted parameters
 	)
 }
 

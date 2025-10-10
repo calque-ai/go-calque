@@ -10,7 +10,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/invopop/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wk8/go-ordered-map/v2"
+	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
 
 func TestExtractParams(t *testing.T) {
@@ -176,7 +176,7 @@ func TestExtractParams(t *testing.T) {
 			}
 
 			// Create handler
-			handler := ExtractParams(mockLLM)
+			handler := ExtractToolParams(mockLLM)
 
 			// Create request and response
 			req := calque.NewRequest(ctx, strings.NewReader(tt.input))

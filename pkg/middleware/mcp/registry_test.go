@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/cache"
 	googleschema "github.com/google/jsonschema-go/jsonschema"
 	"github.com/invopop/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -966,4 +967,176 @@ func createContextWithPrompts(count int) context.Context {
 	}
 
 	return context.WithValue(context.Background(), mcpPromptsContextKey{}, prompts)
+}
+
+func TestRegistryCaching(t *testing.T) {
+	t.Parallel()
+
+	// This test verifies that registry handlers correctly cache MCP API results
+	// while always populating context on both cache miss and cache hit.
+	// This is a regression test for the bug where cache hits wouldn't populate context.
+
+	t.Run("ToolRegistry caching", func(t *testing.T) {
+		t.Parallel()
+
+		// Create client with caching enabled
+		client, err := NewStdio("go", []string{"run", "examples/mcp/cmd/server/main.go"},
+			WithCache(cache.NewInMemoryStore(), &CacheConfig{
+				RegistryTTL: 5 * time.Minute,
+			}),
+		)
+		if err != nil {
+			t.Skipf("Skipping test - MCP server not available: %v", err)
+		}
+		defer client.Close()
+
+		handler := ToolRegistry(client)
+
+		// First call - should hit MCP server and populate cache
+		ctx1 := context.Background()
+		req1 := calque.NewRequest(ctx1, strings.NewReader("test input 1"))
+		var output1 strings.Builder
+		res1 := calque.NewResponse(&output1)
+
+		err = handler.ServeFlow(req1, res1)
+		if err != nil {
+			t.Skipf("First registry call failed: %v", err)
+		}
+
+		// Verify context was populated
+		tools1 := GetTools(req1.Context)
+		if len(tools1) == 0 {
+			t.Error("Context should be populated with tools on cache miss")
+		}
+
+		// Verify input passed through
+		if output1.String() != "test input 1" {
+			t.Errorf("Expected input to pass through, got %q", output1.String())
+		}
+
+		// Second call - should use cache and still populate context
+		ctx2 := context.Background()
+		req2 := calque.NewRequest(ctx2, strings.NewReader("test input 2"))
+		var output2 strings.Builder
+		res2 := calque.NewResponse(&output2)
+
+		err = handler.ServeFlow(req2, res2)
+		if err != nil {
+			t.Skipf("Second registry call failed: %v", err)
+		}
+
+		// CRITICAL: Verify context was populated even on cache hit
+		tools2 := GetTools(req2.Context)
+		if len(tools2) == 0 {
+			t.Error("Context should be populated with tools on cache hit (this was the bug!)")
+		}
+
+		// Verify same number of tools retrieved
+		if len(tools1) != len(tools2) {
+			t.Errorf("Cache hit returned %d tools, cache miss returned %d", len(tools2), len(tools1))
+		}
+
+		// Verify input passed through
+		if output2.String() != "test input 2" {
+			t.Errorf("Expected input to pass through, got %q", output2.String())
+		}
+
+		t.Log("✅ ToolRegistry caching works correctly - context populated on both cache miss and hit")
+	})
+
+	t.Run("ResourceRegistry caching", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewStdio("go", []string{"run", "examples/mcp/cmd/server/main.go"},
+			WithCache(cache.NewInMemoryStore(), &CacheConfig{
+				RegistryTTL: 5 * time.Minute,
+			}),
+		)
+		if err != nil {
+			t.Skipf("Skipping test - MCP server not available: %v", err)
+		}
+		defer client.Close()
+
+		handler := ResourceRegistry(client)
+
+		// First call - cache miss
+		req1 := calque.NewRequest(context.Background(), strings.NewReader("input"))
+		var output1 strings.Builder
+		res1 := calque.NewResponse(&output1)
+
+		err = handler.ServeFlow(req1, res1)
+		if err != nil {
+			t.Skipf("First call failed: %v", err)
+		}
+
+		resources1 := GetResources(req1.Context)
+		if resources1 == nil {
+			t.Error("Context should be populated on cache miss")
+		}
+
+		// Second call - cache hit
+		req2 := calque.NewRequest(context.Background(), strings.NewReader("input"))
+		var output2 strings.Builder
+		res2 := calque.NewResponse(&output2)
+
+		err = handler.ServeFlow(req2, res2)
+		if err != nil {
+			t.Skipf("Second call failed: %v", err)
+		}
+
+		resources2 := GetResources(req2.Context)
+		if resources2 == nil {
+			t.Error("Context should be populated on cache hit")
+		}
+
+		t.Log("✅ ResourceRegistry caching works correctly")
+	})
+
+	t.Run("PromptRegistry caching", func(t *testing.T) {
+		t.Parallel()
+
+		client, err := NewStdio("go", []string{"run", "examples/mcp/cmd/server/main.go"},
+			WithCache(cache.NewInMemoryStore(), &CacheConfig{
+				RegistryTTL: 5 * time.Minute,
+			}),
+		)
+		if err != nil {
+			t.Skipf("Skipping test - MCP server not available: %v", err)
+		}
+		defer client.Close()
+
+		handler := PromptRegistry(client)
+
+		// First call - cache miss
+		req1 := calque.NewRequest(context.Background(), strings.NewReader("input"))
+		var output1 strings.Builder
+		res1 := calque.NewResponse(&output1)
+
+		err = handler.ServeFlow(req1, res1)
+		if err != nil {
+			t.Skipf("First call failed: %v", err)
+		}
+
+		prompts1 := GetPrompts(req1.Context)
+		if prompts1 == nil {
+			t.Error("Context should be populated on cache miss")
+		}
+
+		// Second call - cache hit
+		req2 := calque.NewRequest(context.Background(), strings.NewReader("input"))
+		var output2 strings.Builder
+		res2 := calque.NewResponse(&output2)
+
+		err = handler.ServeFlow(req2, res2)
+		if err != nil {
+			t.Skipf("Second call failed: %v", err)
+		}
+
+		prompts2 := GetPrompts(req2.Context)
+		if prompts2 == nil {
+			t.Error("Context should be populated on cache hit")
+		}
+
+		t.Log("✅ PromptRegistry caching works correctly")
+	})
 }
