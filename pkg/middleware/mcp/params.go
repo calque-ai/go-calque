@@ -38,7 +38,17 @@ Return valid JSON only.`
 //	     Use(mcp.ExecuteTool())
 //
 //	// Input: "What is 6 times 7?" → Output: {"a": 6, "b": 7}
-func ExtractToolParams(llmClient ai.Client) calque.Handler {
+func ExtractToolParams(llmClient ai.Client, opts ...DetectOption) calque.Handler {
+	options := &DetectOptions{}
+	for _, opt := range opts {
+		opt.Apply(options)
+	}
+
+	template := extractPromptTemplate
+	if options.PromptTemplate != "" {
+		template = options.PromptTemplate
+	}
+
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		var userInput string
 		if err := calque.Read(req, &userInput); err != nil {
@@ -59,7 +69,7 @@ func ExtractToolParams(llmClient ai.Client) calque.Handler {
 		}
 
 		// Extract parameters using tool's input schema
-		response, err := extractToolParameters(req.Context, llmClient, userInput, selectedTool)
+		response, err := extractToolParameters(req.Context, llmClient, userInput, selectedTool, template)
 		if err != nil {
 			// If parameter extraction fails, pass through original input
 			return calque.Write(res, userInput)
@@ -80,7 +90,7 @@ func ExtractToolParams(llmClient ai.Client) calque.Handler {
 }
 
 // extractToolParameters uses the tool's exact input schema to extract parameters from natural language
-func extractToolParameters(ctx context.Context, llmClient ai.Client, userInput string, tool *Tool) (*ParameterExtractionResponse, error) {
+func extractToolParameters(ctx context.Context, llmClient ai.Client, userInput string, tool *Tool, template string) (*ParameterExtractionResponse, error) {
 	if tool.InputSchema == nil {
 		// Tool has no input schema - return empty response
 		return &ParameterExtractionResponse{
@@ -95,7 +105,7 @@ func extractToolParameters(ctx context.Context, llmClient ai.Client, userInput s
 	schemaFormat := createResponseSchema(tool)
 
 	pipe := calque.NewFlow()
-	pipe.Use(prompt.Template(extractPromptTemplate, map[string]any{
+	pipe.Use(prompt.Template(template, map[string]any{
 		"toolName": tool.Name,
 		"toolDesc": tool.Description,
 	})).

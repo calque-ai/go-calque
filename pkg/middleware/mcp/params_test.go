@@ -238,6 +238,60 @@ func TestExtractParams(t *testing.T) {
 	}
 }
 
+func TestExtractParamsWithCustomTemplate(t *testing.T) {
+	t.Parallel()
+
+	customTemplate := `CUSTOM PROMPT: Extract params for {{.toolName}}.
+User said: {{.Input}}
+Tool description: {{.toolDesc}}`
+
+	tool := &Tool{
+		Name:        "calculator",
+		Description: "Math tool",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: func() *orderedmap.OrderedMap[string, *jsonschema.Schema] {
+				props := jsonschema.NewProperties()
+				props.Set("x", &jsonschema.Schema{Type: "number"})
+				return props
+			}(),
+		},
+		MCPTool: &mcp.Tool{
+			Name:        "calculator",
+			Description: "Math tool",
+		},
+	}
+
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, selectedToolContextKey{}, "calculator")
+	ctx = context.WithValue(ctx, mcpToolsContextKey{}, []*Tool{tool})
+
+	mockLLM := ai.NewMockClient(`{"extracted_params": {"x": 42}, "needs_more_info": false, "confidence": 0.95, "reasoning": "Clear"}`)
+
+	// Create handler with custom template
+	handler := ExtractToolParams(mockLLM, WithPromptTemplate(customTemplate))
+
+	req := calque.NewRequest(ctx, strings.NewReader("calculate 42"))
+	var output strings.Builder
+	res := calque.NewResponse(&output)
+
+	err := handler.ServeFlow(req, res)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	var response ParameterExtractionResponse
+	if err := json.Unmarshal([]byte(output.String()), &response); err != nil {
+		t.Fatalf("Failed to parse output: %v", err)
+	}
+
+	if response.ExtractedParams["x"] != float64(42) {
+		t.Errorf("Expected x=42, got %v", response.ExtractedParams["x"])
+	}
+
+	t.Log("✅ Custom template option works correctly")
+}
+
 func TestGetParameterExtractionResponse(t *testing.T) {
 	t.Parallel()
 
@@ -621,7 +675,7 @@ func TestExtractToolParameters(t *testing.T) {
 				mockLLM = ai.NewMockClient(tt.llmResponse)
 			}
 
-			result, err := extractToolParameters(ctx, mockLLM, tt.userInput, tt.tool)
+			result, err := extractToolParameters(ctx, mockLLM, tt.userInput, tt.tool, extractPromptTemplate)
 
 			if tt.expectError {
 				if err == nil {
