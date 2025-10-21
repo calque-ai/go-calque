@@ -652,20 +652,21 @@ func TestExecuteRequestScenarios(t *testing.T) {
 			w := calque.NewResponse(&response)
 
 			// Simulate the finalization logic from executeRequest
-			if len(tt.toolCalls) > 0 {
+			switch {
+			case len(tt.toolCalls) > 0:
 				err := client.writeOllamaToolCalls(tt.toolCalls, w)
 				if err != nil {
 					t.Errorf("%s: writeOllamaToolCalls() error = %v", tt.description, err)
 					return
 				}
-			} else if tt.hasFormat && tt.bufferedText != "" {
+			case tt.hasFormat && tt.bufferedText != "":
 				cleaned := client.cleanFullJSONResponse(tt.bufferedText)
 				_, err := w.Data.Write([]byte(cleaned))
 				if err != nil {
 					t.Errorf("%s: write error = %v", tt.description, err)
 					return
 				}
-			} else if tt.bufferedText != "" {
+			case tt.bufferedText != "":
 				_, err := w.Data.Write([]byte(tt.bufferedText))
 				if err != nil {
 					t.Errorf("%s: write error = %v", tt.description, err)

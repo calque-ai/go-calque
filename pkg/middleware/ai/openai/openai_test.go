@@ -1227,10 +1227,8 @@ func TestFinalizeToolCalls(t *testing.T) {
 				if len(result.ToolCalls) != tt.expectedCount {
 					t.Errorf("%s: tool call count = %d, want %d", tt.description, len(result.ToolCalls), tt.expectedCount)
 				}
-			} else {
-				if output != "" {
-					t.Errorf("%s: expected no output, got %q", tt.description, output)
-				}
+			} else if output != "" {
+				t.Errorf("%s: expected no output, got %q", tt.description, output)
 			}
 		})
 	}
