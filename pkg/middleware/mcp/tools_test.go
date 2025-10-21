@@ -107,6 +107,9 @@ func TestTools(t *testing.T) {
 	})
 
 	t.Run("tools can be called", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("Skipping integration test in short mode")
+		}
 		t.Parallel()
 
 		client, err := NewStdio("go", []string{"run", "../../../examples/mcp/cmd/server"})
@@ -158,6 +161,9 @@ func TestTools(t *testing.T) {
 }
 
 func TestConvertMCPToTool(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
 	t.Parallel()
 
 	t.Run("converts MCP tool to native tool", func(t *testing.T) {
