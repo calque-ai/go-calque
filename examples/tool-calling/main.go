@@ -38,7 +38,8 @@ func main() {
 	fmt.Println("1. Install Ollama: https://ollama.ai/")
 	fmt.Println("2. Pull a model: ollama pull llama3.2:1b")
 	fmt.Println("3. Make sure Ollama is running: ollama serve")
-	fmt.Println("4. Set OPENAI_API_KEY in your .env file for OpenAI examples")
+	fmt.Println("4. Set GOOGLE_API_KEY in your .env file for Gemini examples")
+	fmt.Println("5. Set OPENAI_API_KEY in your .env file for OpenAI examples")
 	fmt.Println()
 
 	// Example 1: Simple Agent
@@ -93,7 +94,7 @@ func runSimpleAgent() {
 	})
 
 	// Create Gemini example client (reads GOOGLE_API_KEY from env)
-	client, err := gemini.New("gemini-2.0-flash")
+	client, err := gemini.New("gemini-2.5-flash")
 	if err != nil {
 		log.Fatal("Failed to create Gemini client:", err)
 	}

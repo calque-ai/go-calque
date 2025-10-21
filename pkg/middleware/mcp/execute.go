@@ -4,74 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-// ExecuteTool creates a handler that executes the MCP tool selected by Detect, or passes through if none selected.
-// This is the MCP equivalent of tools.Execute(), but for single pre-selected MCP tools.
-//
-// Input: User input/arguments for the selected MCP tool (if any)
-// Output: Tool result if tool selected, or original input if no tool selected
-// Behavior: CONDITIONAL - executes tool if selected, otherwise passes through
-//
-// The handler looks for a tool selection made by Detect() in the request context.
-// If no tool was selected, it passes through the input unchanged.
-//
-// Example:
-//
-//	flow.Use(mcp.ToolRegistry(client)).
-//	     Use(mcp.DetectTool(client, llmClient)).
-//	     Use(mcp.ExecuteTool())
-//
-//	// If DetectTool selected "search" tool: routes to client.Tool("search")
-//	// If DetectTool selected no tool: passes input through unchanged
-func ExecuteTool() calque.Handler {
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		// Check if a tool was selected by Detect
-		selectedToolName := GetSelectedTool(req.Context)
-		if selectedToolName == "" {
-			// No tool selected - pass through the input
-			var input []byte
-			if err := calque.Read(req, &input); err != nil {
-				return err
-			}
-			return calque.Write(res, input)
-		}
-
-		// Find the specific tool by name
-		selectedTool := GetTool(req.Context, selectedToolName)
-		if selectedTool == nil {
-			return fmt.Errorf("MCP tool '%s' not found in registry", selectedToolName)
-		}
-
-		// Check if we have parameter extraction response from ExtractParams handler
-		paramResponse := GetParameterExtractionResponse(req.Context)
-		if paramResponse != nil {
-			// Check if more information is needed from the user
-			if paramResponse.NeedsMoreInfo {
-				// Return the user prompt asking for missing information
-				return calque.Write(res, paramResponse.UserPrompt)
-			}
-
-			// Use extracted parameters - convert to JSON and create new request
-			paramsJSON, err := json.Marshal(paramResponse.ExtractedParams)
-			if err != nil {
-				return fmt.Errorf("failed to marshal extracted parameters: %w", err)
-			}
-
-			// Create new request with extracted parameters
-			paramReq := calque.NewRequest(req.Context, strings.NewReader(string(paramsJSON)))
-			return selectedTool.ServeFlow(paramReq, res)
-		}
-
-		// Use the tool directly with original input
-		return selectedTool.ServeFlow(req, res)
-	})
-}
 
 // ExecuteResource creates a handler that fetches the MCP resource selected by DetectResource, or passes through if none selected.
 //
@@ -109,7 +45,7 @@ func ExecuteResource(client *Client) calque.Handler {
 		cacheKey := fmt.Sprintf("mcp:resource:%s", selectedResourceURI)
 
 		// Try to get from cache
-		if getCachedResult(client, cacheKey, client.cacheConfig.ResourceTTL, &result) {
+		if getCachedResource(client, cacheKey, &result) {
 			return storeInContextAndPassThrough(ctx, req, res, resourceContentContextKey{}, result)
 		}
 
@@ -122,7 +58,7 @@ func ExecuteResource(client *Client) calque.Handler {
 		}
 
 		// Store in cache
-		setCachedResult(client, cacheKey, client.cacheConfig.ResourceTTL, result)
+		setCachedResource(client, cacheKey, result)
 
 		// Store in context and pass through
 		return storeInContextAndPassThrough(ctx, req, res, resourceContentContextKey{}, result)
@@ -177,7 +113,7 @@ func ExecutePrompt(client *Client) calque.Handler {
 		var result *mcp.GetPromptResult
 
 		// Try to get from cache
-		if getCachedResult(client, cacheKey, client.cacheConfig.PromptTTL, &result) {
+		if getCachedPrompt(client, cacheKey, &result) {
 			req.Context = context.WithValue(ctx, promptContentContextKey{}, result)
 			return calque.Write(res, input)
 		}
@@ -195,7 +131,7 @@ func ExecutePrompt(client *Client) calque.Handler {
 		}
 
 		// Store in cache
-		setCachedResult(client, cacheKey, client.cacheConfig.PromptTTL, result)
+		setCachedPrompt(client, cacheKey, result)
 
 		// Store in context and pass through
 		req.Context = context.WithValue(ctx, promptContentContextKey{}, result)
@@ -227,32 +163,6 @@ func passThrough(req *calque.Request, res *calque.Response) error {
 		return err
 	}
 	return calque.Write(res, input)
-}
-
-// getCachedResult attempts to retrieve and unmarshal cached data.
-// Returns true if cache hit and unmarshal succeeded, false otherwise.
-func getCachedResult[T any](client *Client, cacheKey string, ttl time.Duration, result *T) bool {
-	if client.cache == nil || client.cacheConfig == nil || ttl <= 0 {
-		return false
-	}
-
-	cached, err := client.cache.Get(cacheKey)
-	if err != nil || cached == nil {
-		return false
-	}
-
-	return json.Unmarshal(cached, result) == nil
-}
-
-// setCachedResult stores data in cache if caching is enabled.
-func setCachedResult[T any](client *Client, cacheKey string, ttl time.Duration, data T) {
-	if client.cache == nil || client.cacheConfig == nil || ttl <= 0 {
-		return
-	}
-
-	if jsonData, err := json.Marshal(data); err == nil {
-		_ = client.cache.Set(cacheKey, jsonData, ttl)
-	}
 }
 
 // storeInContextAndPassThrough stores data in context and passes input through unchanged.
