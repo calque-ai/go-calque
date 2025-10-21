@@ -857,3 +857,376 @@ func TestEdgeCases(t *testing.T) {
 		}
 	})
 }
+
+// TestFunctionCallOutputFormat tests that writeFunctionCalls produces output
+// that can be correctly parsed by tools.Execute middleware
+func TestFunctionCallOutputFormat(t *testing.T) {
+	tests := []struct {
+		name          string
+		functionCalls []*genai.FunctionCall
+		description   string
+	}{
+		{
+			name: "single function call with parameters",
+			functionCalls: []*genai.FunctionCall{
+				{
+					Name: "read_resource",
+					Args: map[string]any{
+						"uri": "file:///etc/hosts",
+					},
+				},
+			},
+			description: "Should format single function call correctly",
+		},
+		{
+			name: "multiple function calls",
+			functionCalls: []*genai.FunctionCall{
+				{
+					Name: "search",
+					Args: map[string]any{
+						"query": "golang",
+						"limit": float64(10),
+					},
+				},
+				{
+					Name: "read_resource",
+					Args: map[string]any{
+						"uri": "file:///docs/api.md",
+					},
+				},
+			},
+			description: "Should format multiple function calls correctly",
+		},
+		{
+			name: "function call with complex nested parameters",
+			functionCalls: []*genai.FunctionCall{
+				{
+					Name: "create_resource",
+					Args: map[string]any{
+						"uri":      "file:///data/config.json",
+						"contents": map[string]any{"key": "value", "nested": map[string]any{"deep": true}},
+						"metadata": []any{"tag1", "tag2"},
+					},
+				},
+			},
+			description: "Should format nested parameters correctly",
+		},
+		{
+			name: "function call with no arguments",
+			functionCalls: []*genai.FunctionCall{
+				{
+					Name: "get_status",
+					Args: nil,
+				},
+			},
+			description: "Should format function call with no args as empty object",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{}
+			var response strings.Builder
+			w := calque.NewResponse(&response)
+
+			// Write function calls in OpenAI format
+			err := client.writeFunctionCalls(tt.functionCalls, w)
+			if err != nil {
+				t.Fatalf("%s: writeFunctionCalls() error = %v", tt.description, err)
+			}
+
+			output := response.String()
+
+			// Parse the output as tools.Execute would
+			var result struct {
+				ToolCalls []struct {
+					Type     string `json:"type"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			}
+
+			if err := json.Unmarshal([]byte(output), &result); err != nil {
+				t.Fatalf("%s: output is not valid JSON: %v\nOutput: %s", tt.description, err, output)
+			}
+
+			// Verify structure
+			if len(result.ToolCalls) != len(tt.functionCalls) {
+				t.Errorf("%s: got %d tool calls, want %d", tt.description, len(result.ToolCalls), len(tt.functionCalls))
+			}
+
+			// Verify each tool call
+			for i, expectedCall := range tt.functionCalls {
+				if i >= len(result.ToolCalls) {
+					break
+				}
+
+				actualCall := result.ToolCalls[i]
+
+				// Check type field
+				if actualCall.Type != "function" {
+					t.Errorf("%s: tool call %d type = %q, want %q", tt.description, i, actualCall.Type, "function")
+				}
+
+				// Check function name
+				if actualCall.Function.Name != expectedCall.Name {
+					t.Errorf("%s: tool call %d name = %q, want %q", tt.description, i, actualCall.Function.Name, expectedCall.Name)
+				}
+
+				// Check arguments can be parsed as JSON
+				var args map[string]any
+				if err := json.Unmarshal([]byte(actualCall.Function.Arguments), &args); err != nil {
+					t.Errorf("%s: tool call %d arguments are not valid JSON: %v\nArguments: %s",
+						tt.description, i, err, actualCall.Function.Arguments)
+				}
+
+				// Verify expected arguments are present
+				if expectedCall.Args != nil {
+					for key := range expectedCall.Args {
+						if _, ok := args[key]; !ok {
+							t.Errorf("%s: tool call %d missing expected argument %q", tt.description, i, key)
+						}
+					}
+				} else if len(args) != 0 {
+					// If no args expected, arguments should be empty object
+					t.Errorf("%s: tool call %d should have no arguments, got %v", tt.description, i, args)
+
+				}
+			}
+		})
+	}
+}
+
+// TestFunctionCallsWithTextResponse tests that function calls take priority over text
+func TestFunctionCallsWithTextResponse(t *testing.T) {
+	client := &Client{}
+
+	// Simulate a response that might have both text and function calls
+	// In the fixed version, only function calls should be written
+	functionCalls := []*genai.FunctionCall{
+		{
+			Name: "calculator",
+			Args: map[string]any{
+				"expression": "2+2",
+			},
+		},
+	}
+
+	var response strings.Builder
+	w := calque.NewResponse(&response)
+
+	err := client.writeFunctionCalls(functionCalls, w)
+	if err != nil {
+		t.Fatalf("writeFunctionCalls() error = %v", err)
+	}
+
+	output := response.String()
+
+	// Output should be ONLY valid JSON tool calls format
+	var result struct {
+		ToolCalls []any `json:"tool_calls"`
+	}
+
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Errorf("Output should be valid JSON, got error: %v\nOutput: %s", err, output)
+	}
+
+	// Should not contain any text before the JSON
+	trimmed := strings.TrimSpace(output)
+	if !strings.HasPrefix(trimmed, "{") {
+		t.Errorf("Output should start with JSON object, got: %s", output)
+	}
+
+	// Should contain tool_calls
+	if !strings.Contains(output, "tool_calls") {
+		t.Error("Output should contain tool_calls field")
+	}
+}
+
+// TestProcessStreamResult tests the logic for processing stream results
+func TestProcessStreamResult(t *testing.T) {
+	tests := []struct {
+		name              string
+		result            *genai.GenerateContentResponse
+		existingCalls     []*genai.FunctionCall
+		expectedCallCount int
+		expectedText      string
+		description       string
+	}{
+		{
+			name: "text only response",
+			result: &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{
+					{
+						Content: &genai.Content{
+							Parts: []*genai.Part{
+								{Text: "Hello, world!"},
+							},
+						},
+					},
+				},
+			},
+			existingCalls:     nil,
+			expectedCallCount: 0,
+			expectedText:      "Hello, world!",
+			description:       "Should write text when no function calls present",
+		},
+		{
+			name: "function call only",
+			result: &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{
+					{
+						Content: &genai.Content{
+							Parts: []*genai.Part{
+								{
+									FunctionCall: &genai.FunctionCall{
+										Name: "calculator",
+										Args: map[string]any{"input": "2+2"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			existingCalls:     nil,
+			expectedCallCount: 1,
+			expectedText:      "",
+			description:       "Should collect function call and not write text",
+		},
+		{
+			name: "text after function call already seen",
+			result: &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{
+					{
+						Content: &genai.Content{
+							Parts: []*genai.Part{
+								{Text: "This should be ignored"},
+							},
+						},
+					},
+				},
+			},
+			existingCalls: []*genai.FunctionCall{
+				{Name: "existing_call", Args: map[string]any{"foo": "bar"}},
+			},
+			expectedCallCount: 1,
+			expectedText:      "",
+			description:       "Should not write text when function calls already exist",
+		},
+		{
+			name: "multiple candidates with function calls",
+			result: &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{
+					{
+						Content: &genai.Content{
+							Parts: []*genai.Part{
+								{FunctionCall: &genai.FunctionCall{Name: "tool1"}},
+								{FunctionCall: &genai.FunctionCall{Name: "tool2"}},
+							},
+						},
+					},
+				},
+			},
+			existingCalls:     nil,
+			expectedCallCount: 2,
+			expectedText:      "",
+			description:       "Should collect multiple function calls from same result",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{}
+			var response strings.Builder
+			w := calque.NewResponse(&response)
+
+			functionCalls := tt.existingCalls
+			err := client.processStreamResult(tt.result, &functionCalls, w)
+			if err != nil {
+				t.Errorf("%s: processStreamResult() error = %v", tt.description, err)
+				return
+			}
+
+			// Check function call count
+			if len(functionCalls) != tt.expectedCallCount {
+				t.Errorf("%s: function call count = %d, want %d", tt.description, len(functionCalls), tt.expectedCallCount)
+			}
+
+			// Check text output
+			output := response.String()
+			if output != tt.expectedText {
+				t.Errorf("%s: text output = %q, want %q", tt.description, output, tt.expectedText)
+			}
+		})
+	}
+}
+
+// TestFinalizeResponse tests the finalization logic
+func TestFinalizeResponse(t *testing.T) {
+	tests := []struct {
+		name          string
+		functionCalls []*genai.FunctionCall
+		expectJSON    bool
+		description   string
+	}{
+		{
+			name:          "no function calls",
+			functionCalls: nil,
+			expectJSON:    false,
+			description:   "Should return success with no output when no function calls",
+		},
+		{
+			name: "single function call",
+			functionCalls: []*genai.FunctionCall{
+				{Name: "tool1", Args: map[string]any{"key": "value"}},
+			},
+			expectJSON:  true,
+			description: "Should write JSON tool calls format",
+		},
+		{
+			name: "multiple function calls",
+			functionCalls: []*genai.FunctionCall{
+				{Name: "tool1", Args: map[string]any{"key1": "value1"}},
+				{Name: "tool2", Args: map[string]any{"key2": "value2"}},
+			},
+			expectJSON:  true,
+			description: "Should write multiple tool calls in JSON format",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{}
+			var response strings.Builder
+			w := calque.NewResponse(&response)
+
+			err := client.finalizeResponse(tt.functionCalls, w)
+			if err != nil {
+				t.Errorf("%s: finalizeResponse() error = %v", tt.description, err)
+				return
+			}
+
+			output := response.String()
+
+			if tt.expectJSON {
+				// Should be valid JSON with tool_calls
+				var result struct {
+					ToolCalls []any `json:"tool_calls"`
+				}
+				if err := json.Unmarshal([]byte(output), &result); err != nil {
+					t.Errorf("%s: output is not valid JSON: %v\nOutput: %s", tt.description, err, output)
+					return
+				}
+
+				if len(result.ToolCalls) != len(tt.functionCalls) {
+					t.Errorf("%s: tool call count = %d, want %d", tt.description, len(result.ToolCalls), len(tt.functionCalls))
+				}
+			} else if output != "" {
+				t.Errorf("%s: expected no output, got %q", tt.description, output)
+			}
+		})
+	}
+}
