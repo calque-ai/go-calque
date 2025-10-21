@@ -220,6 +220,14 @@ func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []T
 
 // executeToolCall executes a single tool call
 func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolResult {
+	// If the tool call already has an error (e.g., from parsing), return it immediately
+	if toolCall.Error != "" {
+		return ToolResult{
+			ToolCall: toolCall,
+			Error:    toolCall.Error,
+		}
+	}
+
 	// Find the tool
 	var tool Tool
 	for _, t := range tools {
