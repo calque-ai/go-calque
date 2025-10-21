@@ -289,6 +289,12 @@ func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 		return err
 	}
 
+	// Write any remaining buffered text (when tools were available but not used)
+	if fullResponse.Len() > 0 {
+		_, err := w.Data.Write([]byte(fullResponse.String()))
+		return err
+	}
+
 	return nil
 }
 

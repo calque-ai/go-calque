@@ -39,7 +39,7 @@ func multiplyTool(_ context.Context, _ *mcp.CallToolRequest, args CalculateParam
 
 type SearchParams struct {
 	Query string `json:"query" jsonschema:"search query"`
-	Limit int    `json:"limit" jsonschema:"maximum number of results"`
+	Limit int    `json:"limit,omitempty" jsonschema:"maximum number of results"`
 }
 
 func searchTool(_ context.Context, _ *mcp.CallToolRequest, args SearchParams) (*mcp.CallToolResult, any, error) {

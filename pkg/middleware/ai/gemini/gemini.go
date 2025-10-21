@@ -393,16 +393,30 @@ func (g *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 			return fmt.Errorf("failed to get response: %w", err)
 		}
 
-		// Check if this chunk contains function calls
-		for _, candidate := range result.Candidates {
-			for _, part := range candidate.Content.Parts {
-				if part.FunctionCall != nil {
-					functionCalls = append(functionCalls, part.FunctionCall)
-				}
+		// Process each result chunk
+		if err := g.processStreamResult(result, &functionCalls, w); err != nil {
+			return err
+		}
+	}
+
+	// Finalize response - write function calls if present
+	return g.finalizeResponse(functionCalls, w)
+}
+
+// processStreamResult handles a single stream result chunk
+// Extracts function calls and writes text if no function calls present yet
+func (g *Client) processStreamResult(result *genai.GenerateContentResponse, functionCalls *[]*genai.FunctionCall, w *calque.Response) error {
+	// Collect function calls from this chunk
+	for _, candidate := range result.Candidates {
+		for _, part := range candidate.Content.Parts {
+			if part.FunctionCall != nil {
+				*functionCalls = append(*functionCalls, part.FunctionCall)
 			}
 		}
+	}
 
-		// Stream text parts as they arrive
+	// Only stream text if we haven't encountered function calls yet
+	if len(*functionCalls) == 0 {
 		if text := result.Text(); text != "" {
 			if _, writeErr := w.Data.Write([]byte(text)); writeErr != nil {
 				return writeErr
@@ -410,11 +424,14 @@ func (g *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 		}
 	}
 
-	// If we have function calls, format them as tool calls for the agent
+	return nil
+}
+
+// finalizeResponse writes function calls if present, otherwise returns success
+func (g *Client) finalizeResponse(functionCalls []*genai.FunctionCall, w *calque.Response) error {
 	if len(functionCalls) > 0 {
 		return g.writeFunctionCalls(functionCalls, w)
 	}
-
 	return nil
 }
 

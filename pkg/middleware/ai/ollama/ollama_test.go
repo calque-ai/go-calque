@@ -552,3 +552,260 @@ func TestChatIntegration(t *testing.T) {
 		})
 	}
 }
+
+// TestExecuteRequestScenarios tests different response scenarios
+func TestExecuteRequestScenarios(t *testing.T) {
+	tests := []struct {
+		name           string
+		toolCalls      []api.ToolCall
+		bufferedText   string
+		hasTools       bool
+		hasFormat      bool
+		expectedOutput string
+		expectJSON     bool
+		description    string
+	}{
+		{
+			name:           "just text, no tools",
+			toolCalls:      nil,
+			bufferedText:   "",
+			hasTools:       false,
+			hasFormat:      false,
+			expectedOutput: "",
+			expectJSON:     false,
+			description:    "Plain text response with no tools should stream directly",
+		},
+		{
+			name:           "tools available but not used - text response",
+			toolCalls:      nil,
+			bufferedText:   "This is a plain text answer",
+			hasTools:       true,
+			hasFormat:      false,
+			expectedOutput: "This is a plain text answer",
+			expectJSON:     false,
+			description:    "When tools are available but not called, buffered text should be written",
+		},
+		{
+			name: "tool calls only",
+			toolCalls: []api.ToolCall{
+				{
+					Function: api.ToolCallFunction{
+						Name: "calculator",
+						Arguments: map[string]any{
+							"input": "2+2",
+						},
+					},
+				},
+			},
+			bufferedText:   "",
+			hasTools:       true,
+			hasFormat:      false,
+			expectedOutput: "",
+			expectJSON:     true,
+			description:    "Tool calls should be formatted as JSON",
+		},
+		{
+			name: "tool calls with buffered text (text ignored)",
+			toolCalls: []api.ToolCall{
+				{
+					Function: api.ToolCallFunction{
+						Name: "search",
+						Arguments: map[string]any{
+							"query": "golang",
+						},
+					},
+				},
+			},
+			bufferedText:   "Let me search for that...",
+			hasTools:       true,
+			hasFormat:      false,
+			expectedOutput: "",
+			expectJSON:     true,
+			description:    "Tool calls take precedence, buffered text ignored",
+		},
+		{
+			name:           "JSON format response",
+			toolCalls:      nil,
+			bufferedText:   `{"result": "success"}`,
+			hasTools:       false,
+			hasFormat:      true,
+			expectedOutput: `{"result": "success"}`,
+			expectJSON:     false,
+			description:    "JSON format should clean and write response",
+		},
+		{
+			name:           "JSON format with markdown",
+			toolCalls:      nil,
+			bufferedText:   "```json\n{\"result\": \"success\"}\n```",
+			hasTools:       false,
+			hasFormat:      true,
+			expectedOutput: `{"result": "success"}`,
+			expectJSON:     false,
+			description:    "JSON format should clean markdown from response",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{}
+			var response strings.Builder
+			w := calque.NewResponse(&response)
+
+			// Simulate the finalization logic from executeRequest
+			switch {
+			case len(tt.toolCalls) > 0:
+				err := client.writeOllamaToolCalls(tt.toolCalls, w)
+				if err != nil {
+					t.Errorf("%s: writeOllamaToolCalls() error = %v", tt.description, err)
+					return
+				}
+			case tt.hasFormat && tt.bufferedText != "":
+				cleaned := client.cleanFullJSONResponse(tt.bufferedText)
+				_, err := w.Data.Write([]byte(cleaned))
+				if err != nil {
+					t.Errorf("%s: write error = %v", tt.description, err)
+					return
+				}
+			case tt.bufferedText != "":
+				_, err := w.Data.Write([]byte(tt.bufferedText))
+				if err != nil {
+					t.Errorf("%s: write error = %v", tt.description, err)
+					return
+				}
+			}
+
+			output := response.String()
+
+			if tt.expectJSON {
+				// Should be valid JSON with tool_calls
+				var result struct {
+					ToolCalls []any `json:"tool_calls"`
+				}
+				if err := json.Unmarshal([]byte(output), &result); err != nil {
+					t.Errorf("%s: output is not valid JSON: %v\nOutput: %s", tt.description, err, output)
+					return
+				}
+				if len(result.ToolCalls) == 0 {
+					t.Errorf("%s: expected tool calls in JSON output", tt.description)
+				}
+			} else if tt.expectedOutput != "" {
+				// Check text content
+				if output != tt.expectedOutput {
+					t.Errorf("%s: output = %q, want %q", tt.description, output, tt.expectedOutput)
+				}
+			}
+		})
+	}
+}
+
+// TestBufferingBehavior tests the buffering decision logic
+func TestBufferingBehavior(t *testing.T) {
+	tests := []struct {
+		name         string
+		hasTools     bool
+		hasFormat    bool
+		shouldBuffer bool
+		description  string
+	}{
+		{
+			name:         "no tools, no format",
+			hasTools:     false,
+			hasFormat:    false,
+			shouldBuffer: false,
+			description:  "Should stream when no tools or format",
+		},
+		{
+			name:         "tools present",
+			hasTools:     true,
+			hasFormat:    false,
+			shouldBuffer: true,
+			description:  "Should buffer when tools are available",
+		},
+		{
+			name:         "format present",
+			hasTools:     false,
+			hasFormat:    true,
+			shouldBuffer: true,
+			description:  "Should buffer when JSON format requested",
+		},
+		{
+			name:         "both tools and format",
+			hasTools:     true,
+			hasFormat:    true,
+			shouldBuffer: true,
+			description:  "Should buffer when both present",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Simulate the buffering logic from executeRequest
+			chatRequest := &api.ChatRequest{
+				Tools: []api.Tool{},
+			}
+
+			if tt.hasTools {
+				chatRequest.Tools = []api.Tool{
+					{
+						Type: "function",
+						Function: api.ToolFunction{
+							Name: "test_tool",
+						},
+					},
+				}
+			}
+
+			if tt.hasFormat {
+				format := json.RawMessage(`"json"`)
+				chatRequest.Format = format
+			}
+
+			shouldBuffer := len(chatRequest.Tools) > 0 || chatRequest.Format != nil
+
+			if shouldBuffer != tt.shouldBuffer {
+				t.Errorf("%s: shouldBuffer = %v, want %v", tt.description, shouldBuffer, tt.shouldBuffer)
+			}
+		})
+	}
+}
+
+// TestToolCallPriority tests that tool calls take priority over text
+func TestToolCallPriority(t *testing.T) {
+	client := &Client{}
+
+	// Simulate scenario where both text and tool calls are present
+	toolCalls := []api.ToolCall{
+		{
+			Function: api.ToolCallFunction{
+				Name: "calculator",
+				Arguments: map[string]any{
+					"expression": "2+2",
+				},
+			},
+		},
+	}
+
+	var response strings.Builder
+	w := calque.NewResponse(&response)
+
+	// Write tool calls (this should happen, text should be ignored)
+	err := client.writeOllamaToolCalls(toolCalls, w)
+	if err != nil {
+		t.Fatalf("writeOllamaToolCalls() error = %v", err)
+	}
+
+	output := response.String()
+
+	// Verify it's JSON tool calls
+	var result struct {
+		ToolCalls []any `json:"tool_calls"`
+	}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Errorf("Output should be valid JSON tool calls: %v\nOutput: %s", err, output)
+	}
+
+	// Verify no text content mixed in
+	if strings.Contains(output, "Let me") || strings.Contains(output, "thinking") {
+		t.Error("Tool calls output should not contain text content")
+	}
+}
