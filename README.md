@@ -5,7 +5,7 @@
   
   <p>
      <!-- <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/github/v/release/calque-ai/go-calque?include_prereleases&style=flat&label=Latest%20release" alt="Latest release"></a> -->
-    <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/badge/Pre--release-v0.2.0-orange?style=flat" alt="Pre-release"></a>
+    <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/badge/Pre--release-v0.3.0-orange?style=flat" alt="Pre-release"></a>
     <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.24+-blue.svg?style=flat" alt="Go Version"></a>
     <a href="https://goreportcard.com/report/github.com/calque-ai/go-calque"><img src="https://goreportcard.com/badge/github.com/calque-ai/go-calque?style=flat" alt="Go Report Card"></a>
     <a href="https://pkg.go.dev/github.com/calque-ai/go-calque"><img src="https://pkg.go.dev/badge/github.com/calque-ai/go-calque.svg" alt="Go Reference"></a>
@@ -244,12 +244,21 @@ Go-Calque includes middleware for common AI and data processing patterns:
 
 - **MCP Client**: Connect to MCP servers to access tools, resources, and prompts
 - **Multiple Transports**: Stdio, SSE, and HTTP streaming support
-- **Tool Registry**: `mcp.ToolRegistry(client)` - List available MCP tools
-- **Resource Access**: `mcp.ResourceRegistry(client)` - Access MCP resources
-- **Prompt Templates**: `mcp.PromptRegistry(client)` - Use MCP prompt templates
+- **Tool Integration**: `mcp.Tools(ctx, client)` - Fetch MCP tools as Go-Calque tool instances
+  - Use MCP tools seamlessly with AI agents alongside Go functions
+  - Automatic conversion from MCP schema to Go-Calque tool format
+  - Compatible with standard `ai.WithTools()` workflows
+- **Registry Access**:
+  - `mcp.ToolRegistry(client)` - List available MCP tools
+  - `mcp.ResourceRegistry(client)` - Access MCP resources
+  - `mcp.PromptRegistry(client)` - Use MCP prompt templates
 - **Auto Detection**: `mcp.DetectTool(llmClient)` - AI-powered tool/resource/prompt selection
 - **Execution**: `mcp.ExecuteTool()`, `mcp.ExecuteResource()`, `mcp.ExecutePrompt()` - Execute selected capabilities
-- **Caching**: Built-in caching for registry and execution operations
+- **Intelligent Caching**: Built-in caching with separate TTL controls for registries, resources, and prompts
+  - Registry caching for fast tool/resource/prompt discovery
+  - Resource content caching to minimize server calls
+  - Prompt template caching with argument-aware keys
+  - Configurable TTLs via `WithCache(store, &CacheConfig{...})`
 
 ## Converters
 
@@ -272,7 +281,6 @@ convert.FromJSON(&result)           // JSON stream → struct
 convert.FromYAML(&result)           // YAML stream → struct
 convert.FromJSONSchema(&result)     // JSON stream → struct (validates against schema)
 convert.FromProtobuf(&result)       // Binary stream → proto message
-convert.FromSSE(&result)            // SSE stream → data
 ```
 
 **Usage:**
@@ -287,8 +295,8 @@ err := flow.Run(ctx, convert.ToJSONSchema(input), convert.FromJSONSchema[Output]
 // Protobuf processing
 err := flow.Run(ctx, convert.ToProtobuf(protoMsg), convert.FromProtobuf(&result))
 
-// Server-Sent Events streaming
-err := flow.Run(ctx, convert.ToSSE(data), convert.FromSSE(&result))
+// Server-Sent Events streaming for any result
+err := flow.Run(ctx, data, convert.ToSSE(&result))
 ```
 
 ## Examples
