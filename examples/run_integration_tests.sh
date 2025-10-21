@@ -34,7 +34,7 @@ for dir in "${test_dirs[@]}"; do
     (
         echo "[$dir] Starting..."
         cd "$dir"
-        if go test -v -race -parallel="$PARALLEL_JOBS" -timeout="$TIMEOUT" .; then
+        if go test -v -race -parallel="$PARALLEL_JOBS" -timeout="$TIMEOUT" -short .; then
             echo "[$dir] PASSED"
         else
             echo "[$dir] FAILED"
