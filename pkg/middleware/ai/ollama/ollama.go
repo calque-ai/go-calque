@@ -474,18 +474,17 @@ func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *calque.Respon
 	openAIToolCalls := make([]map[string]any, len(toolCalls))
 
 	for i, call := range toolCalls {
-		// Extract input from tool call arguments
+		// Marshal all arguments to JSON
 		var argsJSON string
 		if call.Function.Arguments != nil {
-			if inputValue, ok := call.Function.Arguments["input"]; ok {
-				argsJSON = fmt.Sprintf(`{"input": "%v"}`, inputValue)
-			} else {
-				// Convert all arguments to JSON
-				argsBytes, _ := json.Marshal(call.Function.Arguments)
+			argsBytes, err := json.Marshal(call.Function.Arguments)
+			if err == nil {
 				argsJSON = string(argsBytes)
+			} else {
+				argsJSON = "{}"
 			}
 		} else {
-			argsJSON = `{"input": ""}`
+			argsJSON = "{}"
 		}
 
 		toolCall := map[string]any{

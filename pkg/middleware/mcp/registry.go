@@ -5,78 +5,138 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 	"github.com/invopop/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// ToolRegistry creates a handler that discovers and makes MCP tools available in the execution context.
-// This is the MCP equivalent of tools.Registry().
+// Tools fetches and returns all available MCP tools as native tools.Tool instances.
+// Use this to register MCP tools with AI agents for automatic function calling.
 //
-// Input: any data type (streaming - passes through unchanged)
-// Output: same as input (pass-through)
-// Behavior: STREAMING - discovers MCP tools and makes them available via GetTools() within handler execution
+// This connects to the MCP server, discovers available tools via ListTools(),
+// converts them to tools.Tool format, and caches the result for performance.
+// Each tool, when called by the AI, executes the corresponding MCP tool on the server.
 //
-// The registry connects to the MCP server, discovers all available tools via ListTools(),
-// and stores them in the request context for use by downstream handlers like Detect() and Execute().
+// This is for AI-driven tool discovery and selection. For direct tool invocation
+// when you know exactly which tool to call, use client.Tool("name") instead.
 //
-// Example:
+// Example - AI agent with MCP tools:
 //
-//	client, _ := mcp.NewStdio("python", []string{"server.py"})
-//	registry := mcp.ToolRegistry(client)
-//	flow.Use(registry)
-//	// Tools are now available via mcp.GetTools(ctx)
-func ToolRegistry(client *Client) calque.Handler {
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		ctx := req.Context
-		if ctx == nil {
-			ctx = context.Background()
-		}
+//	mcpTools, err := mcp.Tools(ctx, client)
+//	if err != nil {
+//	    return err
+//	}
+//	agent := ai.Agent(llmClient, ai.WithTools(mcpTools...))
+func Tools(ctx context.Context, client *Client) ([]tools.Tool, error) {
+	// Check cache first
+	cacheKey := makeToolsRegistryCacheKey(client)
+	if cached := getCachedToolsRegistry(client, cacheKey); cached != nil {
+		return cached, nil
+	}
 
-		if err := client.connect(ctx); err != nil {
-			return client.handleError(fmt.Errorf("failed to connect for tool registry: %w", err))
-		}
+	if err := client.connect(ctx); err != nil {
+		return nil, client.handleError(fmt.Errorf("failed to connect for tool registry: %w", err))
+	}
 
-		var mcpTools []*Tool
-		cacheKey := makeRegistryCacheKey("tool", client)
+	// Fetch MCP tools
+	listResult, err := client.session.ListTools(ctx, &mcp.ListToolsParams{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tools: %w", err)
+	}
 
-		// Try to get from cache
-		if getCachedRegistry(client, cacheKey, &mcpTools) {
-			// Restore client reference (not serialized)
-			for _, tool := range mcpTools {
-				tool.Client = client
-			}
-			req.Context = context.WithValue(ctx, mcpToolsContextKey{}, mcpTools)
-			_, err := io.Copy(res.Data, req.Data)
+	// Convert to tools.Tool slice
+	nativeTools := make([]tools.Tool, len(listResult.Tools))
+	for i, mcpTool := range listResult.Tools {
+		nativeTools[i] = convertMCPToTool(client, mcpTool)
+	}
+
+	// Cache the converted tools
+	setCachedToolsRegistry(client, cacheKey, nativeTools)
+
+	return nativeTools, nil
+}
+
+// convertMCPToTool wraps an MCP tool as tools.Tool
+func convertMCPToTool(client *Client, mcpTool *mcp.Tool) tools.Tool {
+	return tools.New(
+		mcpTool.Name,
+		mcpTool.Description,
+		convertGoogleSchemaToInvopop(mcpTool.InputSchema), // Convert schema
+		createMCPToolHandler(client, mcpTool.Name),        // Handler that calls MCP
+	)
+}
+
+// createMCPToolHandler creates a handler that calls the MCP tool
+func createMCPToolHandler(client *Client, toolName string) calque.Handler {
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
+		// Read parameters as JSON
+		var paramBytes []byte
+		if err := calque.Read(r, &paramBytes); err != nil {
 			return err
 		}
 
-		// Cache miss - fetch from MCP server
-		listResult, err := client.session.ListTools(ctx, &mcp.ListToolsParams{})
-		if err != nil {
-			return client.handleError(fmt.Errorf("failed to list MCP tools: %w", err))
+		var params map[string]any
+		if len(paramBytes) > 0 {
+			if err := json.Unmarshal(paramBytes, &params); err != nil {
+				return fmt.Errorf("failed to unmarshal tool parameters for %s: %w", toolName, err)
+			}
+		} else {
+			params = make(map[string]any) // Empty params
 		}
 
-		// Convert MCP tools to our Tool format
-		mcpTools = make([]*Tool, len(listResult.Tools))
-		for i, tool := range listResult.Tools {
-			mcpTools[i] = &Tool{
-				MCPTool:     tool,
-				Client:      client,
-				InputSchema: convertGoogleSchemaToInvopop(tool.InputSchema),
-				Name:        tool.Name,
-				Description: tool.Description,
+		// Call MCP tool
+		result, err := client.session.CallTool(r.Context, &mcp.CallToolParams{
+			Name:      toolName,
+			Arguments: params,
+		})
+		if err != nil {
+			return err
+		}
+
+		// Handle tool errors
+		if result.IsError {
+			var errorText strings.Builder
+			for _, content := range result.Content {
+				if textContent, ok := content.(*mcp.TextContent); ok {
+					errorText.WriteString(textContent.Text)
+				}
+			}
+			errorMessage := errorText.String()
+			if errorMessage == "" {
+				errorMessage = "unknown error (no text content in error response)"
+			}
+			return client.handleError(fmt.Errorf("tool %s returned error: %s", toolName, errorMessage))
+		}
+
+		// Collect all content and write in one operation for efficiency
+		var output strings.Builder
+
+		// Prioritize structured content over text content to avoid duplication
+		if result.StructuredContent != nil {
+			structuredJSON, err := json.Marshal(result.StructuredContent)
+			if err != nil {
+				return client.handleError(fmt.Errorf("failed to marshal structured content: %w", err))
+			}
+			output.Write(structuredJSON)
+		} else {
+			// Only collect text content if no structured content is available
+			for _, content := range result.Content {
+				if textContent, ok := content.(*mcp.TextContent); ok {
+					output.WriteString(textContent.Text)
+				}
 			}
 		}
 
-		// Store in cache
-		setCachedRegistry(client, cacheKey, mcpTools)
+		if output.Len() > 0 {
+			if err := calque.Write(w, output.String()); err != nil {
+				return err
+			}
+		}
 
-		// Store in context
-		req.Context = context.WithValue(ctx, mcpToolsContextKey{}, mcpTools)
-		_, err = io.Copy(res.Data, req.Data)
-		return err
+		return nil
 	})
 }
 
@@ -211,33 +271,82 @@ func convertGoogleSchemaToInvopop(googleSchema any) *jsonschema.Schema {
 	return &invopopSchema
 }
 
-// getCachedRegistry attempts to retrieve cached registry data and unmarshal it.
-// Returns true if cache hit and unmarshal succeeded, false otherwise.
-func getCachedRegistry[T any](client *Client, cacheKey string, data *T) bool {
+// makeRegistryCacheKey creates a cache key for a registry type, including client pointer for uniqueness.
+func makeRegistryCacheKey(registryType string, client *Client) string {
+	return fmt.Sprintf("mcp:%s-registry:%p", registryType, client)
+}
+
+// makeToolsRegistryCacheKey creates a cache key for the tools.Tool registry
+func makeToolsRegistryCacheKey(client *Client) string {
+	return fmt.Sprintf("mcp:tools-native-registry:%p", client)
+}
+
+// getCachedToolsRegistry retrieves cached tools.Tool slice if available
+func getCachedToolsRegistry(client *Client, cacheKey string) []tools.Tool {
 	if client.cache == nil || client.cacheConfig == nil || client.cacheConfig.RegistryTTL <= 0 {
-		return false
+		return nil
 	}
 
 	cached, err := client.cache.Get(cacheKey)
 	if err != nil || cached == nil {
-		return false
+		return nil
 	}
 
-	return json.Unmarshal(cached, data) == nil
+	// Since tools.Tool is an interface, we need to store/retrieve as JSON
+	// and reconstruct the tools
+	var toolData []struct {
+		Name   string          `json:"name"`
+		Desc   string          `json:"description"`
+		Schema json.RawMessage `json:"schema"`
+	}
+
+	if err := json.Unmarshal(cached, &toolData); err != nil {
+		return nil
+	}
+
+	// Reconstruct tools
+	result := make([]tools.Tool, len(toolData))
+	for i, td := range toolData {
+		var schema jsonschema.Schema
+		if err := json.Unmarshal(td.Schema, &schema); err != nil {
+			continue
+		}
+		result[i] = tools.New(td.Name, td.Desc, &schema, createMCPToolHandler(client, td.Name))
+	}
+
+	return result
 }
 
-// setCachedRegistry stores registry data in cache if caching is enabled.
-func setCachedRegistry[T any](client *Client, cacheKey string, data T) {
+// setCachedToolsRegistry stores tools.Tool slice in cache
+func setCachedToolsRegistry(client *Client, cacheKey string, nativeTools []tools.Tool) {
 	if client.cache == nil || client.cacheConfig == nil || client.cacheConfig.RegistryTTL <= 0 {
 		return
 	}
 
-	if jsonData, err := json.Marshal(data); err == nil {
+	// Extract serializable data from tools
+	toolData := make([]struct {
+		Name   string          `json:"name"`
+		Desc   string          `json:"description"`
+		Schema json.RawMessage `json:"schema"`
+	}, len(nativeTools))
+
+	for i, tool := range nativeTools {
+		schemaBytes, err := json.Marshal(tool.ParametersSchema())
+		if err != nil {
+			continue
+		}
+		toolData[i] = struct {
+			Name   string          `json:"name"`
+			Desc   string          `json:"description"`
+			Schema json.RawMessage `json:"schema"`
+		}{
+			Name:   tool.Name(),
+			Desc:   tool.Description(),
+			Schema: schemaBytes,
+		}
+	}
+
+	if jsonData, err := json.Marshal(toolData); err == nil {
 		_ = client.cache.Set(cacheKey, jsonData, client.cacheConfig.RegistryTTL)
 	}
-}
-
-// makeRegistryCacheKey creates a cache key for a registry type, including client pointer for uniqueness.
-func makeRegistryCacheKey(registryType string, client *Client) string {
-	return fmt.Sprintf("mcp:%s-registry:%p", registryType, client)
 }

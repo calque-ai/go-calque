@@ -536,9 +536,14 @@ func TestWriteFunctionCallsEmptyArgs(t *testing.T) {
 
 	result := response.String()
 
-	// Should contain empty input for tools without args (in the JSON string)
-	if !strings.Contains(result, `\"input\": \"\"`) {
-		t.Errorf("writeFunctionCalls() should provide empty input for tools without args, got: %s", result)
+	// Should contain empty object {} for tools without args (OpenAI format)
+	if !strings.Contains(result, `"arguments":"{}"`) {
+		t.Errorf("writeFunctionCalls() should provide empty object for tools without args, got: %s", result)
+	}
+
+	// Should contain the tool name
+	if !strings.Contains(result, `"name":"no_args_tool"`) {
+		t.Errorf("writeFunctionCalls() should contain tool name, got: %s", result)
 	}
 }
 

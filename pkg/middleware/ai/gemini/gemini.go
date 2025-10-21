@@ -227,12 +227,17 @@ func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calq
 	toolCalls := make([]map[string]any, len(functionCalls))
 
 	for i, call := range functionCalls {
-		// Convert Gemini args to JSON string
+		// Marshal ALL arguments from Gemini to JSON string
 		var argsJSON string
-		if call.Args != nil && call.Args["input"] != nil {
-			argsJSON = fmt.Sprintf(`{"input": "%v"}`, call.Args["input"])
+		if call.Args != nil {
+			argsBytes, err := json.Marshal(call.Args)
+			if err == nil {
+				argsJSON = string(argsBytes)
+			} else {
+				argsJSON = "{}"
+			}
 		} else {
-			argsJSON = `{"input": ""}`
+			argsJSON = "{}"
 		}
 
 		// OpenAI format with type and function fields

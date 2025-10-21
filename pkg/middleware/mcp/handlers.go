@@ -14,37 +14,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Tools is a convenience function that creates a complete tool detection and execution pipeline.
-// It combines ToolRegistry, DetectTool, ExtractParams, and ExecuteTool into a single handler.
-//
-// This is the recommended way to add MCP tool support for simple use cases.
-// For more control over the pipeline (e.g., adding logging, custom validation), use the
-// individual handlers: ToolRegistry(), DetectTool(), ExtractParams(), ExecuteTool().
-//
-// Input: Natural language user request
-// Output: Tool execution result if tool selected and executed, or original input if no tool appropriate
-// Behavior: BUFFERED - analyzes input, selects tool, extracts parameters, and executes
-//
-// Example:
-//
-//	mcpClient, _ := mcp.NewStdio("python", []string{"server.py"})
-//	aiClient, _ := openai.New("gpt-4o-mini")
-//
-//	flow := calque.NewFlow()
-//	flow.Use(mcp.Tools(mcpClient, aiClient))
-//	flow.Use(ai.Agent(aiClient)) // Handle response if no tool was executed
-//
-//	// Input: "search for golang tutorials" → detects "search" tool, extracts params, executes
-//	// Input: "hello world" → no tool appropriate, passes through to Agent
-func Tools(mcpClient *Client, aiClient ai.Client) calque.Handler {
-	return ctrl.Chain(
-		ToolRegistry(mcpClient),     // 1. Discover available MCP tools
-		DetectTool(aiClient),        // 2. Use AI to select appropriate tool
-		ExtractToolParams(aiClient), // 3. Extract parameters from natural language
-		ExecuteTool(),               // 4. Execute the tool with extracted parameters
-	)
-}
-
 // Resources is a convenience function that creates a complete resource detection and retrieval pipeline.
 // It combines ResourceRegistry, DetectResource, and ExecuteResource into a single handler.
 //
@@ -111,21 +80,23 @@ func Prompts(mcpClient *Client, aiClient ai.Client) calque.Handler {
 	)
 }
 
-// Tool creates a handler that calls an MCP tool using input as arguments.
+// Tool creates a handler for direct invocation of a specific MCP tool.
+// Use this when you know exactly which tool to call (not for AI-driven selection).
 //
-// Input: JSON tool arguments from AI (e.g., {"query": "golang", "limit": 10})
+// For AI agents that automatically discover and select tools, use mcp.Tools() instead.
+//
+// Input: JSON tool arguments (e.g., {"query": "golang", "limit": 10})
 // Output: Tool execution result content
 // Behavior: TRANSFORM - reads JSON args, calls MCP tool, returns result
 //
-// Follows function calling pattern: AI generates structured tool arguments,
-// MCP tool executes with those arguments, result goes back to AI for processing.
-// Input should be valid JSON that matches the tool's parameter schema.
+// The tool arguments should be valid JSON matching the tool's parameter schema.
+// Supports progress callbacks for long-running operations.
 //
-// Example:
+// Example - Direct tool call in a flow:
 //
 //	client, _ := mcp.NewStdio("python", []string{"server.py"})
-//	handler := client.Tool("search")
-//	flow.Use(handler) // Input: {"query": "golang"} → Output: search results
+//	flow.Use(client.Tool("multiply"))  // Directly call the multiply tool
+//	// Input: {"a": 5, "b": 3} → Output: 15
 func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificationParams)) calque.Handler {
 	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Establish connection if needed
@@ -223,21 +194,26 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 	return handler
 }
 
-// Resource creates a handler that augments input with MCP resource content.
+// Resource creates a handler for direct fetching of specific MCP resources.
+// Use this when you know exactly which resource(s) to fetch (not for AI-driven selection).
+//
+// For AI agents that automatically discover and select relevant resources, use mcp.Resources() instead:
+//
+//	flow.Use(mcp.Resources(client, aiClient))  // AI selects relevant resources
 //
 // Input: User query/content (any text)
 // Output: Input content + Resource content (RAG pattern)
-// Behavior: AUGMENT - fetches MCP resource(s) and combines with input
+// Behavior: AUGMENT - fetches specified resource(s) and combines with input
 //
 // Follows RAG pattern: fetches resource content and prepends it to user input
 // to provide additional context for AI processing. Perfect for adding file
-// contents, documentation, or contextual data to user queries.
+// contents, documentation, or contextual data when you know what's needed.
 //
-// Example:
+// Example - Direct resource fetch:
 //
 //	client, _ := mcp.NewStdio("python", []string{"server.py"})
-//	handler := client.Resource("file:///docs/api.md", "file:///docs/guide.md")
-//	flow.Use(handler) // Input: "How do I use the API?" → Output: [API docs] + [guide] + user query
+//	flow.Use(client.Resource("file:///docs/api.md", "file:///docs/guide.md"))
+//	// Input: "How do I use the API?" → Output: [API docs] + [guide] + user query
 func (c *Client) Resource(uris ...string) calque.Handler {
 	handler := c.multiResourceHandler(func(_ []byte) ([]string, error) {
 		return uris, nil
@@ -318,21 +294,25 @@ func (c *Client) ResourceTemplate(uriTemplates ...string) calque.Handler {
 	return handler
 }
 
-// Prompt creates a handler that executes MCP prompt templates using input as arguments.
+// Prompt creates a handler for direct expansion of a specific MCP prompt template.
+// Use this when you know exactly which prompt to use (not for AI-driven selection).
+//
+// For AI agents that automatically discover and select relevant prompts, use mcp.Prompts() instead:
+//
+//	flow.Use(mcp.Prompts(client, aiClient))  // AI selects relevant prompt
 //
 // Input: JSON template arguments (e.g., {"topic": "golang", "style": "beginner"})
 // Output: Formatted prompt messages
 // Behavior: TRANSFORM - reads JSON args, expands MCP prompt template
 //
-// Follows template pattern: reads JSON arguments from input and uses them to
-// expand the specified MCP prompt template. Returns formatted prompt messages
-// ready for AI processing.
+// Reads JSON arguments from input and uses them to expand the specified
+// MCP prompt template. Returns formatted prompt messages ready for AI processing.
 //
-// Example:
+// Example - Direct prompt expansion:
 //
 //	client, _ := mcp.NewStdio("python", []string{"server.py"})
-//	handler := client.Prompt("code_review")
-//	flow.Use(handler) // Input: {"code": "func main() {}"} → Output: formatted review prompt
+//	flow.Use(client.Prompt("code_review"))
+//	// Input: {"code": "func main() {}"} → Output: formatted review prompt
 func (c *Client) Prompt(name string) calque.Handler {
 	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		// Establish connection if needed

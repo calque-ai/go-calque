@@ -5,18 +5,27 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/go-calque/pkg/middleware/mcp"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
 	runBasicExample()
+	runAutoExample()
 	runRealisticExample()
 	runAdvancedExample()
-	runNaturalLanguageExample()
+
 }
 
 func runBasicExample() {
@@ -41,6 +50,60 @@ func runBasicExample() {
 	}
 
 	fmt.Printf("Result: 6 × 7 = %s\n", output)
+}
+
+func runAutoExample() {
+	fmt.Println("\n=== Example 0: MCP Auto Registry Client ===")
+
+	client, err := mcp.NewStdio("go", []string{"run", "cmd/server/main.go"})
+	if err != nil {
+		log.Printf("Failed to create MCP client: %v", err)
+		return
+	}
+	defer client.Close()
+
+	// Create Gemini example client (reads GOOGLE_API_KEY from env)
+	aiClient, err := gemini.New("gemini-2.5-flash")
+	if err != nil {
+		log.Printf("Failed to create Gemini client: %v", err)
+		return
+	}
+
+	startTotal := time.Now()
+
+	mcpTools, err := mcp.Tools(context.Background(), client) // Pre-fetch tool registry from mcp server
+	if err != nil {
+		log.Printf("Failed to fetch MCP tool registry: %v", err)
+		return
+	}
+
+	fmt.Printf("Discovered %d MCP tools", len(mcpTools))
+
+	flow := calque.NewFlow()
+	flow.Use(ai.Agent(aiClient, ai.WithTools(mcpTools...))) // Use MCP tools in AI agent
+
+	// Test natural language inputs
+	examples := []string{
+		"Search for golang tutorials",
+		"What is 6 times 7?",
+		"Say hello to Bob",
+		"Read the file /etc/hosts",
+	}
+
+	fmt.Println("Converting natural language to tool calls...")
+	for i, input := range examples {
+		startTools := time.Now()
+		fmt.Printf("\n%d. Input: \"%s\"\n", i+1, input)
+
+		var output string
+		if err := flow.Run(context.Background(), input, &output); err != nil {
+			log.Printf("Error: %v", err)
+		} else {
+			fmt.Printf("Tool duration: %s   Output: %s\n", time.Since(startTools).String(), output)
+		}
+	}
+
+	fmt.Printf("\nTotal duration for all tool calls: %s\n", time.Since(startTotal).String())
 }
 
 func runRealisticExample() {
@@ -140,56 +203,6 @@ func runAdvancedExample() {
 		fmt.Printf("Progress tool result: %s\n", progressOutput)
 		for _, update := range progressUpdates {
 			fmt.Printf("  %s\n", update)
-		}
-	}
-}
-
-// runNaturalLanguageExample demonstrates natural language MCP tool interaction
-func runNaturalLanguageExample() {
-	fmt.Println("\n=== Example 4: Natural Language MCP ===")
-
-	// Create MCP client
-	mcpClient, err := mcp.NewStdio("go", []string{"run", "cmd/server/main.go"})
-	if err != nil {
-		log.Printf("Failed to create MCP client: %v", err)
-		return
-	}
-	defer mcpClient.Close()
-
-	// Create AI client for natural language processing
-	aiClient, err := ollama.New("llama3.2:1b")
-	if err != nil {
-		log.Printf("AI client not available: %v", err)
-		log.Println("Install and run ollama with llama3.2:1b model to try this feature")
-		return
-	}
-
-	// Create flow that converts natural language to tool calls
-	flow := calque.NewFlow()
-	flow.Use(ctrl.Chain(
-		mcp.ToolRegistry(mcpClient),     // 1. Discover available MCP tools
-		mcp.DetectTool(aiClient),        // 2. Use AI to select appropriate tool
-		mcp.ExtractToolParams(aiClient), // 3. Extract parameters from natural language
-		mcp.ExecuteTool(),               // 4. Execute the tool with extracted parameters
-	))
-
-	// Test natural language inputs
-	examples := []string{
-		"Search for golang tutorials",
-		"What is 6 times 7?",
-		"Say hello to Bob",
-		"Read the file /etc/hosts",
-	}
-
-	fmt.Println("Converting natural language to tool calls...")
-	for i, input := range examples {
-		fmt.Printf("\n%d. Input: \"%s\"\n", i+1, input)
-
-		var output string
-		if err := flow.Run(context.Background(), input, &output); err != nil {
-			log.Printf("Error: %v", err)
-		} else {
-			fmt.Printf("   Output: %s\n", output)
 		}
 	}
 }

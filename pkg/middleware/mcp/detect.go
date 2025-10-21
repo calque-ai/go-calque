@@ -83,66 +83,6 @@ type detectConfig[T any] struct {
 	contextKey any
 }
 
-// DetectTool creates a handler that uses LLM-based intent detection to select the appropriate MCP tool.
-// This is the MCP equivalent of tools.Detect(), but uses semantic analysis instead of parsing tool calls.
-//
-// Input: Natural language user request
-// Output: Same user input with optional tool selection stored in context
-// Behavior: BUFFERED - reads full input for analysis, then passes through with optional tool selection
-//
-// The handler analyzes the user's natural language input using an LLM to determine which
-// MCP tool would be most appropriate to handle the request. If a suitable tool is found,
-// it's stored in the context for use by downstream handlers like Execute(). If no tool
-// is appropriate, the input passes through unchanged.
-//
-// Example:
-//
-//	client, _ := mcp.NewStdio("python", []string{"server.py"})
-//	llmClient, _ := openai.New("gpt-4o-mini")
-//	detector := mcp.DetectTool(client, llmClient)
-//	flow.Use(mcp.ToolRegistry(client)).
-//	     Use(detector).
-//	     Use(mcp.ExecuteTool())  // Only executes if tool was selected
-//
-//	// Input: "search for golang tutorials" → selects "search" tool
-//	// Input: "connect to localhost:8080" → selects "connect" tool
-//	// Input: "hello world" → no tool selected, passes through
-func DetectTool(llmClient ai.Client, opts ...DetectOption) calque.Handler {
-	options := &DetectOptions{}
-	for _, opt := range opts {
-		opt.Apply(options)
-	}
-
-	template := toolSelectionPromptTemplate
-	if options.PromptTemplate != "" {
-		template = options.PromptTemplate
-	}
-
-	return detectCapability(llmClient, detectConfig[ToolSelectionResponse]{
-		capabilityName: "tool",
-		getItems: func(ctx context.Context) any {
-			return GetTools(ctx)
-		},
-		checkEmpty: func(items any) bool {
-			tools, ok := items.([]*Tool)
-			return !ok || len(tools) == 0
-		},
-		promptTemplate: template,
-		getTemplateData: func(userInput string, items any) map[string]any {
-			tools := items.([]*Tool)
-			return getToolSelectionTemplateData(userInput, tools)
-		},
-		validator: func(selected string, items any) string {
-			tools := items.([]*Tool)
-			return validateToolSelection(selected, tools)
-		},
-		getSelectedName: func(resp *ToolSelectionResponse) string {
-			return resp.SelectedTool
-		},
-		contextKey: selectedToolContextKey{},
-	})
-}
-
 // DetectResource creates a handler that uses LLM-based intent detection to select the appropriate MCP resource.
 //
 // Input: Natural language user request
