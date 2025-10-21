@@ -232,6 +232,9 @@ func TestExecuteResourceCaching(t *testing.T) {
 	t.Parallel()
 
 	t.Run("caches resource content", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("Skipping integration test in short mode")
+		}
 		t.Parallel()
 
 		client, err := NewStdio("go", []string{"run", "../../../examples/mcp/cmd/server"},
@@ -312,6 +315,9 @@ func TestExecutePromptCaching(t *testing.T) {
 	t.Parallel()
 
 	t.Run("caches prompt with different args separately", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("Skipping integration test in short mode")
+		}
 		t.Parallel()
 
 		client, err := NewStdio("go", []string{"run", "../../../examples/mcp/cmd/server"},

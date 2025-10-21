@@ -629,6 +629,9 @@ func TestRegistryCaching(t *testing.T) {
 	// This is a regression test for the bug where cache hits wouldn't populate context.
 
 	t.Run("ResourceRegistry caching", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("Skipping integration test in short mode")
+		}
 		t.Parallel()
 
 		client, err := NewStdio("go", []string{"run", "examples/mcp/cmd/server/main.go"},
@@ -677,6 +680,9 @@ func TestRegistryCaching(t *testing.T) {
 	})
 
 	t.Run("PromptRegistry caching", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("Skipping integration test in short mode")
+		}
 		t.Parallel()
 
 		client, err := NewStdio("go", []string{"run", "examples/mcp/cmd/server/main.go"},

@@ -15,6 +15,9 @@ func TestTools(t *testing.T) {
 	t.Parallel()
 
 	t.Run("fetches tools from MCP server", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("Skipping integration test in short mode")
+		}
 		t.Parallel()
 
 		client, err := NewStdio("go", []string{"run", "../../../examples/mcp/cmd/server"})
@@ -45,6 +48,9 @@ func TestTools(t *testing.T) {
 	})
 
 	t.Run("caches tools on subsequent calls", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("Skipping integration test in short mode")
+		}
 		t.Parallel()
 
 		client, err := NewStdio("go", []string{"run", "../../../examples/mcp/cmd/server"},
@@ -206,6 +212,9 @@ func TestConvertMCPToTool(t *testing.T) {
 }
 
 func TestToolsWithoutCache(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
 	t.Parallel()
 
 	client, err := NewStdio("go", []string{"run", "../../../examples/mcp/cmd/server"})

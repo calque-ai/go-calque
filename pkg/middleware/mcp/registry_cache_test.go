@@ -205,6 +205,9 @@ func TestToolsRegistryCacheHelpers(t *testing.T) {
 }
 
 func TestResourceRegistryWithCache(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
 	t.Parallel()
 
 	client, err := NewStdio("go", []string{"run", "../../../examples/mcp/cmd/server"},
@@ -255,6 +258,9 @@ func TestResourceRegistryWithCache(t *testing.T) {
 }
 
 func TestPromptRegistryWithCache(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
 	t.Parallel()
 
 	client, err := NewStdio("go", []string{"run", "../../../examples/mcp/cmd/server"},
