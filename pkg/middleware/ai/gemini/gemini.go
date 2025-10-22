@@ -420,18 +420,19 @@ func (g *Client) processStreamResult(result *genai.GenerateContentResponse, func
 		}
 	}
 
-	// Get text from this chunk
-	text := result.Text()
-
-	// If we found a function call, stay in buffering mode
+	// If we found a function call, stay in buffering mode and don't process text
+	// Text should not be written when function calls are present
 	if hasFunctionCall {
-		if text != "" {
-			*textBuffer = append(*textBuffer, text)
-		}
 		return nil
 	}
 
-	// No function call in this chunk - decide whether to stream or buffer
+	// No function call in this chunk - process text
+	text := result.Text()
+	if text == "" {
+		return nil
+	}
+
+	// Decide whether to stream or buffer
 	if !*streaming && len(*functionCalls) == 0 {
 		// First chunk with text only - switch to streaming mode
 		*streaming = true
@@ -446,11 +447,11 @@ func (g *Client) processStreamResult(result *genai.GenerateContentResponse, func
 	}
 
 	// Write text immediately if in streaming mode
-	if *streaming && text != "" {
+	if *streaming {
 		if _, err := w.Data.Write([]byte(text)); err != nil {
 			return err
 		}
-	} else if text != "" {
+	} else {
 		// Still buffering (shouldn't happen, but keep for safety)
 		*textBuffer = append(*textBuffer, text)
 	}

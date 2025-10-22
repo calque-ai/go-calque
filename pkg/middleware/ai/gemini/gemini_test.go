@@ -1131,7 +1131,7 @@ func TestProcessStreamResult(t *testing.T) {
 			description:       "Should write immediately when already streaming",
 		},
 		{
-			name: "function call with text - buffers text",
+			name: "function call with text - ignores text",
 			result: &genai.GenerateContentResponse{
 				Candidates: []*genai.Candidate{
 					{
@@ -1148,10 +1148,10 @@ func TestProcessStreamResult(t *testing.T) {
 			existingBuffer:    nil,
 			initialStreaming:  false,
 			expectedCallCount: 1,
-			expectedBuffer:    []string{"Some text"},
+			expectedBuffer:    nil,
 			expectedStreaming: false,
 			expectedWritten:   "",
-			description:       "Should buffer text when function call present",
+			description:       "Should ignore text when function call present",
 		},
 		{
 			name: "multiple function calls",
