@@ -388,49 +388,88 @@ func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInp
 func (g *Client) executeRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
 	// Send message with streaming
 	var functionCalls []*genai.FunctionCall
+	var textBuffer []string
+	streaming := false // Start in buffering mode
+
 	for result, err := range config.Chat.SendMessageStream(r.Context, config.Parts...) {
 		if err != nil {
 			return fmt.Errorf("failed to get response: %w", err)
 		}
 
 		// Process each result chunk
-		if err := g.processStreamResult(result, &functionCalls, w); err != nil {
+		if err := g.processStreamResult(result, &functionCalls, &textBuffer, &streaming, w); err != nil {
 			return err
 		}
 	}
 
-	// Finalize response - write function calls if present
-	return g.finalizeResponse(functionCalls, w)
+	// Finalize response - write function calls if present, otherwise write buffered text
+	return g.finalizeResponse(functionCalls, textBuffer, w)
 }
 
 // processStreamResult handles a single stream result chunk
-// Extracts function calls and writes text if no function calls present yet
-func (g *Client) processStreamResult(result *genai.GenerateContentResponse, functionCalls *[]*genai.FunctionCall, w *calque.Response) error {
+// Uses hybrid streaming: buffers initially, then streams if no function calls detected
+func (g *Client) processStreamResult(result *genai.GenerateContentResponse, functionCalls *[]*genai.FunctionCall, textBuffer *[]string, streaming *bool, w *calque.Response) error {
 	// Collect function calls from this chunk
+	hasFunctionCall := false
 	for _, candidate := range result.Candidates {
 		for _, part := range candidate.Content.Parts {
 			if part.FunctionCall != nil {
 				*functionCalls = append(*functionCalls, part.FunctionCall)
+				hasFunctionCall = true
 			}
 		}
 	}
 
-	// Only stream text if we haven't encountered function calls yet
-	if len(*functionCalls) == 0 {
-		if text := result.Text(); text != "" {
-			if _, writeErr := w.Data.Write([]byte(text)); writeErr != nil {
-				return writeErr
+	// Get text from this chunk
+	text := result.Text()
+
+	// If we found a function call, stay in buffering mode
+	if hasFunctionCall {
+		if text != "" {
+			*textBuffer = append(*textBuffer, text)
+		}
+		return nil
+	}
+
+	// No function call in this chunk - decide whether to stream or buffer
+	if !*streaming && len(*functionCalls) == 0 {
+		// First chunk with text only - switch to streaming mode
+		*streaming = true
+
+		// Flush any buffered text first
+		for _, buffered := range *textBuffer {
+			if _, err := w.Data.Write([]byte(buffered)); err != nil {
+				return err
 			}
 		}
+		*textBuffer = nil // Clear buffer
+	}
+
+	// Write text immediately if in streaming mode
+	if *streaming && text != "" {
+		if _, err := w.Data.Write([]byte(text)); err != nil {
+			return err
+		}
+	} else if text != "" {
+		// Still buffering (shouldn't happen, but keep for safety)
+		*textBuffer = append(*textBuffer, text)
 	}
 
 	return nil
 }
 
-// finalizeResponse writes function calls if present, otherwise returns success
-func (g *Client) finalizeResponse(functionCalls []*genai.FunctionCall, w *calque.Response) error {
+// finalizeResponse writes function calls if present, otherwise writes any remaining buffered text
+func (g *Client) finalizeResponse(functionCalls []*genai.FunctionCall, textBuffer []string, w *calque.Response) error {
 	if len(functionCalls) > 0 {
+		// Function calls present - write them and ignore any buffered text
 		return g.writeFunctionCalls(functionCalls, w)
+	}
+
+	// No function calls - write any remaining buffered text (if not already streamed)
+	for _, text := range textBuffer {
+		if _, err := w.Data.Write([]byte(text)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
