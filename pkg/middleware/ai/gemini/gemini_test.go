@@ -1045,22 +1045,21 @@ func TestFunctionCallsWithTextResponse(t *testing.T) {
 	}
 }
 
-// TestProcessStreamResult tests the logic for processing stream results with hybrid streaming
+// TestProcessStreamResult tests the logic for processing stream results with buffering
 func TestProcessStreamResult(t *testing.T) {
 	tests := []struct {
 		name              string
 		result            *genai.GenerateContentResponse
 		existingCalls     []*genai.FunctionCall
 		existingBuffer    []string
-		initialStreaming  bool
+		shouldBuffer      bool
 		expectedCallCount int
 		expectedBuffer    []string
-		expectedStreaming bool
 		expectedWritten   string
 		description       string
 	}{
 		{
-			name: "first chunk with text only - switches to streaming",
+			name: "text only - no buffering (streams directly)",
 			result: &genai.GenerateContentResponse{
 				Candidates: []*genai.Candidate{
 					{
@@ -1074,15 +1073,35 @@ func TestProcessStreamResult(t *testing.T) {
 			},
 			existingCalls:     nil,
 			existingBuffer:    nil,
-			initialStreaming:  false,
+			shouldBuffer:      false,
 			expectedCallCount: 0,
 			expectedBuffer:    nil,
-			expectedStreaming: true,
 			expectedWritten:   "Hello, world!",
-			description:       "Should switch to streaming mode on first text chunk",
+			description:       "Should stream directly when no tools present",
 		},
 		{
-			name: "function call in chunk - stays buffering",
+			name: "text only - with buffering (tools present)",
+			result: &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{
+					{
+						Content: &genai.Content{
+							Parts: []*genai.Part{
+								{Text: "Buffered text"},
+							},
+						},
+					},
+				},
+			},
+			existingCalls:     nil,
+			existingBuffer:    nil,
+			shouldBuffer:      true,
+			expectedCallCount: 0,
+			expectedBuffer:    []string{"Buffered text"},
+			expectedWritten:   "",
+			description:       "Should buffer text when tools are present",
+		},
+		{
+			name: "function call in chunk",
 			result: &genai.GenerateContentResponse{
 				Candidates: []*genai.Candidate{
 					{
@@ -1101,34 +1120,11 @@ func TestProcessStreamResult(t *testing.T) {
 			},
 			existingCalls:     nil,
 			existingBuffer:    nil,
-			initialStreaming:  false,
+			shouldBuffer:      true,
 			expectedCallCount: 1,
 			expectedBuffer:    nil,
-			expectedStreaming: false,
 			expectedWritten:   "",
-			description:       "Should stay in buffering mode when function call detected",
-		},
-		{
-			name: "text while streaming - writes immediately",
-			result: &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{
-					{
-						Content: &genai.Content{
-							Parts: []*genai.Part{
-								{Text: "More text"},
-							},
-						},
-					},
-				},
-			},
-			existingCalls:     nil,
-			existingBuffer:    nil,
-			initialStreaming:  true,
-			expectedCallCount: 0,
-			expectedBuffer:    nil,
-			expectedStreaming: true,
-			expectedWritten:   "More text",
-			description:       "Should write immediately when already streaming",
+			description:       "Should collect function call",
 		},
 		{
 			name: "function call with text - ignores text",
@@ -1146,12 +1142,11 @@ func TestProcessStreamResult(t *testing.T) {
 			},
 			existingCalls:     nil,
 			existingBuffer:    nil,
-			initialStreaming:  false,
+			shouldBuffer:      true,
 			expectedCallCount: 1,
 			expectedBuffer:    nil,
-			expectedStreaming: false,
 			expectedWritten:   "",
-			description:       "Should ignore text when function call present",
+			description:       "Should ignore text when function call present in same chunk",
 		},
 		{
 			name: "multiple function calls",
@@ -1169,10 +1164,9 @@ func TestProcessStreamResult(t *testing.T) {
 			},
 			existingCalls:     nil,
 			existingBuffer:    nil,
-			initialStreaming:  false,
+			shouldBuffer:      true,
 			expectedCallCount: 2,
 			expectedBuffer:    nil,
-			expectedStreaming: false,
 			expectedWritten:   "",
 			description:       "Should collect multiple function calls",
 		},
@@ -1186,9 +1180,8 @@ func TestProcessStreamResult(t *testing.T) {
 
 			functionCalls := tt.existingCalls
 			textBuffer := tt.existingBuffer
-			streaming := tt.initialStreaming
 
-			err := client.processStreamResult(tt.result, &functionCalls, &textBuffer, &streaming, w)
+			err := client.processStreamResult(tt.result, &functionCalls, &textBuffer, tt.shouldBuffer, w)
 			if err != nil {
 				t.Errorf("%s: processStreamResult() error = %v", tt.description, err)
 				return
@@ -1204,11 +1197,6 @@ func TestProcessStreamResult(t *testing.T) {
 				t.Errorf("%s: buffer length = %d, want %d", tt.description, len(textBuffer), len(tt.expectedBuffer))
 			}
 
-			// Check streaming state
-			if streaming != tt.expectedStreaming {
-				t.Errorf("%s: streaming = %v, want %v", tt.description, streaming, tt.expectedStreaming)
-			}
-
 			// Check written output
 			output := response.String()
 			if output != tt.expectedWritten {
@@ -1218,108 +1206,113 @@ func TestProcessStreamResult(t *testing.T) {
 	}
 }
 
-// TestFinalizeResponse tests the finalization logic with hybrid streaming
-func TestFinalizeResponse(t *testing.T) {
-	tests := []struct {
-		name          string
-		functionCalls []*genai.FunctionCall
-		textBuffer    []string
-		expectJSON    bool
-		expectText    string
-		description   string
-	}{
-		{
-			name:          "no function calls, no buffered text",
-			functionCalls: nil,
-			textBuffer:    nil,
-			expectJSON:    false,
-			expectText:    "",
-			description:   "Should return success with no output",
-		},
-		{
-			name:          "no function calls, with buffered text",
-			functionCalls: nil,
-			textBuffer:    []string{"Hello", " world!"},
-			expectJSON:    false,
-			expectText:    "Hello world!",
-			description:   "Should write buffered text when no function calls",
-		},
-		{
-			name: "function calls, no buffered text",
-			functionCalls: []*genai.FunctionCall{
-				{Name: "tool1", Args: map[string]any{"key": "value"}},
+// TestMultiChunkTextThenFunctionCall tests the scenario where text comes in earlier chunks
+// and function calls come in later chunks (the problematic case)
+func TestMultiChunkTextThenFunctionCall(t *testing.T) {
+	client := &Client{}
+	var response strings.Builder
+	w := calque.NewResponse(&response)
+
+	// Simulate the problematic scenario:
+	// Chunk 1: Text only
+	chunk1 := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []*genai.Part{
+						{Text: "Let me search for that information. I'll use the search tool to find what you need."},
+					},
+				},
 			},
-			textBuffer:  nil,
-			expectJSON:  true,
-			description: "Should write JSON tool calls format",
-		},
-		{
-			name: "function calls with buffered text - ignores text",
-			functionCalls: []*genai.FunctionCall{
-				{Name: "tool1", Args: map[string]any{"key": "value"}},
-			},
-			textBuffer:  []string{"This should be ignored"},
-			expectJSON:  true,
-			description: "Should write only function calls, ignoring buffered text",
-		},
-		{
-			name: "multiple function calls",
-			functionCalls: []*genai.FunctionCall{
-				{Name: "tool1", Args: map[string]any{"key1": "value1"}},
-				{Name: "tool2", Args: map[string]any{"key2": "value2"}},
-			},
-			textBuffer:  nil,
-			expectJSON:  true,
-			description: "Should write multiple tool calls in JSON format",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{}
-			var response strings.Builder
-			w := calque.NewResponse(&response)
+	// Chunk 2: Function call
+	chunk2 := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []*genai.Part{
+						{
+							FunctionCall: &genai.FunctionCall{
+								Name: "search_database",
+								Args: map[string]any{
+									"query":  "user information",
+									"limit":  10,
+									"filter": "active",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 
-			err := client.finalizeResponse(tt.functionCalls, tt.textBuffer, w)
+	var functionCalls []*genai.FunctionCall
+	var textBuffer []string
+	shouldBuffer := true // Simulating tools being present
+
+	// Process chunk 1 (text)
+	err := client.processStreamResult(chunk1, &functionCalls, &textBuffer, shouldBuffer, w)
+	if err != nil {
+		t.Fatalf("processStreamResult(chunk1) error = %v", err)
+	}
+
+	// Process chunk 2 (function call)
+	err = client.processStreamResult(chunk2, &functionCalls, &textBuffer, shouldBuffer, w)
+	if err != nil {
+		t.Fatalf("processStreamResult(chunk2) error = %v", err)
+	}
+
+	// Finalize - now done in executeRequest, so we do it manually here
+	if len(functionCalls) > 0 {
+		err = client.writeFunctionCalls(functionCalls, w)
+	} else if len(textBuffer) > 0 {
+		for _, text := range textBuffer {
+			_, err = w.Data.Write([]byte(text))
 			if err != nil {
-				t.Errorf("%s: finalizeResponse() error = %v", tt.description, err)
-				return
+				break
 			}
+		}
+	}
+	if err != nil {
+		t.Fatalf("finalizeResponse() error = %v", err)
+	}
 
-			output := response.String()
+	output := response.String()
 
-			switch {
-			case tt.expectJSON:
-				// Should be valid JSON with tool_calls
-				var result struct {
-					ToolCalls []any `json:"tool_calls"`
-				}
-				if err := json.Unmarshal([]byte(output), &result); err != nil {
-					t.Errorf("%s: output is not valid JSON: %v\nOutput: %s", tt.description, err, output)
-					return
-				}
+	// The output should be ONLY valid JSON tool calls, no text before it
+	if !strings.HasPrefix(strings.TrimSpace(output), "{") {
+		t.Errorf("Output should start with JSON object, got: %s", output)
+	}
 
-				if len(result.ToolCalls) != len(tt.functionCalls) {
-					t.Errorf("%s: tool call count = %d, want %d", tt.description, len(result.ToolCalls), len(tt.functionCalls))
-				}
+	// Parse as JSON to ensure it's valid
+	var result struct {
+		ToolCalls []struct {
+			Type     string `json:"type"`
+			Function struct {
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"`
+			} `json:"function"`
+		} `json:"tool_calls"`
+	}
 
-				// Should not contain buffered text
-				if len(tt.textBuffer) > 0 {
-					for _, text := range tt.textBuffer {
-						if strings.Contains(output, text) {
-							t.Errorf("%s: output should not contain buffered text %q", tt.description, text)
-						}
-					}
-				}
-			case tt.expectText != "":
-				if output != tt.expectText {
-					t.Errorf("%s: expected output %q, got %q", tt.description, tt.expectText, output)
-				}
-			default:
-				if output != "" {
-					t.Errorf("%s: expected no output, got %q", tt.description, output)
-				}
-			}
-		})
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("Output is not valid JSON: %v\nOutput: %s", err, output)
+	}
+
+	// Verify function call details
+	if len(result.ToolCalls) != 1 {
+		t.Errorf("Expected 1 tool call, got %d", len(result.ToolCalls))
+	}
+
+	if result.ToolCalls[0].Function.Name != "search_database" {
+		t.Errorf("Expected function name 'search_database', got %s", result.ToolCalls[0].Function.Name)
+	}
+
+	// Should NOT contain the explanatory text
+	if strings.Contains(output, "Let me search") || strings.Contains(output, "search tool") {
+		t.Errorf("Output should not contain text when function calls are present, got: %s", output)
 	}
 }

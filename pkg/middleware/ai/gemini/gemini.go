@@ -190,6 +190,7 @@ type RequestConfig struct {
 	GenaiConfig *genai.GenerateContentConfig
 	Chat        *genai.Chat
 	Parts       []genai.Part
+	HasTools    bool
 }
 
 // Chat implements the Client interface with streaming support.
@@ -359,8 +360,11 @@ func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInp
 	// Build config once
 	genaiConfig := g.buildGenerateConfig(schema)
 
+	// Track if we have tools (needed for buffering decision)
+	hasTools := len(tools) > 0
+
 	// Add tools once
-	if len(tools) > 0 {
+	if hasTools {
 		geminiFunctions := convertToolsToGeminiFunctions(tools)
 		genaiConfig.Tools = []*genai.Tool{{FunctionDeclarations: geminiFunctions}}
 	}
@@ -381,15 +385,18 @@ func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInp
 		GenaiConfig: genaiConfig,
 		Chat:        chat,
 		Parts:       parts,
+		HasTools:    hasTools,
 	}, nil
 }
 
 // executeRequest executes the configured request
 func (g *Client) executeRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
-	// Send message with streaming
-	var functionCalls []*genai.FunctionCall
 	var textBuffer []string
-	streaming := false // Start in buffering mode
+	var functionCalls []*genai.FunctionCall
+
+	// Buffer when tools are available to avoid mixing text with function call JSON
+	// Issue with Gemini streaming and tools: text and function calls interleaved
+	shouldBuffer := config.HasTools
 
 	for result, err := range config.Chat.SendMessageStream(r.Context, config.Parts...) {
 		if err != nil {
@@ -397,81 +404,56 @@ func (g *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 		}
 
 		// Process each result chunk
-		if err := g.processStreamResult(result, &functionCalls, &textBuffer, &streaming, w); err != nil {
+		if err := g.processStreamResult(result, &functionCalls, &textBuffer, shouldBuffer, w); err != nil {
 			return err
 		}
 	}
 
-	// Finalize response - write function calls if present, otherwise write buffered text
-	return g.finalizeResponse(functionCalls, textBuffer, w)
-}
-
-// processStreamResult handles a single stream result chunk
-// Uses hybrid streaming: buffers initially, then streams if no function calls detected
-func (g *Client) processStreamResult(result *genai.GenerateContentResponse, functionCalls *[]*genai.FunctionCall, textBuffer *[]string, streaming *bool, w *calque.Response) error {
-	// Collect function calls from this chunk
-	hasFunctionCall := false
-	for _, candidate := range result.Candidates {
-		for _, part := range candidate.Content.Parts {
-			if part.FunctionCall != nil {
-				*functionCalls = append(*functionCalls, part.FunctionCall)
-				hasFunctionCall = true
-			}
-		}
+	// Process function calls if found
+	if len(functionCalls) > 0 {
+		return g.writeFunctionCalls(functionCalls, w)
 	}
 
-	// If we found a function call, stay in buffering mode and don't process text
-	// Text should not be written when function calls are present
-	if hasFunctionCall {
-		return nil
-	}
-
-	// No function call in this chunk - process text
-	text := result.Text()
-	if text == "" {
-		return nil
-	}
-
-	// Decide whether to stream or buffer
-	if !*streaming && len(*functionCalls) == 0 {
-		// First chunk with text only - switch to streaming mode
-		*streaming = true
-
-		// Flush any buffered text first
-		for _, buffered := range *textBuffer {
-			if _, err := w.Data.Write([]byte(buffered)); err != nil {
+	// Write any remaining buffered text (when tools were available but not used)
+	if len(textBuffer) > 0 {
+		for _, text := range textBuffer {
+			if _, err := w.Data.Write([]byte(text)); err != nil {
 				return err
 			}
 		}
-		*textBuffer = nil // Clear buffer
-	}
-
-	// Write text immediately if in streaming mode
-	if *streaming {
-		if _, err := w.Data.Write([]byte(text)); err != nil {
-			return err
-		}
-	} else {
-		// Still buffering (shouldn't happen, but keep for safety)
-		*textBuffer = append(*textBuffer, text)
 	}
 
 	return nil
 }
 
-// finalizeResponse writes function calls if present, otherwise writes any remaining buffered text
-func (g *Client) finalizeResponse(functionCalls []*genai.FunctionCall, textBuffer []string, w *calque.Response) error {
-	if len(functionCalls) > 0 {
-		// Function calls present - write them and ignore any buffered text
-		return g.writeFunctionCalls(functionCalls, w)
+// processStreamResult handles a single stream result chunk
+// buffers when tools are present, streams otherwise
+func (g *Client) processStreamResult(result *genai.GenerateContentResponse, functionCalls *[]*genai.FunctionCall, textBuffer *[]string, shouldBuffer bool, w *calque.Response) error {
+	// Collect function calls from this chunk
+	chunkFunctionCalls := result.FunctionCalls()
+	if len(chunkFunctionCalls) > 0 {
+		*functionCalls = append(*functionCalls, chunkFunctionCalls...)
 	}
 
-	// No function calls - write any remaining buffered text (if not already streamed)
-	for _, text := range textBuffer {
-		if _, err := w.Data.Write([]byte(text)); err != nil {
-			return err
-		}
+	// Get text from this chunk
+	var text string
+	if len(chunkFunctionCalls) == 0 {
+		text = result.Text()
 	}
+
+	if text == "" {
+		return nil
+	}
+
+	if shouldBuffer {
+		// Buffer the response for tools processing
+		*textBuffer = append(*textBuffer, text)
+	} else {
+		// Stream directly for plain text responses
+		_, err := w.Data.Write([]byte(text))
+		return err
+	}
+
 	return nil
 }
 
