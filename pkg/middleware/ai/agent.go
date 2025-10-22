@@ -59,6 +59,18 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 		agentOpts.ToolsConfig = &defaultConfig
 	}
 
+	// Determine which formatter to use
+	formatter := agentOpts.ToolResultFormatter
+	if formatter == nil {
+		formatter = defaultToolResultFormatter
+	}
+
+	// Determine which client to use for tool formatting
+	formatterClient := agentOpts.ToolFormatterClient
+	if formatterClient == nil {
+		formatterClient = client
+	}
+
 	var input []byte
 	err := calque.Read(r, &input)
 	if err != nil {
@@ -67,16 +79,16 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 
 	flow := calque.NewFlow()
 
-	// Chain: Registry → AddToolInfo → LLM → Detect → [Execute + Synthesize] OR PassThrough
+	// Chain: Registry → AddToolInfo → LLM → Detect → [Execute + Format] OR PassThrough
 	flow.Use(ctrl.Chain(
 		tools.Registry(agentOpts.Tools...),   // Register tools in context
 		addToolInformation(),                 // Add tool schema using tools from context
 		clientChatHandler(client, agentOpts), // Direct LLM call
 		tools.Detect(
-			// If tools detected → Execute tools, then synthesize final answer
+			// If tools detected → Execute tools, then format final answer
 			ctrl.Chain(
 				tools.ExecuteWithOptions(*agentOpts.ToolsConfig), // Execute tools
-				synthesizeFinalAnswer(client, input),             // Second LLM call with original input + results
+				formatter(formatterClient, input),                // Format results with original input
 			),
 			// No tools detected → just pass through the LLM response
 			ctrl.PassThrough(),
@@ -127,9 +139,9 @@ func addToolInformation() calque.Handler {
 	})
 }
 
-// synthesizeFinalAnswer creates a handler that makes a second LLM call to synthesize a final answer
-// from the original question and tool execution results
-func synthesizeFinalAnswer(client Client, originalInput []byte) calque.Handler {
+// defaultToolResultFormatter is the default formatter that synthesizes a natural language answer
+// from tool execution results using an LLM call
+func defaultToolResultFormatter(client Client, originalInput []byte) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		var toolResults []byte
 		err := calque.Read(r, &toolResults)
