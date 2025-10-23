@@ -92,6 +92,10 @@ type Config struct {
 
 	// Optional. Safety settings to block unsafe content
 	SafetySettings []*genai.SafetySetting
+
+	// Optional. Enable/disable streaming of responses (disabled automatically when tools are present)
+	// Default: true (streaming enabled), but tools force non-streaming regardless of this setting
+	Stream *bool
 }
 
 // Option interface for functional options pattern
@@ -190,6 +194,7 @@ type RequestConfig struct {
 	GenaiConfig *genai.GenerateContentConfig
 	Chat        *genai.Chat
 	Parts       []genai.Part
+	HasTools    bool
 }
 
 // Chat implements the Client interface with streaming support.
@@ -219,50 +224,6 @@ func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 
 	// Execute the request with the configured chat
 	return g.executeRequest(config, r, w)
-}
-
-// writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
-func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calque.Response) error {
-	// Convert to OpenAI format
-	toolCalls := make([]map[string]any, len(functionCalls))
-
-	for i, call := range functionCalls {
-		// Marshal ALL arguments from Gemini to JSON string
-		var argsJSON string
-		if call.Args != nil {
-			argsBytes, err := json.Marshal(call.Args)
-			if err == nil {
-				argsJSON = string(argsBytes)
-			} else {
-				argsJSON = "{}"
-			}
-		} else {
-			argsJSON = "{}"
-		}
-
-		// OpenAI format with type and function fields
-		toolCall := map[string]any{
-			"type": "function",
-			"function": map[string]any{
-				"name":      call.Name,
-				"arguments": argsJSON,
-			},
-		}
-		toolCalls[i] = toolCall
-	}
-
-	// Use json.Marshal for proper JSON formatting
-	result := map[string]any{
-		"tool_calls": toolCalls,
-	}
-
-	jsonBytes, err := json.Marshal(result)
-	if err != nil {
-		return err
-	}
-
-	_, err = w.Data.Write(jsonBytes)
-	return err
 }
 
 // buildGenerateConfig creates a Gemini GenerateContentConfig from provider config and optional schema override
@@ -359,8 +320,11 @@ func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInp
 	// Build config once
 	genaiConfig := g.buildGenerateConfig(schema)
 
+	// Track if we have tools (needed for buffering decision)
+	hasTools := len(tools) > 0
+
 	// Add tools once
-	if len(tools) > 0 {
+	if hasTools {
 		geminiFunctions := convertToolsToGeminiFunctions(tools)
 		genaiConfig.Tools = []*genai.Tool{{FunctionDeclarations: geminiFunctions}}
 	}
@@ -381,43 +345,58 @@ func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInp
 		GenaiConfig: genaiConfig,
 		Chat:        chat,
 		Parts:       parts,
+		HasTools:    hasTools,
 	}, nil
 }
 
 // executeRequest executes the configured request
 func (g *Client) executeRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
-	// Send message with streaming
-	var functionCalls []*genai.FunctionCall
+	// Determine if we should stream
+	// Tools force non-streaming to avoid mixing text with function call JSON
+	shouldStream := !config.HasTools && (g.config.Stream == nil || *g.config.Stream)
+
+	if shouldStream {
+		return g.executeStreamingRequest(config, r, w)
+	}
+
+	return g.executeNonStreamingRequest(config, r, w)
+}
+
+// executeNonStreamingRequest executes a non-streaming request using SendMessage
+func (g *Client) executeNonStreamingRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
+	// Use SendMessage for buffered response
+	result, err := config.Chat.SendMessage(r.Context, config.Parts...)
+	if err != nil {
+		return fmt.Errorf("failed to get response: %w", err)
+	}
+
+	// Check for function calls first
+	functionCalls := result.FunctionCalls()
+	if len(functionCalls) > 0 {
+		return g.writeFunctionCalls(functionCalls, w)
+	}
+
+	// Write text response
+	text := result.Text()
+	if text != "" {
+		_, err = w.Data.Write([]byte(text))
+		return err
+	}
+
+	return nil
+}
+
+// executeStreamingRequest executes a streaming request using SendMessageStream
+func (g *Client) executeStreamingRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
+	// Stream response chunks directly
 	for result, err := range config.Chat.SendMessageStream(r.Context, config.Parts...) {
 		if err != nil {
 			return fmt.Errorf("failed to get response: %w", err)
 		}
 
-		// Process each result chunk
-		if err := g.processStreamResult(result, &functionCalls, w); err != nil {
-			return err
-		}
-	}
-
-	// Finalize response - write function calls if present
-	return g.finalizeResponse(functionCalls, w)
-}
-
-// processStreamResult handles a single stream result chunk
-// Extracts function calls and writes text if no function calls present yet
-func (g *Client) processStreamResult(result *genai.GenerateContentResponse, functionCalls *[]*genai.FunctionCall, w *calque.Response) error {
-	// Collect function calls from this chunk
-	for _, candidate := range result.Candidates {
-		for _, part := range candidate.Content.Parts {
-			if part.FunctionCall != nil {
-				*functionCalls = append(*functionCalls, part.FunctionCall)
-			}
-		}
-	}
-
-	// Only stream text if we haven't encountered function calls yet
-	if len(*functionCalls) == 0 {
-		if text := result.Text(); text != "" {
+		// Get text from chunk and stream it
+		text := result.Text()
+		if text != "" {
 			if _, writeErr := w.Data.Write([]byte(text)); writeErr != nil {
 				return writeErr
 			}
@@ -427,12 +406,48 @@ func (g *Client) processStreamResult(result *genai.GenerateContentResponse, func
 	return nil
 }
 
-// finalizeResponse writes function calls if present, otherwise returns success
-func (g *Client) finalizeResponse(functionCalls []*genai.FunctionCall, w *calque.Response) error {
-	if len(functionCalls) > 0 {
-		return g.writeFunctionCalls(functionCalls, w)
+// writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
+func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calque.Response) error {
+	// Convert to OpenAI format
+	toolCalls := make([]map[string]any, len(functionCalls))
+
+	for i, call := range functionCalls {
+		// Marshal ALL arguments from Gemini to JSON string
+		var argsJSON string
+		if call.Args != nil {
+			argsBytes, err := json.Marshal(call.Args)
+			if err == nil {
+				argsJSON = string(argsBytes)
+			} else {
+				argsJSON = "{}"
+			}
+		} else {
+			argsJSON = "{}"
+		}
+
+		// OpenAI format with type and function fields
+		toolCall := map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":      call.Name,
+				"arguments": argsJSON,
+			},
+		}
+		toolCalls[i] = toolCall
 	}
-	return nil
+
+	// Use json.Marshal for proper JSON formatting
+	result := map[string]any{
+		"tool_calls": toolCalls,
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Data.Write(jsonBytes)
+	return err
 }
 
 // inputToParts converts classified input to genai.Part array

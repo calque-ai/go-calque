@@ -36,12 +36,27 @@ type ToolResult struct {
 	Error    string   `json:"error,omitempty"`
 }
 
+// ToolResultJSON represents a tool result for JSON output with proper result formatting
+type ToolResultJSON struct {
+	ToolCall ToolCall        `json:"tool_call"`
+	Result   json.RawMessage `json:"result"`
+	Error    string          `json:"error,omitempty"`
+}
+
+// RawToolOutput represents the raw JSON output structure when RawOutput is enabled
+type RawToolOutput struct {
+	OriginalOutput string           `json:"original_output,omitempty"`
+	Results        []ToolResultJSON `json:"results"`
+}
+
 // Config allows configuring the Execute middleware behavior
 type Config struct {
 	// MaxConcurrentTools - maximum number of tools to execute concurrently (0 = no limit)
 	MaxConcurrentTools int
 	// IncludeOriginalOutput - if true, includes original LLM output in results
 	IncludeOriginalOutput bool
+	// RawOutput - if true, returns JSON-marshaled results instead of formatted text
+	RawOutput bool
 }
 
 // Execute parses LLM output for tool calls and executes them using tools from Registry.
@@ -119,15 +134,30 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 	}
 
 	// Format results based on configuration
-	var output string
-	if config.IncludeOriginalOutput {
-		output = formatToolResultsWithOriginal(results, inputBytes)
-	} else {
-		output = formatToolResults(results, inputBytes)
+	var output []byte
+
+	// Handle raw JSON output
+	if config.RawOutput {
+		var marshalErr error
+		output, marshalErr = formatRawOutput(results, inputBytes, config.IncludeOriginalOutput)
+		if marshalErr != nil {
+			return fmt.Errorf("failed to marshal tool results: %w", marshalErr)
+		}
+		_, writeErr := w.Write(output)
+		return writeErr
 	}
 
-	_, err := w.Write([]byte(output))
-	return err
+	// Handle formatted text output
+	var formatted string
+	if config.IncludeOriginalOutput {
+		formatted = formatToolResultsWithOriginal(results, inputBytes)
+	} else {
+		formatted = formatToolResults(results, inputBytes)
+	}
+	output = []byte(formatted)
+
+	_, writeErr := w.Write(output)
+	return writeErr
 }
 
 // ParseToolCalls extracts tool calls from LLM output using JSON parsing (OpenAI standard)
@@ -220,6 +250,14 @@ func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []T
 
 // executeToolCall executes a single tool call
 func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolResult {
+	// If the tool call already has an error (e.g., from parsing), return it immediately
+	if toolCall.Error != "" {
+		return ToolResult{
+			ToolCall: toolCall,
+			Error:    toolCall.Error,
+		}
+	}
+
 	// Find the tool
 	var tool Tool
 	for _, t := range tools {
@@ -264,6 +302,54 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 		ToolCall: toolCall,
 		Result:   result.Bytes(),
 	}
+}
+
+// formatRawOutput returns JSON-marshaled tool results with proper JSON result formatting
+func formatRawOutput(results []ToolResult, inputBytes []byte, includeOriginal bool) ([]byte, error) {
+	// Convert ToolResult to ToolResultJSON with proper JSON handling
+	jsonResults := make([]ToolResultJSON, len(results))
+	for i, result := range results {
+		resultJSON, err := convertResultToJSON(result.Result)
+		if err != nil {
+			return nil, err
+		}
+
+		jsonResults[i] = ToolResultJSON{
+			ToolCall: result.ToolCall,
+			Result:   resultJSON,
+			Error:    result.Error,
+		}
+	}
+
+	// Always return RawToolOutput structure
+	rawOutput := RawToolOutput{
+		Results: jsonResults,
+	}
+	if includeOriginal {
+		rawOutput.OriginalOutput = string(inputBytes)
+	}
+	return json.Marshal(rawOutput)
+}
+
+// convertResultToJSON converts a tool result to JSON, preserving JSON structure or converting to string
+func convertResultToJSON(result []byte) (json.RawMessage, error) {
+	if len(result) == 0 {
+		return []byte("null"), nil
+	}
+
+	// Check if it's valid JSON
+	var temp any
+	if err := json.Unmarshal(result, &temp); err == nil {
+		// Valid JSON - use as-is
+		return result, nil
+	}
+
+	// Not valid JSON - marshal as string
+	resultJSON, err := json.Marshal(string(result))
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result as string: %w", err)
+	}
+	return resultJSON, nil
 }
 
 // formatToolResults formats tool execution results for output

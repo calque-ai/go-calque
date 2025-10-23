@@ -3,8 +3,17 @@ package ai
 import (
 	"github.com/invopop/jsonschema"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
+
+// ToolResultFormatterFunc is a function that creates a handler for formatting tool execution results.
+// It receives the AI client (can be nil if not needed), the original user input,
+// and returns a handler that processes tool results to produce the final output.
+//
+// The returned handler receives tool execution results as input and should write
+// the formatted final response to the output. This is only used when tools are executed.
+type ToolResultFormatterFunc func(client Client, originalInput []byte) calque.Handler
 
 // AgentOptions holds all configuration for an AI agent request.
 //
@@ -19,10 +28,12 @@ import (
 //		MultimodalData: &multimodalInput,
 //	}
 type AgentOptions struct {
-	Schema         *ResponseFormat
-	Tools          []tools.Tool
-	ToolsConfig    *tools.Config
-	MultimodalData *MultimodalInput
+	Schema              *ResponseFormat
+	Tools               []tools.Tool
+	ToolsConfig         *tools.Config
+	MultimodalData      *MultimodalInput
+	ToolResultFormatter ToolResultFormatterFunc
+	ToolFormatterClient Client
 }
 
 // AgentOption interface for functional options pattern.
@@ -53,6 +64,16 @@ func (o toolsConfigOption) Apply(opts *AgentOptions) { opts.ToolsConfig = o.conf
 type multimodalDataOption struct{ data *MultimodalInput }
 
 func (o multimodalDataOption) Apply(opts *AgentOptions) { opts.MultimodalData = o.data }
+
+type toolResultFormatterOption struct {
+	formatter ToolResultFormatterFunc
+	client    Client
+}
+
+func (o toolResultFormatterOption) Apply(opts *AgentOptions) {
+	opts.ToolResultFormatter = o.formatter
+	opts.ToolFormatterClient = o.client
+}
 
 // WithTools adds tools to the agent.
 //
@@ -151,4 +172,51 @@ func WithToolsConfig(config tools.Config) AgentOption {
 //	err := flow.Run(ctx, convert.ToJSON(input), &result)
 func WithMultimodalData(data *MultimodalInput) AgentOption {
 	return multimodalDataOption{data: data}
+}
+
+// WithToolResultFormatter provides a custom formatter for tool execution results.
+//
+// Input: formatter function and optional AI client for formatting
+// Output: AgentOption for configuration
+// Behavior: Customizes how tool results are formatted into the final response
+//
+// The formatter function receives the original user input and tool execution results,
+// allowing you to customize the final output. You can optionally provide a different
+// AI client (e.g., a smaller/faster model) for result synthesis, or omit it entirely
+// for manual formatting.
+//
+// If no custom formatter is provided, the agent uses a default formatter that makes
+// an LLM call to synthesize a natural language answer from the tool results.
+//
+// Examples:
+//
+//	// Custom formatting with LLM synthesis using main client
+//	ai.WithToolResultFormatter(func(client ai.Client, originalInput []byte) calque.Handler {
+//		return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
+//			var toolResults []byte
+//			calque.Read(r, &toolResults)
+//			// Use client to synthesize, then add custom formatting
+//			return customFormat(client, originalInput, toolResults, w)
+//		})
+//	})
+//
+//	// Custom formatting with different LLM client
+//	ai.WithToolResultFormatter(myFormatter, smallerClient)
+//
+//	// Manual formatting without LLM
+//	ai.WithToolResultFormatter(func(client ai.Client, originalInput []byte) calque.Handler {
+//		return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
+//			var toolResults []byte
+//			calque.Read(r, &toolResults)
+//			// Format manually, ignore client parameter
+//			formatted := fmt.Sprintf("Results:\n%s", toolResults)
+//			return calque.Write(w, formatted)
+//		})
+//	})
+func WithToolResultFormatter(formatter ToolResultFormatterFunc, client ...Client) AgentOption {
+	opt := toolResultFormatterOption{formatter: formatter}
+	if len(client) > 0 {
+		opt.client = client[0]
+	}
+	return opt
 }

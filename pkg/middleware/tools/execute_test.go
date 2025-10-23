@@ -159,6 +159,25 @@ func TestExecuteWithOptions(t *testing.T) {
 			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
 			contains: []string{"Original LLM Output:", "Tool execution results", "4"},
 		},
+		{
+			name: "raw output without original",
+			config: Config{
+				RawOutput: true,
+			},
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+			contains: []string{`"tool_call"`, `"result"`, `"name":"calculator"`, `"arguments":"2+2"`},
+		},
+		{
+			name: "raw output with original",
+			config: Config{
+				RawOutput:             true,
+				IncludeOriginalOutput: true,
+			},
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+			contains: []string{`"original_output"`, `"results"`, `"tool_call"`, `"name":"calculator"`},
+		},
 	}
 
 	for _, tt := range tests {
