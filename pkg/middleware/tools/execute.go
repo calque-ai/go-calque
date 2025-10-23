@@ -36,10 +36,17 @@ type ToolResult struct {
 	Error    string   `json:"error,omitempty"`
 }
 
+// ToolResultJSON represents a tool result for JSON output with proper result formatting
+type ToolResultJSON struct {
+	ToolCall ToolCall        `json:"tool_call"`
+	Result   json.RawMessage `json:"result"`
+	Error    string          `json:"error,omitempty"`
+}
+
 // RawToolOutput represents the raw JSON output structure when RawOutput is enabled
 type RawToolOutput struct {
-	OriginalOutput string       `json:"original_output,omitempty"`
-	Results        []ToolResult `json:"results"`
+	OriginalOutput string           `json:"original_output,omitempty"`
+	Results        []ToolResultJSON `json:"results"`
 }
 
 // Config allows configuring the Execute middleware behavior
@@ -297,16 +304,52 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 	}
 }
 
-// formatRawOutput returns JSON-marshaled tool results
+// formatRawOutput returns JSON-marshaled tool results with proper JSON result formatting
 func formatRawOutput(results []ToolResult, inputBytes []byte, includeOriginal bool) ([]byte, error) {
-	if includeOriginal {
-		rawOutput := RawToolOutput{
-			OriginalOutput: string(inputBytes),
-			Results:        results,
+	// Convert ToolResult to ToolResultJSON with proper JSON handling
+	jsonResults := make([]ToolResultJSON, len(results))
+	for i, result := range results {
+		resultJSON, err := convertResultToJSON(result.Result)
+		if err != nil {
+			return nil, err
 		}
-		return json.Marshal(rawOutput)
+
+		jsonResults[i] = ToolResultJSON{
+			ToolCall: result.ToolCall,
+			Result:   resultJSON,
+			Error:    result.Error,
+		}
 	}
-	return json.Marshal(results)
+
+	// Always return RawToolOutput structure
+	rawOutput := RawToolOutput{
+		Results: jsonResults,
+	}
+	if includeOriginal {
+		rawOutput.OriginalOutput = string(inputBytes)
+	}
+	return json.Marshal(rawOutput)
+}
+
+// convertResultToJSON converts a tool result to JSON, preserving JSON structure or converting to string
+func convertResultToJSON(result []byte) (json.RawMessage, error) {
+	if len(result) == 0 {
+		return []byte("null"), nil
+	}
+
+	// Check if it's valid JSON
+	var temp any
+	if err := json.Unmarshal(result, &temp); err == nil {
+		// Valid JSON - use as-is
+		return result, nil
+	}
+
+	// Not valid JSON - marshal as string
+	resultJSON, err := json.Marshal(string(result))
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result as string: %w", err)
+	}
+	return resultJSON, nil
 }
 
 // formatToolResults formats tool execution results for output
