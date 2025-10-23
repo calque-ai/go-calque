@@ -40,7 +40,7 @@ func Agent(client Client, opts ...AgentOption) calque.Handler {
 
 		// Determine behavior based on options
 		if len(agentOpts.Tools) > 0 {
-			// Tool-calling agent behavior (full agent loop)
+			// Tool-calling agent behavior
 			return runToolCallingAgent(client, agentOpts, r, w)
 		}
 		// Simple chat behavior
@@ -112,7 +112,7 @@ func clientChatHandler(client Client, agentOpts *AgentOptions) calque.Handler {
 	})
 }
 
-// addToolInformation adds tool schema to the input (replaces formatInputWithTools)
+// addToolInformation adds tool schema to the input
 func addToolInformation() calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		// Read input

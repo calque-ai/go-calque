@@ -36,12 +36,20 @@ type ToolResult struct {
 	Error    string   `json:"error,omitempty"`
 }
 
+// RawToolOutput represents the raw JSON output structure when RawOutput is enabled
+type RawToolOutput struct {
+	OriginalOutput string       `json:"original_output,omitempty"`
+	Results        []ToolResult `json:"results"`
+}
+
 // Config allows configuring the Execute middleware behavior
 type Config struct {
 	// MaxConcurrentTools - maximum number of tools to execute concurrently (0 = no limit)
 	MaxConcurrentTools int
 	// IncludeOriginalOutput - if true, includes original LLM output in results
 	IncludeOriginalOutput bool
+	// RawOutput - if true, returns JSON-marshaled results instead of formatted text
+	RawOutput bool
 }
 
 // Execute parses LLM output for tool calls and executes them using tools from Registry.
@@ -119,15 +127,30 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 	}
 
 	// Format results based on configuration
-	var output string
-	if config.IncludeOriginalOutput {
-		output = formatToolResultsWithOriginal(results, inputBytes)
-	} else {
-		output = formatToolResults(results, inputBytes)
+	var output []byte
+
+	// Handle raw JSON output
+	if config.RawOutput {
+		var marshalErr error
+		output, marshalErr = formatRawOutput(results, inputBytes, config.IncludeOriginalOutput)
+		if marshalErr != nil {
+			return fmt.Errorf("failed to marshal tool results: %w", marshalErr)
+		}
+		_, writeErr := w.Write(output)
+		return writeErr
 	}
 
-	_, err := w.Write([]byte(output))
-	return err
+	// Handle formatted text output
+	var formatted string
+	if config.IncludeOriginalOutput {
+		formatted = formatToolResultsWithOriginal(results, inputBytes)
+	} else {
+		formatted = formatToolResults(results, inputBytes)
+	}
+	output = []byte(formatted)
+
+	_, writeErr := w.Write(output)
+	return writeErr
 }
 
 // ParseToolCalls extracts tool calls from LLM output using JSON parsing (OpenAI standard)
@@ -272,6 +295,18 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 		ToolCall: toolCall,
 		Result:   result.Bytes(),
 	}
+}
+
+// formatRawOutput returns JSON-marshaled tool results
+func formatRawOutput(results []ToolResult, inputBytes []byte, includeOriginal bool) ([]byte, error) {
+	if includeOriginal {
+		rawOutput := RawToolOutput{
+			OriginalOutput: string(inputBytes),
+			Results:        results,
+		}
+		return json.Marshal(rawOutput)
+	}
+	return json.Marshal(results)
 }
 
 // formatToolResults formats tool execution results for output
