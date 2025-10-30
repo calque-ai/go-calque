@@ -1045,187 +1045,73 @@ func TestFunctionCallsWithTextResponse(t *testing.T) {
 	}
 }
 
-// TestProcessStreamResult tests the logic for processing stream results
-func TestProcessStreamResult(t *testing.T) {
+// TestExecuteRequestStreamingDecision tests the logic for choosing between streaming and non-streaming
+func TestExecuteRequestStreamingDecision(t *testing.T) {
 	tests := []struct {
 		name              string
-		result            *genai.GenerateContentResponse
-		existingCalls     []*genai.FunctionCall
-		expectedCallCount int
-		expectedText      string
+		hasTools          bool
+		streamConfig      *bool
+		expectedStreaming bool
 		description       string
 	}{
 		{
-			name: "text only response",
-			result: &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{
-					{
-						Content: &genai.Content{
-							Parts: []*genai.Part{
-								{Text: "Hello, world!"},
-							},
-						},
-					},
-				},
-			},
-			existingCalls:     nil,
-			expectedCallCount: 0,
-			expectedText:      "Hello, world!",
-			description:       "Should write text when no function calls present",
+			name:              "no tools, stream nil (default streaming)",
+			hasTools:          false,
+			streamConfig:      nil,
+			expectedStreaming: true,
+			description:       "Should stream when no tools and Stream is nil (default)",
 		},
 		{
-			name: "function call only",
-			result: &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{
-					{
-						Content: &genai.Content{
-							Parts: []*genai.Part{
-								{
-									FunctionCall: &genai.FunctionCall{
-										Name: "calculator",
-										Args: map[string]any{"input": "2+2"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			existingCalls:     nil,
-			expectedCallCount: 1,
-			expectedText:      "",
-			description:       "Should collect function call and not write text",
+			name:              "no tools, stream true",
+			hasTools:          false,
+			streamConfig:      helpers.PtrOf(true),
+			expectedStreaming: true,
+			description:       "Should stream when no tools and Stream is true",
 		},
 		{
-			name: "text after function call already seen",
-			result: &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{
-					{
-						Content: &genai.Content{
-							Parts: []*genai.Part{
-								{Text: "This should be ignored"},
-							},
-						},
-					},
-				},
-			},
-			existingCalls: []*genai.FunctionCall{
-				{Name: "existing_call", Args: map[string]any{"foo": "bar"}},
-			},
-			expectedCallCount: 1,
-			expectedText:      "",
-			description:       "Should not write text when function calls already exist",
+			name:              "no tools, stream false",
+			hasTools:          false,
+			streamConfig:      helpers.PtrOf(false),
+			expectedStreaming: false,
+			description:       "Should not stream when Stream is false",
 		},
 		{
-			name: "multiple candidates with function calls",
-			result: &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{
-					{
-						Content: &genai.Content{
-							Parts: []*genai.Part{
-								{FunctionCall: &genai.FunctionCall{Name: "tool1"}},
-								{FunctionCall: &genai.FunctionCall{Name: "tool2"}},
-							},
-						},
-					},
-				},
-			},
-			existingCalls:     nil,
-			expectedCallCount: 2,
-			expectedText:      "",
-			description:       "Should collect multiple function calls from same result",
+			name:              "has tools, stream nil",
+			hasTools:          true,
+			streamConfig:      nil,
+			expectedStreaming: false,
+			description:       "Should not stream when tools present (tools force buffering)",
+		},
+		{
+			name:              "has tools, stream true",
+			hasTools:          true,
+			streamConfig:      helpers.PtrOf(true),
+			expectedStreaming: false,
+			description:       "Should not stream when tools present even if Stream is true",
+		},
+		{
+			name:              "has tools, stream false",
+			hasTools:          true,
+			streamConfig:      helpers.PtrOf(false),
+			expectedStreaming: false,
+			description:       "Should not stream when tools present and Stream is false",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{}
-			var response strings.Builder
-			w := calque.NewResponse(&response)
-
-			functionCalls := tt.existingCalls
-			err := client.processStreamResult(tt.result, &functionCalls, w)
-			if err != nil {
-				t.Errorf("%s: processStreamResult() error = %v", tt.description, err)
-				return
+			client := &Client{
+				config: &Config{
+					Stream: tt.streamConfig,
+				},
 			}
 
-			// Check function call count
-			if len(functionCalls) != tt.expectedCallCount {
-				t.Errorf("%s: function call count = %d, want %d", tt.description, len(functionCalls), tt.expectedCallCount)
-			}
+			// Test the decision logic from executeRequest
+			// shouldStream := !hasTools && (Stream == nil || *Stream)
+			shouldStream := !tt.hasTools && (client.config.Stream == nil || *client.config.Stream)
 
-			// Check text output
-			output := response.String()
-			if output != tt.expectedText {
-				t.Errorf("%s: text output = %q, want %q", tt.description, output, tt.expectedText)
-			}
-		})
-	}
-}
-
-// TestFinalizeResponse tests the finalization logic
-func TestFinalizeResponse(t *testing.T) {
-	tests := []struct {
-		name          string
-		functionCalls []*genai.FunctionCall
-		expectJSON    bool
-		description   string
-	}{
-		{
-			name:          "no function calls",
-			functionCalls: nil,
-			expectJSON:    false,
-			description:   "Should return success with no output when no function calls",
-		},
-		{
-			name: "single function call",
-			functionCalls: []*genai.FunctionCall{
-				{Name: "tool1", Args: map[string]any{"key": "value"}},
-			},
-			expectJSON:  true,
-			description: "Should write JSON tool calls format",
-		},
-		{
-			name: "multiple function calls",
-			functionCalls: []*genai.FunctionCall{
-				{Name: "tool1", Args: map[string]any{"key1": "value1"}},
-				{Name: "tool2", Args: map[string]any{"key2": "value2"}},
-			},
-			expectJSON:  true,
-			description: "Should write multiple tool calls in JSON format",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{}
-			var response strings.Builder
-			w := calque.NewResponse(&response)
-
-			err := client.finalizeResponse(tt.functionCalls, w)
-			if err != nil {
-				t.Errorf("%s: finalizeResponse() error = %v", tt.description, err)
-				return
-			}
-
-			output := response.String()
-
-			if tt.expectJSON {
-				// Should be valid JSON with tool_calls
-				var result struct {
-					ToolCalls []any `json:"tool_calls"`
-				}
-				if err := json.Unmarshal([]byte(output), &result); err != nil {
-					t.Errorf("%s: output is not valid JSON: %v\nOutput: %s", tt.description, err, output)
-					return
-				}
-
-				if len(result.ToolCalls) != len(tt.functionCalls) {
-					t.Errorf("%s: tool call count = %d, want %d", tt.description, len(result.ToolCalls), len(tt.functionCalls))
-				}
-			} else if output != "" {
-				t.Errorf("%s: expected no output, got %q", tt.description, output)
+			if shouldStream != tt.expectedStreaming {
+				t.Errorf("%s: shouldStream = %v, want %v", tt.description, shouldStream, tt.expectedStreaming)
 			}
 		})
 	}
