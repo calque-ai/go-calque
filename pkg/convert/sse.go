@@ -214,6 +214,23 @@ func (s *SSEConverter) Close() error {
 	return nil
 }
 
+// WriteEvent sends a custom SSE event with specified type and data.
+//
+// Input: event type string, arbitrary data
+// Output: error if write fails
+// Behavior: Marshals data to JSON and sends as SSE event
+//
+// Provides direct control over SSE event type and payload for custom
+// streaming scenarios. Data is automatically JSON-marshaled.
+//
+// Example:
+//
+//	sse.WriteEvent("progress", map[string]any{"percent": 75})
+//	sse.WriteEvent("notification", "Task completed")
+func (s *SSEConverter) WriteEvent(eventType string, data any) error {
+	return s.writeSSEEvent(eventType, data)
+}
+
 // WithChunkMode sets how the data should be chunked for streaming.
 //
 // Input: SSEChunkMode enum value
