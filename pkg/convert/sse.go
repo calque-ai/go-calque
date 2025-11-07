@@ -231,51 +231,6 @@ func (s *SSEConverter) WriteEvent(eventType string, data any) error {
 	return s.writeSSEEvent(eventType, data)
 }
 
-// Close forcefully terminates the SSE connection and releases resources.
-//
-// Input: none
-// Output: error if cleanup fails
-// Behavior: Flushes data, hijacks connection, forces close
-//
-// Performs aggressive cleanup of SSE streaming connection. First attempts
-// to hijack the underlying HTTP connection for immediate termination, then
-// falls back to io.Closer if available. Use for force-close scenarios or
-// when handlers don't return immediately after streaming.
-//
-// Note: Most SSE streams close naturally when the HTTP handler returns.
-// This method is primarily for edge cases requiring explicit connection
-// termination (misbehaving clients, long-running handlers, etc.).
-//
-// Example:
-//
-//	defer sse.Close() // Force cleanup on function exit
-//	if err := sse.Close(); err != nil {
-//		log.Printf("SSE close error: %v", err)
-//	}
-func (s *SSEConverter) Close() error {
-	// Final flush
-	if s.flusher != nil {
-		s.flusher.Flush()
-	}
-
-	// Try to hijack and close underlying connection first
-	if hijacker, ok := s.writer.(http.Hijacker); ok {
-		conn, _, err := hijacker.Hijack()
-		if err == nil {
-			return conn.Close()
-		}
-	}
-
-	// Fallback: try to close if response writer supports io.Closer
-	if s.writer != nil {
-		if closer, ok := s.writer.(io.Closer); ok {
-			return closer.Close()
-		}
-	}
-
-	return nil
-}
-
 // WithChunkMode sets how the data should be chunked for streaming.
 //
 // Input: SSEChunkMode enum value
