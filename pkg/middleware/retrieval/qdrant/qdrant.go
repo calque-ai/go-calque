@@ -625,21 +625,21 @@ func (c *Client) extractPayloadData(payload map[string]*qd.Value, doc *retrieval
 
 		// Use switch to handle different value types
 		var extractedValue any
-		switch {
-		case value.GetStringValue() != "":
+		switch value.Kind.(type) {
+		case *qd.Value_StringValue:
 			extractedValue = value.GetStringValue()
 			// Check for special content field
 			if key == "content" {
 				doc.Content = value.GetStringValue()
 			}
-		case value.GetIntegerValue() != 0:
+		case *qd.Value_IntegerValue:
 			extractedValue = value.GetIntegerValue()
-		case value.GetDoubleValue() != 0:
+		case *qd.Value_DoubleValue:
 			extractedValue = value.GetDoubleValue()
-		case value.GetBoolValue():
+		case *qd.Value_BoolValue:
 			extractedValue = value.GetBoolValue()
 		default:
-			// Skip empty/null values
+			// Skip null and unsupported value types
 			continue
 		}
 

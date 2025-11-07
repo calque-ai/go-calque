@@ -384,17 +384,14 @@ func selectOptimalSimilarity(docs []Document) SimilarityAlgorithm {
 
 	// Analyze document characteristics
 	avgLength := calculateAverageLength(docs)
-	vocabularyOverlap := calculateVocabularyOverlap(docs, 25)
 
 	switch {
 	case avgLength < 100: // Short documents
 		return JaccardSimilarity // Better for keyword matching
-	case vocabularyOverlap > 0.8: // High vocabulary overlap
-		return CosineSimilarity // Better for semantic similarity
 	case avgLength > 1000: // Long documents
 		return HybridSimilarity // Combine approaches
-	default:
-		return SorensenDiceSimilarity // Balanced approach
+	default: // Medium length (100-1000)
+		return CosineSimilarity // Best for semantic similarity
 	}
 }
 
@@ -410,56 +407,6 @@ func calculateAverageLength(docs []Document) float64 {
 	}
 
 	return float64(totalLength) / float64(len(docs))
-}
-
-// calculateVocabularyOverlap measures vocabulary similarity across documents
-func calculateVocabularyOverlap(docs []Document, sampleSize int) float64 {
-	if len(docs) < 2 {
-		return 0.0
-	}
-
-	// Adaptive sample size based on document count
-	if sampleSize <= 0 {
-		sampleSize = min(100, 1000/len(docs)) // Reasonable default
-	}
-
-	wordDocCount := make(map[string]int, sampleSize*len(docs)/2)
-	totalWords := 0
-
-	for _, doc := range docs {
-		words := strings.Fields(strings.ToLower(doc.Content))
-		if len(words) == 0 {
-			continue
-		}
-
-		// Deterministic sampling - every nth word
-		step := max(1, len(words)/sampleSize)
-		docWords := make(map[string]bool, sampleSize)
-
-		for i := 0; i < len(words) && len(docWords) < sampleSize; i += step {
-			word := words[i]
-			if !docWords[word] {
-				docWords[word] = true
-				wordDocCount[word]++
-				totalWords++
-			}
-		}
-	}
-
-	// Count words appearing in multiple documents
-	sharedWords := 0
-	for _, count := range wordDocCount {
-		if count > 1 {
-			sharedWords++
-		}
-	}
-
-	uniqueWords := len(wordDocCount)
-	if uniqueWords == 0 {
-		return 0.0
-	}
-
-	return float64(sharedWords) / float64(uniqueWords)
 }
 
 // contentSimilarity provides accurate content similarity with algorithm selection
