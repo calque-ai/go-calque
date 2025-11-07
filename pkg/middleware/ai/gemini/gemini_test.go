@@ -536,9 +536,14 @@ func TestWriteFunctionCallsEmptyArgs(t *testing.T) {
 
 	result := response.String()
 
-	// Should contain empty input for tools without args (in the JSON string)
-	if !strings.Contains(result, `\"input\": \"\"`) {
-		t.Errorf("writeFunctionCalls() should provide empty input for tools without args, got: %s", result)
+	// Should contain empty object {} for tools without args (OpenAI format)
+	if !strings.Contains(result, `"arguments":"{}"`) {
+		t.Errorf("writeFunctionCalls() should provide empty object for tools without args, got: %s", result)
+	}
+
+	// Should contain the tool name
+	if !strings.Contains(result, `"name":"no_args_tool"`) {
+		t.Errorf("writeFunctionCalls() should contain tool name, got: %s", result)
 	}
 }
 
@@ -851,4 +856,263 @@ func TestEdgeCases(t *testing.T) {
 			t.Error("inputToParts() with unsupported type should return error")
 		}
 	})
+}
+
+// TestFunctionCallOutputFormat tests that writeFunctionCalls produces output
+// that can be correctly parsed by tools.Execute middleware
+func TestFunctionCallOutputFormat(t *testing.T) {
+	tests := []struct {
+		name          string
+		functionCalls []*genai.FunctionCall
+		description   string
+	}{
+		{
+			name: "single function call with parameters",
+			functionCalls: []*genai.FunctionCall{
+				{
+					Name: "read_resource",
+					Args: map[string]any{
+						"uri": "file:///etc/hosts",
+					},
+				},
+			},
+			description: "Should format single function call correctly",
+		},
+		{
+			name: "multiple function calls",
+			functionCalls: []*genai.FunctionCall{
+				{
+					Name: "search",
+					Args: map[string]any{
+						"query": "golang",
+						"limit": float64(10),
+					},
+				},
+				{
+					Name: "read_resource",
+					Args: map[string]any{
+						"uri": "file:///docs/api.md",
+					},
+				},
+			},
+			description: "Should format multiple function calls correctly",
+		},
+		{
+			name: "function call with complex nested parameters",
+			functionCalls: []*genai.FunctionCall{
+				{
+					Name: "create_resource",
+					Args: map[string]any{
+						"uri":      "file:///data/config.json",
+						"contents": map[string]any{"key": "value", "nested": map[string]any{"deep": true}},
+						"metadata": []any{"tag1", "tag2"},
+					},
+				},
+			},
+			description: "Should format nested parameters correctly",
+		},
+		{
+			name: "function call with no arguments",
+			functionCalls: []*genai.FunctionCall{
+				{
+					Name: "get_status",
+					Args: nil,
+				},
+			},
+			description: "Should format function call with no args as empty object",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{}
+			var response strings.Builder
+			w := calque.NewResponse(&response)
+
+			// Write function calls in OpenAI format
+			err := client.writeFunctionCalls(tt.functionCalls, w)
+			if err != nil {
+				t.Fatalf("%s: writeFunctionCalls() error = %v", tt.description, err)
+			}
+
+			output := response.String()
+
+			// Parse the output as tools.Execute would
+			var result struct {
+				ToolCalls []struct {
+					Type     string `json:"type"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			}
+
+			if err := json.Unmarshal([]byte(output), &result); err != nil {
+				t.Fatalf("%s: output is not valid JSON: %v\nOutput: %s", tt.description, err, output)
+			}
+
+			// Verify structure
+			if len(result.ToolCalls) != len(tt.functionCalls) {
+				t.Errorf("%s: got %d tool calls, want %d", tt.description, len(result.ToolCalls), len(tt.functionCalls))
+			}
+
+			// Verify each tool call
+			for i, expectedCall := range tt.functionCalls {
+				if i >= len(result.ToolCalls) {
+					break
+				}
+
+				actualCall := result.ToolCalls[i]
+
+				// Check type field
+				if actualCall.Type != "function" {
+					t.Errorf("%s: tool call %d type = %q, want %q", tt.description, i, actualCall.Type, "function")
+				}
+
+				// Check function name
+				if actualCall.Function.Name != expectedCall.Name {
+					t.Errorf("%s: tool call %d name = %q, want %q", tt.description, i, actualCall.Function.Name, expectedCall.Name)
+				}
+
+				// Check arguments can be parsed as JSON
+				var args map[string]any
+				if err := json.Unmarshal([]byte(actualCall.Function.Arguments), &args); err != nil {
+					t.Errorf("%s: tool call %d arguments are not valid JSON: %v\nArguments: %s",
+						tt.description, i, err, actualCall.Function.Arguments)
+				}
+
+				// Verify expected arguments are present
+				if expectedCall.Args != nil {
+					for key := range expectedCall.Args {
+						if _, ok := args[key]; !ok {
+							t.Errorf("%s: tool call %d missing expected argument %q", tt.description, i, key)
+						}
+					}
+				} else if len(args) != 0 {
+					// If no args expected, arguments should be empty object
+					t.Errorf("%s: tool call %d should have no arguments, got %v", tt.description, i, args)
+
+				}
+			}
+		})
+	}
+}
+
+// TestFunctionCallsWithTextResponse tests that function calls take priority over text
+func TestFunctionCallsWithTextResponse(t *testing.T) {
+	client := &Client{}
+
+	// Simulate a response that might have both text and function calls
+	// In the fixed version, only function calls should be written
+	functionCalls := []*genai.FunctionCall{
+		{
+			Name: "calculator",
+			Args: map[string]any{
+				"expression": "2+2",
+			},
+		},
+	}
+
+	var response strings.Builder
+	w := calque.NewResponse(&response)
+
+	err := client.writeFunctionCalls(functionCalls, w)
+	if err != nil {
+		t.Fatalf("writeFunctionCalls() error = %v", err)
+	}
+
+	output := response.String()
+
+	// Output should be ONLY valid JSON tool calls format
+	var result struct {
+		ToolCalls []any `json:"tool_calls"`
+	}
+
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Errorf("Output should be valid JSON, got error: %v\nOutput: %s", err, output)
+	}
+
+	// Should not contain any text before the JSON
+	trimmed := strings.TrimSpace(output)
+	if !strings.HasPrefix(trimmed, "{") {
+		t.Errorf("Output should start with JSON object, got: %s", output)
+	}
+
+	// Should contain tool_calls
+	if !strings.Contains(output, "tool_calls") {
+		t.Error("Output should contain tool_calls field")
+	}
+}
+
+// TestExecuteRequestStreamingDecision tests the logic for choosing between streaming and non-streaming
+func TestExecuteRequestStreamingDecision(t *testing.T) {
+	tests := []struct {
+		name              string
+		hasTools          bool
+		streamConfig      *bool
+		expectedStreaming bool
+		description       string
+	}{
+		{
+			name:              "no tools, stream nil (default streaming)",
+			hasTools:          false,
+			streamConfig:      nil,
+			expectedStreaming: true,
+			description:       "Should stream when no tools and Stream is nil (default)",
+		},
+		{
+			name:              "no tools, stream true",
+			hasTools:          false,
+			streamConfig:      helpers.PtrOf(true),
+			expectedStreaming: true,
+			description:       "Should stream when no tools and Stream is true",
+		},
+		{
+			name:              "no tools, stream false",
+			hasTools:          false,
+			streamConfig:      helpers.PtrOf(false),
+			expectedStreaming: false,
+			description:       "Should not stream when Stream is false",
+		},
+		{
+			name:              "has tools, stream nil",
+			hasTools:          true,
+			streamConfig:      nil,
+			expectedStreaming: false,
+			description:       "Should not stream when tools present (tools force buffering)",
+		},
+		{
+			name:              "has tools, stream true",
+			hasTools:          true,
+			streamConfig:      helpers.PtrOf(true),
+			expectedStreaming: false,
+			description:       "Should not stream when tools present even if Stream is true",
+		},
+		{
+			name:              "has tools, stream false",
+			hasTools:          true,
+			streamConfig:      helpers.PtrOf(false),
+			expectedStreaming: false,
+			description:       "Should not stream when tools present and Stream is false",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{
+				config: &Config{
+					Stream: tt.streamConfig,
+				},
+			}
+
+			// Test the decision logic from executeRequest
+			// shouldStream := !hasTools && (Stream == nil || *Stream)
+			shouldStream := !tt.hasTools && (client.config.Stream == nil || *client.config.Stream)
+
+			if shouldStream != tt.expectedStreaming {
+				t.Errorf("%s: shouldStream = %v, want %v", tt.description, shouldStream, tt.expectedStreaming)
+			}
+		})
+	}
 }

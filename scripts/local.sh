@@ -19,22 +19,21 @@ if command -v golangci-lint >/dev/null; then
     golangci-lint run
 fi
 
-# Unit tests with coverage
+# Unit tests with coverage (excluding proto directory)
 echo "Unit tests with coverage..."
-go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-go test -v -race -coverprofile=pkg-coverage.out -covermode=atomic ./pkg/...
+go test -v -race -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v '/proto')
 
 # Print coverage data
 echo ""
 echo "=== COVERAGE DATA ==="
 if [ -f "coverage.out" ]; then
-    echo "Main packages coverage:"
+    echo "Overall coverage (excluding proto):"
     go tool cover -func=coverage.out | tail -1
-fi
-
-if [ -f "pkg-coverage.out" ]; then
-    echo "Package coverage:"
-    go tool cover -func=pkg-coverage.out | tail -1
+    
+    # Generate HTML coverage report
+    echo "Generating HTML coverage report..."
+    go tool cover -html=coverage.out -o coverage.html
+    echo "Coverage report generated: coverage.html"
 fi
 
 # Integration tests with benchmarks
@@ -51,6 +50,15 @@ for example in examples/*/; do
         (cd "$example" && go test -bench=. -benchmem -run=^$ > /dev/null 2>&1 && echo "  ✓ Benchmarks completed" || echo "  ⚠ No benchmarks found")
     fi
 done
+
+# Coverage Report Summary
+echo ""
+echo "=== COVERAGE SUMMARY ==="
+if [ -f "coverage.out" ]; then
+    OVERALL_COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
+    echo "📊 Coverage: ${OVERALL_COVERAGE}%"
+    echo "📄 Report: coverage.html"
+fi
 
 echo ""
 echo "Workflow completed successfully!"

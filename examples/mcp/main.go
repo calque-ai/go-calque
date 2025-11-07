@@ -5,10 +5,28 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/go-calque/pkg/middleware/mcp"
+	"github.com/joho/godotenv"
 )
+
+func main() {
+
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	runBasicExample()
+	runAutoExample()
+	runRealisticExample()
+	runAdvancedExample()
+
+}
 
 func runBasicExample() {
 	fmt.Println("=== Example 1: Basic MCP Tool Calling ===")
@@ -32,6 +50,60 @@ func runBasicExample() {
 	}
 
 	fmt.Printf("Result: 6 × 7 = %s\n", output)
+}
+
+func runAutoExample() {
+	fmt.Println("\n=== Example 0: MCP Auto Registry Client ===")
+
+	client, err := mcp.NewStdio("go", []string{"run", "cmd/server/main.go"})
+	if err != nil {
+		log.Printf("Failed to create MCP client: %v", err)
+		return
+	}
+	defer client.Close()
+
+	// Create Gemini example client (reads GOOGLE_API_KEY from env)
+	aiClient, err := gemini.New("gemini-2.5-flash")
+	if err != nil {
+		log.Printf("Failed to create Gemini client: %v", err)
+		return
+	}
+
+	startTotal := time.Now()
+
+	mcpTools, err := mcp.Tools(context.Background(), client) // Pre-fetch tool registry from mcp server
+	if err != nil {
+		log.Printf("Failed to fetch MCP tool registry: %v", err)
+		return
+	}
+
+	fmt.Printf("Discovered %d MCP tools", len(mcpTools))
+
+	flow := calque.NewFlow()
+	flow.Use(ai.Agent(aiClient, ai.WithTools(mcpTools...))) // Use MCP tools in AI agent
+
+	// Test natural language inputs
+	examples := []string{
+		"Search for golang tutorials",
+		"What is 6 times 7?",
+		"Say hello to Bob",
+		"Read the file /etc/hosts",
+	}
+
+	fmt.Println("Converting natural language to tool calls...")
+	for i, input := range examples {
+		startTools := time.Now()
+		fmt.Printf("\n%d. Input: \"%s\"\n", i+1, input)
+
+		var output string
+		if err := flow.Run(context.Background(), input, &output); err != nil {
+			log.Printf("Error: %v", err)
+		} else {
+			fmt.Printf("Tool duration: %s   Output: %s\n", time.Since(startTools).String(), output)
+		}
+	}
+
+	fmt.Printf("\nTotal duration for all tool calls: %s\n", time.Since(startTotal).String())
 }
 
 func runRealisticExample() {
@@ -133,10 +205,4 @@ func runAdvancedExample() {
 			fmt.Printf("  %s\n", update)
 		}
 	}
-}
-
-func main() {
-	runBasicExample()
-	runRealisticExample()
-	runAdvancedExample()
 }

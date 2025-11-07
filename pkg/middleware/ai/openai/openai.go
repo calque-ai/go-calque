@@ -296,6 +296,7 @@ func (c *Client) executeStreamingRequest(params openai.ChatCompletionNewParams, 
 
 	// Track multiple tool calls by ID
 	toolCalls := make(map[int]*openai.ChatCompletionMessageFunctionToolCall)
+	hasToolCalls := false
 
 	// Process streaming response
 	for stream.Next() {
@@ -307,35 +308,9 @@ func (c *Client) executeStreamingRequest(params openai.ChatCompletionNewParams, 
 
 		delta := chunk.Choices[0].Delta
 
-		// Handle content streaming
-		if delta.Content != "" {
-			if _, writeErr := w.Data.Write([]byte(delta.Content)); writeErr != nil {
-				return writeErr
-			}
-		}
-
-		// Handle tool calls (streaming)
-		for _, toolCall := range delta.ToolCalls {
-			index := int(toolCall.Index)
-
-			// Initialize tool call if not exists
-			if toolCalls[index] == nil {
-				toolCalls[index] = &openai.ChatCompletionMessageFunctionToolCall{
-					ID: toolCall.ID,
-					Function: openai.ChatCompletionMessageFunctionToolCallFunction{
-						Name:      "",
-						Arguments: "",
-					},
-				}
-			}
-
-			// Accumulate function name and arguments
-			if toolCall.Function.Name != "" {
-				toolCalls[index].Function.Name = toolCall.Function.Name
-			}
-			if toolCall.Function.Arguments != "" {
-				toolCalls[index].Function.Arguments += toolCall.Function.Arguments
-			}
+		// Process delta chunk
+		if err := c.processStreamDelta(delta, toolCalls, &hasToolCalls, w); err != nil {
+			return err
 		}
 	}
 
@@ -343,19 +318,63 @@ func (c *Client) executeStreamingRequest(params openai.ChatCompletionNewParams, 
 		return fmt.Errorf("failed to receive stream response: %w", err)
 	}
 
-	// If we have accumulated tool calls, format them
-	if len(toolCalls) > 0 {
-		// Convert map to slice, maintaining order by index
-		var completedCalls []openai.ChatCompletionMessageFunctionToolCall
-		for i := 0; i < len(toolCalls); i++ {
-			if call, exists := toolCalls[i]; exists && call.Function.Name != "" {
-				completedCalls = append(completedCalls, *call)
+	// Finalize accumulated tool calls
+	return c.finalizeToolCalls(toolCalls, w)
+}
+
+// processStreamDelta processes a single streaming delta chunk
+func (c *Client) processStreamDelta(delta openai.ChatCompletionChunkChoiceDelta, toolCalls map[int]*openai.ChatCompletionMessageFunctionToolCall, hasToolCalls *bool, w *calque.Response) error {
+	// Handle tool calls (streaming) - collect first
+	for _, toolCall := range delta.ToolCalls {
+		*hasToolCalls = true
+		index := int(toolCall.Index)
+
+		// Initialize tool call if not exists
+		if toolCalls[index] == nil {
+			toolCalls[index] = &openai.ChatCompletionMessageFunctionToolCall{
+				ID: toolCall.ID,
+				Function: openai.ChatCompletionMessageFunctionToolCallFunction{
+					Name:      "",
+					Arguments: "",
+				},
 			}
 		}
 
-		if len(completedCalls) > 0 {
-			return c.writeOpenAIToolCalls(completedCalls, w)
+		// Accumulate function name and arguments
+		if toolCall.Function.Name != "" {
+			toolCalls[index].Function.Name = toolCall.Function.Name
 		}
+		if toolCall.Function.Arguments != "" {
+			toolCalls[index].Function.Arguments += toolCall.Function.Arguments
+		}
+	}
+
+	// Handle content streaming - only write if no tool calls seen yet
+	if !*hasToolCalls && delta.Content != "" {
+		if _, writeErr := w.Data.Write([]byte(delta.Content)); writeErr != nil {
+			return writeErr
+		}
+	}
+
+	return nil
+}
+
+// finalizeToolCalls converts accumulated tool calls to ordered slice and writes them
+func (c *Client) finalizeToolCalls(toolCalls map[int]*openai.ChatCompletionMessageFunctionToolCall, w *calque.Response) error {
+	if len(toolCalls) == 0 {
+		return nil
+	}
+
+	// Convert map to slice, maintaining order by index
+	var completedCalls []openai.ChatCompletionMessageFunctionToolCall
+	for i := 0; i < len(toolCalls); i++ {
+		if call, exists := toolCalls[i]; exists && call.Function.Name != "" {
+			completedCalls = append(completedCalls, *call)
+		}
+	}
+
+	if len(completedCalls) > 0 {
+		return c.writeOpenAIToolCalls(completedCalls, w)
 	}
 
 	return nil
@@ -373,16 +392,16 @@ func (c *Client) executeNonStreamingRequest(params openai.ChatCompletionNewParam
 		return fmt.Errorf("no response choices returned")
 	}
 
-	// Process all choices (handles N > 1 configurations)
-	for i, choice := range response.Choices {
+	// Process all choices
+	return c.processChoices(response.Choices, w)
+}
+
+// processChoices processes response choices and writes tool calls or content
+func (c *Client) processChoices(choices []openai.ChatCompletionChoice, w *calque.Response) error {
+	for i, choice := range choices {
 		// Handle tool calls first (they take precedence)
 		if len(choice.Message.ToolCalls) > 0 {
-			// Convert union tool calls to function tool calls
-			var functionToolCalls []openai.ChatCompletionMessageFunctionToolCall
-			for _, toolCall := range choice.Message.ToolCalls {
-				fnToolCall := toolCall.AsFunction()
-				functionToolCalls = append(functionToolCalls, fnToolCall)
-			}
+			functionToolCalls := c.convertToFunctionToolCalls(choice.Message.ToolCalls)
 			if len(functionToolCalls) > 0 {
 				return c.writeOpenAIToolCalls(functionToolCalls, w)
 			}
@@ -403,6 +422,16 @@ func (c *Client) executeNonStreamingRequest(params openai.ChatCompletionNewParam
 	}
 
 	return nil
+}
+
+// convertToFunctionToolCalls converts union tool calls to function tool calls
+func (c *Client) convertToFunctionToolCalls(toolCalls []openai.ChatCompletionMessageToolCallUnion) []openai.ChatCompletionMessageFunctionToolCall {
+	functionToolCalls := make([]openai.ChatCompletionMessageFunctionToolCall, 0, len(toolCalls))
+	for _, toolCall := range toolCalls {
+		fnToolCall := toolCall.AsFunction()
+		functionToolCalls = append(functionToolCalls, fnToolCall)
+	}
+	return functionToolCalls
 }
 
 // inputToMessages converts classified input to OpenAI message format

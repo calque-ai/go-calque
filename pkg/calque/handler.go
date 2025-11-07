@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -255,5 +256,53 @@ func Write[T string | []byte](res *Response, data T) error {
 		return err
 	default:
 		return fmt.Errorf("unsupported type %T", data)
+	}
+}
+
+// NewReader creates a new reader from various input types for testing
+func NewReader[T string | []byte](data T) io.Reader {
+	switch v := any(data).(type) {
+	case string:
+		return strings.NewReader(v)
+	case []byte:
+		return bytes.NewReader(v)
+	default:
+		return strings.NewReader("")
+	}
+}
+
+// NewWriter creates a new writer that can be used for testing
+func NewWriter[T string | []byte]() *Buffer[T] {
+	return &Buffer[T]{}
+}
+
+// Buffer is a generic buffer implementation for testing
+type Buffer[T string | []byte] struct {
+	data []byte
+}
+
+func (b *Buffer[T]) Write(p []byte) (n int, err error) {
+	b.data = append(b.data, p...)
+	return len(p), nil
+}
+
+func (b *Buffer[T]) String() string {
+	return string(b.data)
+}
+
+// Bytes returns the buffer contents as a byte slice.
+func (b *Buffer[T]) Bytes() []byte {
+	return b.data
+}
+
+// Get returns the buffer contents as the specified type
+func (b *Buffer[T]) Get() T {
+	switch any(*new(T)).(type) {
+	case string:
+		return any(string(b.data)).(T)
+	case []byte:
+		return any(b.data).(T)
+	default:
+		return *new(T)
 	}
 }

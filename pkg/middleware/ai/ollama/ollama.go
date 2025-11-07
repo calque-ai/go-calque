@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -288,6 +289,12 @@ func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 		return err
 	}
 
+	// Write any remaining buffered text (when tools were available but not used)
+	if fullResponse.Len() > 0 {
+		_, err := w.Data.Write([]byte(fullResponse.String()))
+		return err
+	}
+
 	return nil
 }
 
@@ -392,9 +399,7 @@ func (o *Client) applyChatConfig(req *api.ChatRequest, schema *ai.ResponseFormat
 
 	// Apply custom options (these override individual fields above)
 	if len(o.config.Options) > 0 {
-		for key, value := range o.config.Options {
-			req.Options[key] = value
-		}
+		maps.Copy(req.Options, o.config.Options)
 	}
 
 	// Apply response format - request override takes priority
@@ -475,18 +480,17 @@ func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *calque.Respon
 	openAIToolCalls := make([]map[string]any, len(toolCalls))
 
 	for i, call := range toolCalls {
-		// Extract input from tool call arguments
+		// Marshal all arguments to JSON
 		var argsJSON string
 		if call.Function.Arguments != nil {
-			if inputValue, ok := call.Function.Arguments["input"]; ok {
-				argsJSON = fmt.Sprintf(`{"input": "%v"}`, inputValue)
-			} else {
-				// Convert all arguments to JSON
-				argsBytes, _ := json.Marshal(call.Function.Arguments)
+			argsBytes, err := json.Marshal(call.Function.Arguments)
+			if err == nil {
 				argsJSON = string(argsBytes)
+			} else {
+				argsJSON = "{}"
 			}
 		} else {
-			argsJSON = `{"input": ""}`
+			argsJSON = "{}"
 		}
 
 		toolCall := map[string]any{

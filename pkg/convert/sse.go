@@ -1,11 +1,14 @@
 package convert
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
 	"net/http"
+	"sync"
+	"time"
 )
 
 // SSEEvent represents a Server-Sent Event.
@@ -131,11 +134,12 @@ func ToSSE(w http.ResponseWriter) *SSEConverter {
 	}
 
 	return &SSEConverter{
-		writer:      w,
-		flusher:     flusher,
-		chunkBy:     SSEChunkByWord,
-		formatter:   RawContentFormatter, // Default: send raw content
-		eventFields: nil,                 // No additional fields by default
+		writer:           w,
+		flusher:          flusher,
+		chunkBy:          SSEChunkByWord,
+		formatter:        RawContentFormatter, // Default: send raw content
+		eventFields:      nil,                 // No additional fields by default
+		keepAliveEnabled: false,               // Keep-alive disabled by default
 	}
 }
 
@@ -154,6 +158,77 @@ type SSEConverter struct {
 	chunkBy     SSEChunkMode
 	formatter   SSEEventFormatter // RawContentFormatter or MapEventFormatter
 	eventFields map[string]any    // Additional fields to include in events
+
+	// Keep-alive configuration
+	keepAliveInterval time.Duration
+	keepAliveEnabled  bool
+	keepAliveCancel   context.CancelFunc
+	mu                sync.Mutex
+}
+
+// Close forcefully terminates the SSE connection and releases resources.
+//
+// Input: none
+// Output: error if cleanup fails
+// Behavior: Flushes data, hijacks connection, forces close
+//
+// Performs aggressive cleanup of SSE streaming connection. First attempts
+// to hijack the underlying HTTP connection for immediate termination, then
+// falls back to io.Closer if available. Use for force-close scenarios or
+// when handlers don't return immediately after streaming.
+//
+// Note: Most SSE streams close naturally when the HTTP handler returns.
+// This method is primarily for edge cases requiring explicit connection
+// termination (misbehaving clients, long-running handlers, etc.).
+//
+// Example:
+//
+//	defer sse.Close() // Force cleanup on function exit
+//	if err := sse.Close(); err != nil {
+//		log.Printf("SSE close error: %v", err)
+//	}
+func (s *SSEConverter) Close() error {
+	// Stop keep-alive first
+	s.stopKeepAlive()
+
+	// Final flush
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+
+	// Try to hijack and close underlying connection first
+	if hijacker, ok := s.writer.(http.Hijacker); ok {
+		conn, _, err := hijacker.Hijack()
+		if err == nil {
+			return conn.Close()
+		}
+	}
+
+	// Fallback: try to close if response writer supports io.Closer
+	if s.writer != nil {
+		if closer, ok := s.writer.(io.Closer); ok {
+			return closer.Close()
+		}
+	}
+
+	return nil
+}
+
+// WriteEvent sends a custom SSE event with specified type and data.
+//
+// Input: event type string, arbitrary data
+// Output: error if write fails
+// Behavior: Marshals data to JSON and sends as SSE event
+//
+// Provides direct control over SSE event type and payload for custom
+// streaming scenarios. Data is automatically JSON-marshaled.
+//
+// Example:
+//
+//	sse.WriteEvent("progress", map[string]any{"percent": 75})
+//	sse.WriteEvent("notification", "Task completed")
+func (s *SSEConverter) WriteEvent(eventType string, data any) error {
+	return s.writeSSEEvent(eventType, data)
 }
 
 // Close forcefully terminates the SSE connection and releases resources.
@@ -237,6 +312,29 @@ func (s *SSEConverter) WithEventFields(fields map[string]any) *SSEConverter {
 	return s
 }
 
+// WithKeepAlive enables periodic keep-alive messages to prevent connection timeouts.
+//
+// Input: keep-alive interval (recommended: 30 * time.Second)
+// Output: *SSEConverter for chaining
+// Behavior: Sends periodic comment messages to maintain connection
+//
+// Keep-alive messages are sent as SSE comments (": keep-alive\n\n") which
+// are ignored by clients but prevent proxy/firewall timeouts. Common
+// interval is 30 seconds to handle most proxy timeout configurations.
+//
+// Example:
+//
+//	sse.WithKeepAlive(30 * time.Second) // Recommended interval
+//	sse.WithKeepAlive(15 * time.Second) // More frequent
+func (s *SSEConverter) WithKeepAlive(interval time.Duration) *SSEConverter {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.keepAliveEnabled = true
+	s.keepAliveInterval = interval
+	return s
+}
+
 // FromReader implements OutputConverter interface for streaming SSE responses.
 //
 // Input: io.Reader data source
@@ -245,11 +343,18 @@ func (s *SSEConverter) WithEventFields(fields map[string]any) *SSEConverter {
 //
 // Streams data according to configured chunk mode, sending SSE events
 // as data arrives. Handles completion and error events automatically.
+// Starts keep-alive if enabled.
 //
 // Example:
 //
 //	err := sse.FromReader(llmResponseStream)
 func (s *SSEConverter) FromReader(reader io.Reader) error {
+	// Start keep-alive if enabled
+	if s.keepAliveEnabled {
+		s.startKeepAlive()
+		defer s.stopKeepAlive()
+	}
+
 	switch s.chunkBy {
 	case SSEChunkByWord:
 		return s.streamByWord(reader)
@@ -261,6 +366,60 @@ func (s *SSEConverter) FromReader(reader io.Reader) error {
 		return s.streamComplete(reader)
 	default:
 		return s.streamByWord(reader)
+	}
+}
+
+// startKeepAlive starts the keep-alive goroutine
+func (s *SSEConverter) startKeepAlive() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.keepAliveEnabled || s.keepAliveCancel != nil {
+		return
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.keepAliveCancel = cancel
+
+	go func() {
+		ticker := time.NewTicker(s.keepAliveInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := s.sendKeepAlive(); err != nil {
+					// Keep-alive failed, likely connection is broken
+					return
+				}
+			}
+		}
+	}()
+}
+
+// sendKeepAlive safely sends a keep-alive message with proper locking
+func (s *SSEConverter) sendKeepAlive() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Send keep-alive as SSE comment
+	if _, err := fmt.Fprintf(s.writer, ": keep-alive\n\n"); err != nil {
+		return err
+	}
+	s.flusher.Flush()
+	return nil
+}
+
+// stopKeepAlive stops the keep-alive goroutine
+func (s *SSEConverter) stopKeepAlive() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.keepAliveCancel != nil {
+		s.keepAliveCancel()
+		s.keepAliveCancel = nil
 	}
 }
 
@@ -441,6 +600,9 @@ func (s *SSEConverter) writeSSEEvent(event string, data any) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal SSE data: %w", err)
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	_, err = fmt.Fprintf(s.writer, "event: %s\ndata: %s\n\n", event, jsonData)
 	if err != nil {

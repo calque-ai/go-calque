@@ -83,8 +83,8 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./pkg/...
+          # Run tests on all packages except proto directory (with -short to skip integration tests requiring external servers)
+          go test -short -v -race -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v '/proto')
 
       - name: Generate coverage report
         run: go tool cover -html=coverage.out -o coverage.html

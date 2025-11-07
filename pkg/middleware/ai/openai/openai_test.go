@@ -1087,3 +1087,149 @@ func TestErrorHandling(t *testing.T) {
 		})
 	}
 }
+
+// TestProcessStreamDelta tests the streaming delta processing logic
+func TestProcessStreamDelta(t *testing.T) {
+	tests := []struct {
+		name              string
+		delta             openai.ChatCompletionChunkChoiceDelta
+		existingToolCalls map[int]*openai.ChatCompletionMessageFunctionToolCall
+		existingHasTools  bool
+		expectedHasTools  bool
+		expectedToolCount int
+		expectedText      string
+		description       string
+	}{
+		{
+			name: "text only delta",
+			delta: openai.ChatCompletionChunkChoiceDelta{
+				Content:   "Hello, world!",
+				ToolCalls: []openai.ChatCompletionChunkChoiceDeltaToolCall{},
+			},
+			existingToolCalls: make(map[int]*openai.ChatCompletionMessageFunctionToolCall),
+			existingHasTools:  false,
+			expectedHasTools:  false,
+			expectedToolCount: 0,
+			expectedText:      "Hello, world!",
+			description:       "Should write text when no tool calls present",
+		},
+		{
+			name: "tool call delta",
+			delta: openai.ChatCompletionChunkChoiceDelta{
+				Content: "",
+				ToolCalls: []openai.ChatCompletionChunkChoiceDeltaToolCall{
+					{
+						Index: 0,
+						ID:    "call_123",
+						Function: openai.ChatCompletionChunkChoiceDeltaToolCallFunction{
+							Name:      "calculator",
+							Arguments: "{\"input\":\"2+2\"}",
+						},
+					},
+				},
+			},
+			existingToolCalls: make(map[int]*openai.ChatCompletionMessageFunctionToolCall),
+			existingHasTools:  false,
+			expectedHasTools:  true,
+			expectedToolCount: 1,
+			expectedText:      "",
+			description:       "Should collect tool call and not write text",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{}
+			var response strings.Builder
+			w := calque.NewResponse(&response)
+
+			toolCalls := tt.existingToolCalls
+			hasToolCalls := tt.existingHasTools
+
+			err := client.processStreamDelta(tt.delta, toolCalls, &hasToolCalls, w)
+			if err != nil {
+				t.Errorf("%s: processStreamDelta() error = %v", tt.description, err)
+				return
+			}
+
+			if hasToolCalls != tt.expectedHasTools {
+				t.Errorf("%s: hasToolCalls = %v, want %v", tt.description, hasToolCalls, tt.expectedHasTools)
+			}
+
+			if len(toolCalls) != tt.expectedToolCount {
+				t.Errorf("%s: tool call count = %d, want %d", tt.description, len(toolCalls), tt.expectedToolCount)
+			}
+
+			output := response.String()
+			if output != tt.expectedText {
+				t.Errorf("%s: text output = %q, want %q", tt.description, output, tt.expectedText)
+			}
+		})
+	}
+}
+
+// TestFinalizeToolCalls tests the tool call finalization logic
+func TestFinalizeToolCalls(t *testing.T) {
+	tests := []struct {
+		name          string
+		toolCalls     map[int]*openai.ChatCompletionMessageFunctionToolCall
+		expectJSON    bool
+		expectedCount int
+		description   string
+	}{
+		{
+			name:          "no tool calls",
+			toolCalls:     make(map[int]*openai.ChatCompletionMessageFunctionToolCall),
+			expectJSON:    false,
+			expectedCount: 0,
+			description:   "Should return success with no output when no tool calls",
+		},
+		{
+			name: "single tool call",
+			toolCalls: map[int]*openai.ChatCompletionMessageFunctionToolCall{
+				0: {
+					ID: "call_1",
+					Function: openai.ChatCompletionMessageFunctionToolCallFunction{
+						Name:      "calculator",
+						Arguments: "{\"input\":\"2+2\"}",
+					},
+				},
+			},
+			expectJSON:    true,
+			expectedCount: 1,
+			description:   "Should write JSON tool calls format",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{}
+			var response strings.Builder
+			w := calque.NewResponse(&response)
+
+			err := client.finalizeToolCalls(tt.toolCalls, w)
+			if err != nil {
+				t.Errorf("%s: finalizeToolCalls() error = %v", tt.description, err)
+				return
+			}
+
+			output := response.String()
+
+			if tt.expectJSON {
+				var result struct {
+					ToolCalls []any `json:"tool_calls"`
+				}
+				if err := json.Unmarshal([]byte(output), &result); err != nil {
+					t.Errorf("%s: output is not valid JSON: %v\nOutput: %s", tt.description, err, output)
+					return
+				}
+
+				if len(result.ToolCalls) != tt.expectedCount {
+					t.Errorf("%s: tool call count = %d, want %d", tt.description, len(result.ToolCalls), tt.expectedCount)
+				}
+			} else if output != "" {
+				t.Errorf("%s: expected no output, got %q", tt.description, output)
+			}
+		})
+	}
+}
