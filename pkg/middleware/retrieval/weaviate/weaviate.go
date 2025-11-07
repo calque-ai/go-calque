@@ -202,7 +202,7 @@ func (c *Client) Delete(ctx context.Context, ids []string) error {
 
 	// For multiple IDs, use batch delete with OR filter
 	// Build a WHERE filter that matches any of the provided IDs
-	var whereFilters []*filters.WhereBuilder
+	whereFilters := make([]*filters.WhereBuilder, 0, len(ids))
 	for _, id := range ids {
 		whereFilter := filters.Where().
 			WithOperator(filters.Equal).
@@ -300,27 +300,60 @@ func (c *Client) getClassName(queryCollection string) string {
 
 // performSearch executes a Weaviate search with the given parameters.
 func (c *Client) performSearch(ctx context.Context, query retrieval.SearchQuery, className string, limit int, errorMsg string) (*retrieval.SearchResult, error) {
-	// Build nearText search query
-	nearText := c.client.GraphQL().NearTextArgBuilder().
-		WithConcepts([]string{query.Text})
+	// Build GraphQL query - start with className
+	var builder *graphql.GetBuilder
 
-	if query.Threshold > 0 {
-		nearText = nearText.WithDistance(float32(1.0 - query.Threshold)) // Convert similarity to distance
+	// Choose search type: prioritize nearText for consistency with auto-embedding
+	switch {
+	case query.Text != "":
+		// Use nearText search with text query
+		nearText := c.client.GraphQL().NearTextArgBuilder().
+			WithConcepts([]string{query.Text})
+
+		if query.Threshold > 0 {
+			nearText = nearText.WithDistance(float32(1.0 - query.Threshold)) // Convert similarity to distance
+		}
+
+		builder = c.client.GraphQL().Get().
+			WithClassName(className).
+			WithNearText(nearText)
+
+	case len(query.Vector) > 0:
+		// Use nearVector search with pre-computed vector
+		nearVector := c.client.GraphQL().NearVectorArgBuilder().
+			WithVector(query.Vector)
+
+		if query.Threshold > 0 {
+			nearVector = nearVector.WithDistance(float32(1.0 - query.Threshold))
+		}
+
+		builder = c.client.GraphQL().Get().
+			WithClassName(className).
+			WithNearVector(nearVector)
+
+	default:
+		return nil, fmt.Errorf("either query.Text or query.Vector must be provided")
 	}
 
-	// Build GraphQL query
-	builder := c.client.GraphQL().Get().
-		WithClassName(className).
-		WithNearText(nearText).
-		WithFields(
-			graphql.Field{Name: "content"},
-			graphql.Field{Name: "metadata", Fields: []graphql.Field{}},
-			graphql.Field{Name: "_additional", Fields: []graphql.Field{
-				{Name: "id"},
-				{Name: "score"},
-			}},
-		)
+	// Add fields to retrieve
+	builder = builder.WithFields(
+		graphql.Field{Name: "content"},
+		graphql.Field{Name: "metadata", Fields: []graphql.Field{}},
+		graphql.Field{Name: "_additional", Fields: []graphql.Field{
+			{Name: "id"},
+			{Name: "score"},
+		}},
+	)
 
+	// Apply filters if present
+	if len(query.Filter) > 0 {
+		whereFilter := buildWeaviateFilter(query.Filter)
+		if whereFilter != nil {
+			builder = builder.WithWhere(whereFilter)
+		}
+	}
+
+	// Set limit
 	if limit > 0 {
 		builder = builder.WithLimit(limit)
 	}
@@ -406,4 +439,51 @@ func parseWeaviateDocument(doc map[string]any) retrieval.Document {
 	document.Updated = now
 
 	return document
+}
+
+// buildWeaviateFilter converts search filters to Weaviate WhereBuilder format.
+// Similar to Qdrant's filter building, this creates AND-combined equality filters.
+func buildWeaviateFilter(filterMap map[string]any) *filters.WhereBuilder {
+	if len(filterMap) == 0 {
+		return nil
+	}
+
+	// Build filter conditions for each key-value pair
+	whereFilters := make([]*filters.WhereBuilder, 0, len(filterMap))
+	for key, value := range filterMap {
+		whereFilter := filters.Where().
+			WithPath([]string{key}).
+			WithOperator(filters.Equal)
+
+		// Set value based on type
+		switch v := value.(type) {
+		case string:
+			whereFilter = whereFilter.WithValueText(v)
+		case int:
+			whereFilter = whereFilter.WithValueInt(int64(v))
+		case int64:
+			whereFilter = whereFilter.WithValueInt(v)
+		case float64:
+			whereFilter = whereFilter.WithValueNumber(v)
+		case float32:
+			whereFilter = whereFilter.WithValueNumber(float64(v))
+		case bool:
+			whereFilter = whereFilter.WithValueBoolean(v)
+		default:
+			// Convert unsupported types to string
+			whereFilter = whereFilter.WithValueText(fmt.Sprintf("%v", v))
+		}
+
+		whereFilters = append(whereFilters, whereFilter)
+	}
+
+	// If only one filter, return it directly
+	if len(whereFilters) == 1 {
+		return whereFilters[0]
+	}
+
+	// Combine multiple filters with AND operator
+	return filters.Where().
+		WithOperator(filters.And).
+		WithOperands(whereFilters)
 }
