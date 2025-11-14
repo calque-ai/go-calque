@@ -1,3 +1,4 @@
+// Package qdrant provides integration with Qdrant vector database.
 package qdrant
 
 import (

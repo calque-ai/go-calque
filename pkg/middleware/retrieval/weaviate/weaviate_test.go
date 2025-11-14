@@ -8,6 +8,8 @@ import (
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/filters"
 )
 
+const testContent = "Test"
+
 func TestBuildWeaviateFilter(t *testing.T) {
 	t.Parallel()
 
@@ -25,9 +27,9 @@ func TestBuildWeaviateFilter(t *testing.T) {
 			description: "Empty filter map should return nil",
 		},
 		{
-			name:      "nil filter map returns nil",
-			input:     nil,
-			expectNil: true,
+			name:        "nil filter map returns nil",
+			input:       nil,
+			expectNil:   true,
 			description: "Nil filter map should return nil",
 		},
 		{
@@ -225,10 +227,9 @@ func TestParseWeaviateDocument(t *testing.T) {
 			name: "document with metadata",
 			input: map[string]any{
 				"content": "Test content",
-				"metadata": map[string]any{
-					"author": "John Doe",
-					"year":   2024,
-				},
+				// Metadata fields are now top-level (flattened) instead of nested
+				"author": "John Doe",
+				"year":   2024,
 			},
 			checkFn: func(t *testing.T, result retrieval.Document) {
 				if result.Content != "Test content" {
@@ -240,12 +241,15 @@ func TestParseWeaviateDocument(t *testing.T) {
 				if author, ok := result.Metadata["author"].(string); !ok || author != "John Doe" {
 					t.Errorf("Expected author 'John Doe', got %v", result.Metadata["author"])
 				}
+				if _, ok := result.Metadata["year"]; !ok {
+					t.Errorf("Expected year in metadata, got %v", result.Metadata)
+				}
 			},
 		},
 		{
 			name: "document with _additional fields",
 			input: map[string]any{
-				"content": "Test",
+				"content": testContent,
 				"_additional": map[string]any{
 					"id":    "test-id-123",
 					"score": 0.95,
@@ -263,12 +267,12 @@ func TestParseWeaviateDocument(t *testing.T) {
 		{
 			name: "document with invalid _additional type",
 			input: map[string]any{
-				"content":     "Test",
+				"content":     testContent,
 				"_additional": "invalid",
 			},
 			checkFn: func(t *testing.T, result retrieval.Document) {
 				// Should not panic, just ignore invalid _additional
-				if result.Content != "Test" {
+				if result.Content != testContent {
 					t.Errorf("Expected content 'Test', got %q", result.Content)
 				}
 			},
@@ -276,12 +280,12 @@ func TestParseWeaviateDocument(t *testing.T) {
 		{
 			name: "document with invalid metadata type",
 			input: map[string]any{
-				"content":  "Test",
+				"content":  testContent,
 				"metadata": "invalid",
 			},
 			checkFn: func(t *testing.T, result retrieval.Document) {
 				// Should not panic, just ignore invalid metadata
-				if result.Content != "Test" {
+				if result.Content != testContent {
 					t.Errorf("Expected content 'Test', got %q", result.Content)
 				}
 			},
@@ -336,14 +340,14 @@ func TestParseWeaviateDocument(t *testing.T) {
 		{
 			name: "document with non-string ID in _additional",
 			input: map[string]any{
-				"content": "Test",
+				"content": testContent,
 				"_additional": map[string]any{
 					"id": 12345,
 				},
 			},
 			checkFn: func(t *testing.T, result retrieval.Document) {
 				// Should handle gracefully
-				if result.Content != "Test" {
+				if result.Content != testContent {
 					t.Errorf("Expected content 'Test', got %q", result.Content)
 				}
 			},
@@ -351,7 +355,7 @@ func TestParseWeaviateDocument(t *testing.T) {
 		{
 			name: "document with non-float64 score in _additional",
 			input: map[string]any{
-				"content": "Test",
+				"content": testContent,
 				"_additional": map[string]any{
 					"score": "invalid",
 				},
@@ -369,9 +373,20 @@ func TestParseWeaviateDocument(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			// Create a client with schema that includes common test fields
+			schema := &SchemaConfig{
+				Properties: []PropertyConfig{
+					{Name: "author", Type: PropertyTypeText},
+					{Name: "year", Type: PropertyTypeInt},
+					{Name: "category", Type: PropertyTypeText},
+					{Name: "priority", Type: PropertyTypeInt},
+				},
+			}
+			client := &Client{schema: schema}
+
 			// Record start time to verify timestamps are recent
 			startTime := time.Now()
-			result := parseWeaviateDocument(tt.input)
+			result := client.parseWeaviateDocument(tt.input)
 
 			// Verify timestamps are set and recent
 			if !result.Created.IsZero() && result.Created.Before(startTime.Add(-1*time.Second)) {
@@ -384,6 +399,55 @@ func TestParseWeaviateDocument(t *testing.T) {
 			if tt.checkFn != nil {
 				tt.checkFn(t, result)
 			}
+		})
+	}
+}
+
+func TestURLParsing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		config    *Config
+		expectURL string
+	}{
+		{
+			name: "URL without scheme uses default http",
+			config: &Config{
+				URL:       "localhost:8080",
+				ClassName: testContent,
+			},
+			expectURL: "localhost:8080",
+		},
+		{
+			name: "URL with API key is preserved",
+			config: &Config{
+				URL:       "http://localhost:8080",
+				ClassName: testContent,
+				APIKey:    "test-api-key",
+			},
+			expectURL: "http://localhost:8080",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client, err := newClient(tt.config)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if client.url != tt.expectURL {
+				t.Errorf("Expected URL %q, got %q", tt.expectURL, client.url)
+			}
+
+			if tt.config.APIKey != "" && client.apiKey != tt.config.APIKey {
+				t.Errorf("Expected API key %q, got %q", tt.config.APIKey, client.apiKey)
+			}
+
+			client.Close()
 		})
 	}
 }
@@ -461,7 +525,8 @@ func TestConfigValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			client, err := New(tt.config)
+			// Use the private newClient() function for unit testing config validation
+			client, err := newClient(tt.config)
 
 			if tt.expectErr {
 				if err == nil {
