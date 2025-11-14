@@ -23,6 +23,7 @@ type Client struct {
 	collectionName    string
 	apiKey            string
 	embeddingProvider retrieval.EmbeddingProvider
+	vectorDimension   int
 }
 
 // Config holds Qdrant client configuration.
@@ -40,6 +41,11 @@ type Config struct {
 	// Optional embedding provider for generating vectors
 	// If not provided, GetEmbedding() will return an error
 	EmbeddingProvider retrieval.EmbeddingProvider
+
+	// Vector dimension for the collection
+	// Required when creating new collections. If not specified, defaults to 1536 (OpenAI)
+	// Should match the dimension of your embedding provider
+	VectorDimension int
 }
 
 // New creates a new Qdrant client with the specified configuration.
@@ -59,6 +65,9 @@ func New(config *Config) (*Client, error) {
 	if config.CollectionName == "" {
 		config.CollectionName = "documents" // Default collection name
 	}
+	if config.VectorDimension <= 0 {
+		config.VectorDimension = 1536 // Default to OpenAI embedding size
+	}
 
 	// Parse URL to extract host and port for Qdrant client
 	parsedURL, err := url.Parse(config.URL)
@@ -76,9 +85,10 @@ func New(config *Config) (*Client, error) {
 	}
 
 	qdrantConfig := &qd.Config{
-		Host:   parsedURL.Host,
-		Port:   port,
-		APIKey: config.APIKey,
+		Host:                   parsedURL.Hostname(),
+		Port:                   port,
+		APIKey:                 config.APIKey,
+		SkipCompatibilityCheck: true,
 	}
 
 	// Create Qdrant client
@@ -93,6 +103,7 @@ func New(config *Config) (*Client, error) {
 		collectionName:    config.CollectionName,
 		apiKey:            config.APIKey,
 		embeddingProvider: config.EmbeddingProvider,
+		vectorDimension:   config.VectorDimension,
 	}
 
 	return client, nil
@@ -502,14 +513,16 @@ func (c *Client) createPointID(docID string) *qd.PointId {
 // ensureCollectionExists creates the collection if it doesn't exist
 func (c *Client) ensureCollectionExists(ctx context.Context) error {
 	// Check if collection exists
-	_, err := c.client.CollectionExists(ctx, c.collectionName)
-	if err == nil {
+	exists, err := c.client.CollectionExists(ctx, c.collectionName)
+	if err != nil {
+		return fmt.Errorf("failed to check collection existence: %w", err)
+	}
+	if exists {
 		return nil // Collection already exists
 	}
 
-	// Collection doesn't exist, create it
-	// Use default configuration for now - this should be configurable
-	vectorSize := uint64(1536) // Default OpenAI embedding size
+	// Collection doesn't exist, create it using configured vector dimension
+	vectorSize := uint64(c.vectorDimension)
 	distance := qd.Distance_Cosine
 
 	err = c.client.CreateCollection(ctx, &qd.CreateCollection{

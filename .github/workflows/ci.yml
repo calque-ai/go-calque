@@ -121,6 +121,11 @@ jobs:
           parallel-jobs: 4
           timeout: 30s
 
+      - name: Run Vector DB Integration Tests
+        run: |
+          echo "Running Qdrant integration tests with testcontainers..."
+          go test -tags=integration -v -timeout=10m ./pkg/middleware/retrieval/qdrant/
+
   # Security scanning
   security:
     name: Security Scan
