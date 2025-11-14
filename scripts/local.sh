@@ -47,6 +47,12 @@ echo "=== PACKAGE INTEGRATION TESTS ==="
 if command -v docker >/dev/null 2>&1; then
     echo "Running Qdrant integration tests..."
     go test -tags=integration -v -timeout=10m ./pkg/middleware/retrieval/qdrant/ || echo "⚠ Qdrant integration tests failed (Docker required)"
+
+    echo "Running Weaviate integration tests..."
+    go test -tags=integration -v -timeout=10m ./pkg/middleware/retrieval/weaviate/ || echo "⚠ Weaviate integration tests failed (Docker required)"
+
+    echo "Running PGVector integration tests..."
+    go test -tags=integration -v -timeout=10m ./pkg/middleware/retrieval/pgvector/ || echo "⚠ PGVector integration tests failed (Docker required)"
 else
     echo "⚠ Docker not found - skipping package integration tests"
     echo "  Install Docker to run vector DB integration tests"
