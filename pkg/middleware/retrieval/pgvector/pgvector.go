@@ -1,3 +1,7 @@
+// Package pgvector provides PostgreSQL with pgvector extension support for vector similarity search.
+//
+// This package implements the retrieval.VectorStore interface using PostgreSQL's pgvector extension
+// for storing and searching document embeddings. It supports cosine similarity search with IVFFlat indexing.
 package pgvector
 
 import (
@@ -74,9 +78,7 @@ func New(config *Config) (*Client, error) {
 	}
 
 	// Register pgvector types for each connection
-	poolConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		return pgxvec.RegisterTypes(ctx, conn)
-	}
+	poolConfig.AfterConnect = pgxvec.RegisterTypes
 
 	// Create connection pool
 	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
@@ -129,8 +131,8 @@ func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retr
 	// Execute query with pgvector types
 	rows, err := c.conn.Query(ctx, querySQL,
 		pgvector.NewVector(query.Vector), // $1
-		query.Threshold,                   // $2
-		query.Limit,                       // $3
+		query.Threshold,                  // $2
+		query.Limit,                      // $3
 	)
 	if err != nil {
 		return nil, fmt.Errorf("pgvector search failed: %w", err)
@@ -253,7 +255,9 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 
 	// Execute batch
 	results := c.conn.SendBatch(ctx, batch)
-	defer results.Close()
+	defer func() {
+		_ = results.Close()
+	}()
 
 	// Check results for errors
 	for i := 0; i < batch.Len(); i++ {

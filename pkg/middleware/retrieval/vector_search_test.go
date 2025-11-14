@@ -9,10 +9,10 @@ func TestSelectDiverse(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		docs     []Document
-		opts     *SearchOptions
-		checkFn  func(t *testing.T, result []Document)
+		name    string
+		docs    []Document
+		opts    *SearchOptions
+		checkFn func(t *testing.T, result []Document)
 	}{
 		{
 			name: "empty document list returns empty",
@@ -48,7 +48,7 @@ func TestSelectDiverse(t *testing.T) {
 				{Content: "neural networks explained", Score: 0.75},
 			},
 			opts: &SearchOptions{
-				DiversityLambda: ptr(0.5),
+				DiversityLambda:   ptr(0.5),
 				MaxDiverseResults: ptr(3),
 			},
 			checkFn: func(t *testing.T, result []Document) {
@@ -81,7 +81,7 @@ func TestSelectDiverse(t *testing.T) {
 				{Content: "dog", Score: 0.50},        // Diverse but low score
 			},
 			opts: &SearchOptions{
-				DiversityLambda: ptr(0.9), // High lambda = favor relevance
+				DiversityLambda:   ptr(0.9), // High lambda = favor relevance
 				MaxDiverseResults: ptr(2),
 			},
 			checkFn: func(t *testing.T, result []Document) {
@@ -102,7 +102,7 @@ func TestSelectDiverse(t *testing.T) {
 				{Content: "banana yellow", Score: 0.60},     // Diverse
 			},
 			opts: &SearchOptions{
-				DiversityLambda: ptr(0.1), // Low lambda = favor diversity
+				DiversityLambda:   ptr(0.1), // Low lambda = favor diversity
 				MaxDiverseResults: ptr(2),
 			},
 			checkFn: func(t *testing.T, result []Document) {
@@ -611,9 +611,9 @@ func TestTruncateDocuments(t *testing.T) {
 			name: "preserves document metadata",
 			docs: []Document{
 				{
-					Content: "one two three four five six",
-					ID:      "doc1",
-					Score:   0.95,
+					Content:  "one two three four five six",
+					ID:       "doc1",
+					Score:    0.95,
 					Metadata: map[string]any{"key": "value"},
 				},
 			},
@@ -649,10 +649,10 @@ func TestEstimateTokens(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		text     string
-		opts     *SearchOptions
-		checkFn  func(t *testing.T, result int)
+		name    string
+		text    string
+		opts    *SearchOptions
+		checkFn func(t *testing.T, result int)
 	}{
 		{
 			name: "empty text",
@@ -855,7 +855,7 @@ func TestApplyStrategy(t *testing.T) {
 			opts: &SearchOptions{
 				Strategy: ptr(ContextStrategy("invalid")),
 			},
-			checkFn: func(t *testing.T, result []Document, err error) {
+			checkFn: func(t *testing.T, _ []Document, err error) {
 				if err == nil {
 					t.Error("Expected error for unknown strategy")
 				}

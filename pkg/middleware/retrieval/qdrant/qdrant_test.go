@@ -12,9 +12,9 @@ func TestBuildQdrantPayload(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		input    retrieval.Document
-		checkFn  func(t *testing.T, result map[string]*qd.Value)
+		name    string
+		input   retrieval.Document
+		checkFn func(t *testing.T, result map[string]*qd.Value)
 	}{
 		{
 			name: "document with content only",
@@ -49,7 +49,7 @@ func TestBuildQdrantPayload(t *testing.T) {
 			input: retrieval.Document{
 				Content: "Test",
 				Metadata: map[string]any{
-					"author": "John Doe",
+					"author":   "John Doe",
 					"category": "tech",
 				},
 			},
@@ -67,7 +67,7 @@ func TestBuildQdrantPayload(t *testing.T) {
 			input: retrieval.Document{
 				Content: "Test",
 				Metadata: map[string]any{
-					"year": 2024,
+					"year":  2024,
 					"count": 42,
 				},
 			},
@@ -99,7 +99,7 @@ func TestBuildQdrantPayload(t *testing.T) {
 			input: retrieval.Document{
 				Content: "Test",
 				Metadata: map[string]any{
-					"score": 0.95,
+					"score":  0.95,
 					"rating": 4.7,
 				},
 			},
@@ -117,7 +117,7 @@ func TestBuildQdrantPayload(t *testing.T) {
 			input: retrieval.Document{
 				Content: "Test",
 				Metadata: map[string]any{
-					"active": true,
+					"active":   true,
 					"archived": false,
 				},
 			},
@@ -135,9 +135,9 @@ func TestBuildQdrantPayload(t *testing.T) {
 			input: retrieval.Document{
 				Content: "Test",
 				Metadata: map[string]any{
-					"title": "My Document",
-					"year": 2024,
-					"score": 0.88,
+					"title":     "My Document",
+					"year":      2024,
+					"score":     0.88,
 					"published": true,
 				},
 			},
@@ -207,7 +207,7 @@ func TestBuildQdrantPayload(t *testing.T) {
 		{
 			name: "document with nil metadata",
 			input: retrieval.Document{
-				Content: "Test",
+				Content:  "Test",
 				Metadata: nil,
 			},
 			checkFn: func(t *testing.T, result map[string]*qd.Value) {
@@ -274,8 +274,8 @@ func TestBuildQdrantFilter(t *testing.T) {
 			name: "multiple filters",
 			input: map[string]any{
 				"category": "tech",
-				"year": 2024,
-				"active": true,
+				"year":     2024,
+				"active":   true,
 			},
 			expectNil: false,
 			checkFn: func(t *testing.T, result *qd.Filter) {
@@ -291,9 +291,9 @@ func TestBuildQdrantFilter(t *testing.T) {
 			name: "filter with various types",
 			input: map[string]any{
 				"string_field": "value",
-				"int_field": 42,
-				"float_field": 3.14,
-				"bool_field": false,
+				"int_field":    42,
+				"float_field":  3.14,
+				"bool_field":   false,
 			},
 			expectNil: false,
 			checkFn: func(t *testing.T, result *qd.Filter) {
@@ -361,7 +361,7 @@ func TestExtractPayloadData(t *testing.T) {
 		{
 			name: "payload with string values",
 			payload: map[string]*qd.Value{
-				"title": qd.NewValueString("My Document"),
+				"title":  qd.NewValueString("My Document"),
 				"author": qd.NewValueString("John Doe"),
 			},
 			checkFn: func(t *testing.T, doc *retrieval.Document) {
@@ -376,7 +376,7 @@ func TestExtractPayloadData(t *testing.T) {
 		{
 			name: "payload with integer values",
 			payload: map[string]*qd.Value{
-				"year": qd.NewValueInt(2024),
+				"year":  qd.NewValueInt(2024),
 				"count": qd.NewValueInt(100),
 			},
 			checkFn: func(t *testing.T, doc *retrieval.Document) {
@@ -391,7 +391,7 @@ func TestExtractPayloadData(t *testing.T) {
 		{
 			name: "payload with double values",
 			payload: map[string]*qd.Value{
-				"score": qd.NewValueDouble(0.95),
+				"score":  qd.NewValueDouble(0.95),
 				"rating": qd.NewValueDouble(4.5),
 			},
 			checkFn: func(t *testing.T, doc *retrieval.Document) {
@@ -406,7 +406,7 @@ func TestExtractPayloadData(t *testing.T) {
 		{
 			name: "payload with bool values",
 			payload: map[string]*qd.Value{
-				"active": qd.NewValueBool(true),
+				"active":   qd.NewValueBool(true),
 				"archived": qd.NewValueBool(false),
 			},
 			checkFn: func(t *testing.T, doc *retrieval.Document) {
@@ -424,7 +424,7 @@ func TestExtractPayloadData(t *testing.T) {
 				"content": qd.NewValueString("Test"),
 				"created": qd.NewValueString("2024-01-15T10:30:00Z"),
 				"updated": qd.NewValueString("2024-01-16T14:45:00Z"),
-				"other": qd.NewValueString("value"),
+				"other":   qd.NewValueString("value"),
 			},
 			checkFn: func(t *testing.T, doc *retrieval.Document) {
 				// created and updated should not be in metadata
@@ -444,10 +444,10 @@ func TestExtractPayloadData(t *testing.T) {
 			name: "payload with mixed types",
 			payload: map[string]*qd.Value{
 				"content": qd.NewValueString("Test"),
-				"title": qd.NewValueString("Doc"),
-				"year": qd.NewValueInt(2024),
-				"score": qd.NewValueDouble(0.88),
-				"active": qd.NewValueBool(true),
+				"title":   qd.NewValueString("Doc"),
+				"year":    qd.NewValueInt(2024),
+				"score":   qd.NewValueDouble(0.88),
+				"active":  qd.NewValueBool(true),
 			},
 			checkFn: func(t *testing.T, doc *retrieval.Document) {
 				if doc.Content != "Test" {
@@ -653,7 +653,7 @@ func TestConvertQdrantPoint(t *testing.T) {
 				Score: 0.92,
 				Payload: map[string]*qd.Value{
 					"content": qd.NewValueString("Test content"),
-					"title": qd.NewValueString("Test Title"),
+					"title":   qd.NewValueString("Test Title"),
 				},
 			},
 			checkFn: func(t *testing.T, doc retrieval.Document) {
@@ -668,7 +668,7 @@ func TestConvertQdrantPoint(t *testing.T) {
 		{
 			name: "point with nil payload",
 			point: &qd.ScoredPoint{
-				Score: 0.85,
+				Score:   0.85,
 				Payload: nil,
 			},
 			checkFn: func(t *testing.T, doc retrieval.Document) {

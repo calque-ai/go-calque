@@ -1,3 +1,7 @@
+// Package retrieval provides vector database interfaces and utilities for semantic search.
+//
+// This package defines core interfaces for vector stores and document retrieval operations,
+// supporting various vector database backends like Weaviate, Qdrant, and PostgreSQL with pgvector.
 package retrieval
 
 import (

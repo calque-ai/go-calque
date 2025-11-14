@@ -329,7 +329,7 @@ func TestStoreOperations(t *testing.T) {
 					URL:               qc.URL,
 					CollectionName:    "store_single_test",
 					EmbeddingProvider: newMockEmbeddingProvider(128),
-				VectorDimension:   128,
+					VectorDimension:   128,
 				})
 				if err != nil {
 					t.Fatalf("Failed to create client: %v", err)
@@ -355,7 +355,7 @@ func TestStoreOperations(t *testing.T) {
 					URL:               qc.URL,
 					CollectionName:    "store_batch_test",
 					EmbeddingProvider: newMockEmbeddingProvider(128),
-				VectorDimension:   128,
+					VectorDimension:   128,
 				})
 				if err != nil {
 					t.Fatalf("Failed to create client: %v", err)
@@ -378,7 +378,7 @@ func TestStoreOperations(t *testing.T) {
 					URL:               qc.URL,
 					CollectionName:    "store_empty_test",
 					EmbeddingProvider: newMockEmbeddingProvider(128),
-				VectorDimension:   128,
+					VectorDimension:   128,
 				})
 				if err != nil {
 					t.Fatalf("Failed to create client: %v", err)
@@ -414,7 +414,7 @@ func TestStoreOperations(t *testing.T) {
 					URL:               qc.URL,
 					CollectionName:    "store_metadata_test",
 					EmbeddingProvider: newMockEmbeddingProvider(128),
-				VectorDimension:   128,
+					VectorDimension:   128,
 				})
 				if err != nil {
 					t.Fatalf("Failed to create client: %v", err)
@@ -445,7 +445,7 @@ func TestStoreOperations(t *testing.T) {
 					URL:               qc.URL,
 					CollectionName:    "store_large_batch_test",
 					EmbeddingProvider: newMockEmbeddingProvider(128),
-				VectorDimension:   128,
+					VectorDimension:   128,
 				})
 				if err != nil {
 					t.Fatalf("Failed to create client: %v", err)
@@ -721,7 +721,7 @@ func TestDeleteOperations(t *testing.T) {
 					URL:               qc.URL,
 					CollectionName:    "delete_single_test",
 					EmbeddingProvider: newMockEmbeddingProvider(128),
-				VectorDimension:   128,
+					VectorDimension:   128,
 				})
 				if err != nil {
 					t.Fatalf("Failed to create client: %v", err)
@@ -748,7 +748,7 @@ func TestDeleteOperations(t *testing.T) {
 					URL:               qc.URL,
 					CollectionName:    "delete_multiple_test",
 					EmbeddingProvider: newMockEmbeddingProvider(128),
-				VectorDimension:   128,
+					VectorDimension:   128,
 				})
 				if err != nil {
 					t.Fatalf("Failed to create client: %v", err)
@@ -779,7 +779,7 @@ func TestDeleteOperations(t *testing.T) {
 					URL:               qc.URL,
 					CollectionName:    "delete_empty_test",
 					EmbeddingProvider: newMockEmbeddingProvider(128),
-				VectorDimension:   128,
+					VectorDimension:   128,
 				})
 				if err != nil {
 					t.Fatalf("Failed to create client: %v", err)
@@ -820,7 +820,7 @@ func TestDeleteOperations(t *testing.T) {
 					URL:               qc.URL,
 					CollectionName:    "delete_large_batch_test",
 					EmbeddingProvider: newMockEmbeddingProvider(128),
-				VectorDimension:   128,
+					VectorDimension:   128,
 				})
 				if err != nil {
 					t.Fatalf("Failed to create client: %v", err)
@@ -1057,7 +1057,7 @@ func TestEmbeddingProvider(t *testing.T) {
 					URL:               qc.URL,
 					CollectionName:    "embed_test",
 					EmbeddingProvider: newMockEmbeddingProvider(128),
-				VectorDimension:   128,
+					VectorDimension:   128,
 				})
 				if err != nil {
 					t.Fatalf("Failed to create client: %v", err)

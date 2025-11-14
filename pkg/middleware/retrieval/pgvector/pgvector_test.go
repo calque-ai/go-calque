@@ -4,6 +4,11 @@ import (
 	"testing"
 )
 
+const (
+	defaultTableName = "documents"
+)
+
+//nolint:gocyclo // Table-driven test with many cases
 func TestConfigValidation(t *testing.T) {
 	t.Parallel()
 
@@ -49,12 +54,12 @@ func TestConfigValidation(t *testing.T) {
 				ConnectionString: "postgres://user:pass@localhost/testdb?sslmode=disable",
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
 				// Verify defaults are set
-				if client.tableName != "documents" {
+				if client.tableName != defaultTableName {
 					t.Errorf("Expected default table name 'documents', got %q", client.tableName)
 				}
 				if client.vectorDimension != 1536 {
@@ -69,7 +74,7 @@ func TestConfigValidation(t *testing.T) {
 				TableName:        "my_vectors",
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
@@ -85,7 +90,7 @@ func TestConfigValidation(t *testing.T) {
 				VectorDimension:  768,
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
@@ -101,7 +106,7 @@ func TestConfigValidation(t *testing.T) {
 				VectorDimension:  0,
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
@@ -117,7 +122,7 @@ func TestConfigValidation(t *testing.T) {
 				VectorDimension:  -100,
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
@@ -133,11 +138,11 @@ func TestConfigValidation(t *testing.T) {
 				TableName:        "",
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
-				if client.tableName != "documents" {
+				if client.tableName != defaultTableName {
 					t.Errorf("Expected default table name 'documents', got %q", client.tableName)
 				}
 			},
@@ -150,7 +155,7 @@ func TestConfigValidation(t *testing.T) {
 				VectorDimension:  384,
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
@@ -168,7 +173,7 @@ func TestConfigValidation(t *testing.T) {
 				ConnectionString: "postgres://user:pass@localhost/testdb?sslmode=require",
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
@@ -180,7 +185,7 @@ func TestConfigValidation(t *testing.T) {
 				ConnectionString: "postgres://user:pass@localhost:5433/testdb?sslmode=disable",
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
@@ -192,7 +197,7 @@ func TestConfigValidation(t *testing.T) {
 				ConnectionString: "postgres://user:p%40ssw0rd@localhost/testdb?sslmode=disable",
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
@@ -205,7 +210,7 @@ func TestConfigValidation(t *testing.T) {
 				VectorDimension:  4096,
 			},
 			expectErr: false,
-			checkFn: func(t *testing.T, client *Client, config *Config) {
+			checkFn: func(t *testing.T, client *Client, _ *Config) {
 				if client == nil {
 					t.Fatal("Expected non-nil client")
 				}
