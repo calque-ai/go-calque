@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/middleware/retrieval"
@@ -22,7 +23,8 @@ type Client struct {
 	tableName         string
 	vectorDimension   int
 	embeddingProvider retrieval.EmbeddingProvider
-	schemaEnsured     bool // Track if table exists/was created
+	schemaEnsured     bool       // Track if table exists/was created
+	schemaMu          sync.Mutex // Protects schema creation
 }
 
 // Config holds pgvector client configuration.
@@ -302,6 +304,11 @@ func (c *Client) GetEmbeddingProvider() retrieval.EmbeddingProvider {
 
 // Health checks if the PostgreSQL database is available and pgvector extension is loaded.
 func (c *Client) Health(ctx context.Context) error {
+	// Check if connection pool is available
+	if c.conn == nil {
+		return fmt.Errorf("connection pool is closed")
+	}
+
 	// Test database connectivity
 	var result int
 	err := c.conn.QueryRow(ctx, "SELECT 1").Scan(&result)
@@ -335,9 +342,20 @@ func (c *Client) Close() error {
 
 // ensureTableExists checks if table exists and creates it if needed.
 // Called lazily from Store() to support both read-only and write use cases.
+// Thread-safe: uses mutex to prevent concurrent table creation.
 func (c *Client) ensureTableExists(ctx context.Context) error {
+	// Fast path: check without lock first
 	if c.schemaEnsured {
 		return nil // Already checked/created
+	}
+
+	// Acquire lock for schema operations
+	c.schemaMu.Lock()
+	defer c.schemaMu.Unlock()
+
+	// Double-check after acquiring lock (another goroutine may have created it)
+	if c.schemaEnsured {
+		return nil
 	}
 
 	// Check if table exists
