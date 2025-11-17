@@ -20,7 +20,8 @@ func New() *VectorStore {
 	}
 }
 
-func (m *VectorStore) Search(ctx context.Context, query retrieval.SearchQuery) (*retrieval.SearchResult, error) {
+// Search performs keyword-based similarity search against stored documents.
+func (m *VectorStore) Search(_ context.Context, query retrieval.SearchQuery) (*retrieval.SearchResult, error) {
 	var results []retrieval.Document
 
 	// Simple keyword-based similarity (in production, use actual embeddings)
@@ -57,19 +58,23 @@ func (m *VectorStore) Search(ctx context.Context, query retrieval.SearchQuery) (
 	}, nil
 }
 
-func (m *VectorStore) Store(ctx context.Context, documents []retrieval.Document) error {
+// Store adds documents to the in-memory store.
+func (m *VectorStore) Store(_ context.Context, documents []retrieval.Document) error {
 	m.documents = append(m.documents, documents...)
 	return nil
 }
 
-func (m *VectorStore) Delete(ctx context.Context, ids []string) error {
+// Delete removes documents by ID (not implemented for demo).
+func (m *VectorStore) Delete(_ context.Context, _ []string) error {
 	return nil
 }
 
-func (m *VectorStore) Health(ctx context.Context) error {
+// Health checks if the store is available.
+func (m *VectorStore) Health(_ context.Context) error {
 	return nil
 }
 
+// Close releases resources (no-op for in-memory store).
 func (m *VectorStore) Close() error {
 	return nil
 }
