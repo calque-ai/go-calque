@@ -1,9 +1,114 @@
 package retrieval
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
+
+// Mock implementations for testing
+
+// mockVectorStore is a basic mock that returns configured results
+type mockVectorStore struct {
+	searchResult *SearchResult
+	searchErr    error
+	storeCalled  bool
+	deleteCalled bool
+}
+
+func (m *mockVectorStore) Search(_ context.Context, _ SearchQuery) (*SearchResult, error) {
+	return m.searchResult, m.searchErr
+}
+
+func (m *mockVectorStore) Store(_ context.Context, _ []Document) error {
+	m.storeCalled = true
+	return nil
+}
+
+func (m *mockVectorStore) Delete(_ context.Context, _ []string) error {
+	m.deleteCalled = true
+	return nil
+}
+
+func (m *mockVectorStore) Health(_ context.Context) error {
+	return nil
+}
+
+func (m *mockVectorStore) Close() error {
+	return nil
+}
+
+// mockEmbeddingStore adds EmbeddingCapable to mockVectorStore
+type mockEmbeddingStore struct {
+	mockVectorStore
+	embedding    EmbeddingVector
+	embeddingErr error
+}
+
+func (m *mockEmbeddingStore) GetEmbedding(_ context.Context, _ string) (EmbeddingVector, error) {
+	return m.embedding, m.embeddingErr
+}
+
+// mockAutoEmbeddingStore adds AutoEmbeddingCapable to mockVectorStore
+type mockAutoEmbeddingStore struct {
+	mockVectorStore
+	supportsAuto bool
+	config       EmbeddingConfig
+}
+
+func (m *mockAutoEmbeddingStore) SupportsAutoEmbedding() bool {
+	return m.supportsAuto
+}
+
+func (m *mockAutoEmbeddingStore) GetEmbeddingConfig() EmbeddingConfig {
+	return m.config
+}
+
+// mockDiversificationStore adds DiversificationProvider to mockVectorStore
+type mockDiversificationStore struct {
+	mockVectorStore
+	diverseResult *SearchResult
+	diverseErr    error
+}
+
+func (m *mockDiversificationStore) SearchWithDiversification(_ context.Context, _ SearchQuery, _ DiversificationOptions) (*SearchResult, error) {
+	return m.diverseResult, m.diverseErr
+}
+
+// mockRerankingStore adds RerankingProvider to mockVectorStore
+type mockRerankingStore struct {
+	mockVectorStore
+	rerankResult *SearchResult
+	rerankErr    error
+}
+
+func (m *mockRerankingStore) SearchWithReranking(_ context.Context, _ SearchQuery, _ RerankingOptions) (*SearchResult, error) {
+	return m.rerankResult, m.rerankErr
+}
+
+// mockTokenEstimatorStore adds TokenEstimator to mockVectorStore
+type mockTokenEstimatorStore struct {
+	mockVectorStore
+	tokensPerDoc int
+}
+
+func (m *mockTokenEstimatorStore) EstimateTokens(_ string) int {
+	return m.tokensPerDoc
+}
+
+func (m *mockTokenEstimatorStore) EstimateTokensBatch(texts []string) []int {
+	result := make([]int, len(texts))
+	for i := range texts {
+		result[i] = m.tokensPerDoc
+	}
+	return result
+}
 
 func TestSelectDiverse(t *testing.T) {
 	t.Parallel()
@@ -879,4 +984,563 @@ func TestApplyStrategy(t *testing.T) {
 // Helper function to create pointer to value
 func ptr[T any](v T) *T {
 	return &v
+}
+
+// TestVectorSearch tests the main VectorSearch handler
+func TestVectorSearch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		store     VectorStore
+		opts      *SearchOptions
+		input     string
+		expectErr bool
+		errMsg    string
+		checkFn   func(t *testing.T, output string)
+	}{
+		{
+			name: "basic search returns JSON result",
+			store: &mockVectorStore{
+				searchResult: &SearchResult{
+					Documents: []Document{
+						{ID: "doc1", Content: "test content", Score: 0.9},
+					},
+				},
+			},
+			opts:  &SearchOptions{Threshold: 0.5, Limit: 10},
+			input: "test query",
+			checkFn: func(t *testing.T, output string) {
+				var result SearchResult
+				if err := json.Unmarshal([]byte(output), &result); err != nil {
+					t.Fatalf("Failed to parse JSON result: %v", err)
+				}
+				if len(result.Documents) != 1 {
+					t.Errorf("Expected 1 document, got %d", len(result.Documents))
+				}
+				if result.Documents[0].ID != "doc1" {
+					t.Errorf("Expected doc ID 'doc1', got %q", result.Documents[0].ID)
+				}
+			},
+		},
+		{
+			name: "search error is propagated",
+			store: &mockVectorStore{
+				searchErr: errors.New("database error"),
+			},
+			opts:      &SearchOptions{Threshold: 0.5},
+			input:     "test query",
+			expectErr: true,
+			errMsg:    "database error",
+		},
+		{
+			name: "with strategy returns formatted context string",
+			store: &mockVectorStore{
+				searchResult: &SearchResult{
+					Documents: []Document{
+						{ID: "doc1", Content: "first document", Score: 0.9},
+						{ID: "doc2", Content: "second document", Score: 0.8},
+					},
+				},
+			},
+			opts: &SearchOptions{
+				Threshold: 0.5,
+				Strategy:  ptr(StrategyRelevant),
+			},
+			input: "test query",
+			checkFn: func(t *testing.T, output string) {
+				// Should return formatted string, not JSON
+				if strings.HasPrefix(output, "{") || strings.HasPrefix(output, "[") {
+					t.Error("Expected formatted string, got JSON")
+				}
+				if !strings.Contains(output, "first document") {
+					t.Error("Expected output to contain 'first document'")
+				}
+			},
+		},
+		{
+			name: "empty query text",
+			store: &mockVectorStore{
+				searchResult: &SearchResult{Documents: []Document{}},
+			},
+			opts:  &SearchOptions{Threshold: 0.5},
+			input: "",
+			checkFn: func(t *testing.T, output string) {
+				var result SearchResult
+				if err := json.Unmarshal([]byte(output), &result); err != nil {
+					t.Fatalf("Failed to parse result: %v", err)
+				}
+			},
+		},
+		{
+			name: "max tokens limits context size",
+			store: &mockVectorStore{
+				searchResult: &SearchResult{
+					Documents: []Document{
+						{ID: "doc1", Content: "word1 word2 word3 word4 word5", Score: 0.9},
+						{ID: "doc2", Content: "word6 word7 word8 word9 word10", Score: 0.8},
+					},
+				},
+			},
+			opts: &SearchOptions{
+				Threshold: 0.5,
+				Strategy:  ptr(StrategyRelevant),
+				MaxTokens: 5, // Very small limit
+			},
+			input: "test query",
+			checkFn: func(t *testing.T, output string) {
+				// Should only include first document due to token limit
+				if strings.Contains(output, "word6") {
+					t.Error("Expected second document to be excluded due to token limit")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			handler := VectorSearch(tt.store, tt.opts)
+
+			req := calque.NewRequest(context.Background(), bytes.NewBufferString(tt.input))
+			respBuf := &bytes.Buffer{}
+			resp := calque.NewResponse(respBuf)
+
+			err := handler.ServeFlow(req, resp)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Error("Expected error but got nil")
+					return
+				}
+				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Expected error containing %q, got %q", tt.errMsg, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+
+			if tt.checkFn != nil {
+				tt.checkFn(t, respBuf.String())
+			}
+		})
+	}
+}
+
+// TestHandleEmbeddingForQuery tests embedding generation logic
+func TestHandleEmbeddingForQuery(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		store     VectorStore
+		opts      *SearchOptions
+		expectErr bool
+		errMsg    string
+		checkFn   func(t *testing.T, query *SearchQuery)
+	}{
+		{
+			name: "auto-embedding store skips vector generation",
+			store: &mockAutoEmbeddingStore{
+				supportsAuto: true,
+				config:       EmbeddingConfig{Model: "text2vec", Dimensions: 128},
+			},
+			opts: &SearchOptions{},
+			checkFn: func(t *testing.T, query *SearchQuery) {
+				if query.Vector != nil {
+					t.Error("Expected no vector for auto-embedding store")
+				}
+			},
+		},
+		{
+			name: "embedding-capable store generates vector",
+			store: &mockEmbeddingStore{
+				embedding: EmbeddingVector{0.1, 0.2, 0.3},
+			},
+			opts: &SearchOptions{},
+			checkFn: func(t *testing.T, query *SearchQuery) {
+				if query.Vector == nil {
+					t.Fatal("Expected vector to be set")
+				}
+				if len(query.Vector) != 3 {
+					t.Errorf("Expected 3-dim vector, got %d", len(query.Vector))
+				}
+			},
+		},
+		{
+			name: "embedding error is propagated",
+			store: &mockEmbeddingStore{
+				embeddingErr: errors.New("embedding service unavailable"),
+			},
+			opts:      &SearchOptions{},
+			expectErr: true,
+			errMsg:    "embedding service unavailable",
+		},
+		{
+			name:  "custom embedding provider in options",
+			store: &mockVectorStore{}, // No embedding capability
+			opts: &SearchOptions{
+				EmbeddingProvider: &mockEmbeddingProviderForSearch{
+					embedding: EmbeddingVector{0.4, 0.5, 0.6},
+				},
+			},
+			checkFn: func(t *testing.T, query *SearchQuery) {
+				if query.Vector == nil {
+					t.Fatal("Expected vector from custom provider")
+				}
+				if len(query.Vector) != 3 {
+					t.Errorf("Expected 3-dim vector, got %d", len(query.Vector))
+				}
+			},
+		},
+		{
+			name:  "no embedding capability leaves vector nil",
+			store: &mockVectorStore{},
+			opts:  &SearchOptions{},
+			checkFn: func(t *testing.T, query *SearchQuery) {
+				if query.Vector != nil {
+					t.Error("Expected nil vector when no embedding capability")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			query := &SearchQuery{Text: "test query"}
+			err := handleEmbeddingForQuery(context.Background(), tt.store, query, tt.opts)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Error("Expected error but got nil")
+					return
+				}
+				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Expected error containing %q, got %q", tt.errMsg, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+
+			if tt.checkFn != nil {
+				tt.checkFn(t, query)
+			}
+		})
+	}
+}
+
+// mockEmbeddingProviderForSearch implements EmbeddingProvider for testing
+type mockEmbeddingProviderForSearch struct {
+	embedding EmbeddingVector
+	err       error
+}
+
+func (m *mockEmbeddingProviderForSearch) Embed(_ context.Context, _ string) (EmbeddingVector, error) {
+	return m.embedding, m.err
+}
+
+// TestStrategySearch tests strategy-based search execution
+func TestStrategySearch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		store          VectorStore
+		opts           *SearchOptions
+		expectNative   bool
+		expectErr      bool
+		errMsg         string
+		expectedDocLen int
+	}{
+		{
+			name: "no strategy uses regular search",
+			store: &mockVectorStore{
+				searchResult: &SearchResult{
+					Documents: []Document{{ID: "doc1", Score: 0.9}},
+				},
+			},
+			opts:           &SearchOptions{},
+			expectNative:   false,
+			expectedDocLen: 1,
+		},
+		{
+			name: "StrategyPost skips native processing",
+			store: &mockDiversificationStore{
+				mockVectorStore: mockVectorStore{
+					searchResult: &SearchResult{
+						Documents: []Document{{ID: "regular", Score: 0.8}},
+					},
+				},
+				diverseResult: &SearchResult{
+					Documents: []Document{{ID: "diverse", Score: 0.9}},
+				},
+			},
+			opts: &SearchOptions{
+				Strategy:           ptr(StrategyDiverse),
+				StrategyProcessing: StrategyPost,
+			},
+			expectNative:   false,
+			expectedDocLen: 1,
+		},
+		{
+			name: "StrategyNative uses native diversification",
+			store: &mockDiversificationStore{
+				mockVectorStore: mockVectorStore{
+					searchResult: &SearchResult{
+						Documents: []Document{{ID: "regular", Score: 0.8}},
+					},
+				},
+				diverseResult: &SearchResult{
+					Documents: []Document{{ID: "diverse1", Score: 0.9}, {ID: "diverse2", Score: 0.85}},
+				},
+			},
+			opts: &SearchOptions{
+				Strategy:           ptr(StrategyDiverse),
+				StrategyProcessing: StrategyNative,
+			},
+			expectNative:   true,
+			expectedDocLen: 2,
+		},
+		{
+			name: "StrategyNative fails when not available",
+			store: &mockVectorStore{
+				searchResult: &SearchResult{Documents: []Document{}},
+			},
+			opts: &SearchOptions{
+				Strategy:           ptr(StrategyDiverse),
+				StrategyProcessing: StrategyNative,
+			},
+			expectErr: true,
+			errMsg:    "not available",
+		},
+		{
+			name: "StrategyAuto falls back to regular search",
+			store: &mockVectorStore{
+				searchResult: &SearchResult{
+					Documents: []Document{{ID: "fallback", Score: 0.7}},
+				},
+			},
+			opts: &SearchOptions{
+				Strategy:           ptr(StrategyDiverse),
+				StrategyProcessing: StrategyAuto,
+			},
+			expectNative:   false,
+			expectedDocLen: 1,
+		},
+		{
+			name: "native reranking with StrategyRelevant",
+			store: &mockRerankingStore{
+				mockVectorStore: mockVectorStore{
+					searchResult: &SearchResult{
+						Documents: []Document{{ID: "regular", Score: 0.8}},
+					},
+				},
+				rerankResult: &SearchResult{
+					Documents: []Document{{ID: "reranked", Score: 0.95}},
+				},
+			},
+			opts: &SearchOptions{
+				Strategy:           ptr(StrategyRelevant),
+				StrategyProcessing: StrategyNative,
+			},
+			expectNative:   true,
+			expectedDocLen: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			query := SearchQuery{Text: "test", Limit: 10}
+			result, isNative, err := strategySearch(context.Background(), tt.store, query, tt.opts)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Error("Expected error but got nil")
+					return
+				}
+				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Expected error containing %q, got %q", tt.errMsg, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+
+			if isNative != tt.expectNative {
+				t.Errorf("Expected isNative=%v, got %v", tt.expectNative, isNative)
+			}
+
+			if len(result.Documents) != tt.expectedDocLen {
+				t.Errorf("Expected %d documents, got %d", tt.expectedDocLen, len(result.Documents))
+			}
+		})
+	}
+}
+
+// TestBuildContext tests context building from documents
+func TestBuildContext(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		docs     []Document
+		opts     *SearchOptions
+		store    VectorStore
+		isNative bool
+		checkFn  func(t *testing.T, context string, err error)
+	}{
+		{
+			name:     "empty documents returns empty string",
+			docs:     []Document{},
+			opts:     &SearchOptions{},
+			store:    &mockVectorStore{},
+			isNative: false,
+			checkFn: func(t *testing.T, context string, err error) {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				if context != "" {
+					t.Errorf("Expected empty context, got %q", context)
+				}
+			},
+		},
+		{
+			name: "joins documents with default separator",
+			docs: []Document{
+				{Content: "first doc"},
+				{Content: "second doc"},
+			},
+			opts:     &SearchOptions{},
+			store:    &mockVectorStore{},
+			isNative: false,
+			checkFn: func(t *testing.T, context string, err error) {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				if !strings.Contains(context, "first doc") {
+					t.Error("Expected context to contain 'first doc'")
+				}
+				if !strings.Contains(context, "second doc") {
+					t.Error("Expected context to contain 'second doc'")
+				}
+			},
+		},
+		{
+			name: "custom separator",
+			docs: []Document{
+				{Content: "doc1"},
+				{Content: "doc2"},
+			},
+			opts: &SearchOptions{
+				Separator: "|||",
+			},
+			store:    &mockVectorStore{},
+			isNative: false,
+			checkFn: func(t *testing.T, context string, err error) {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				if !strings.Contains(context, "|||") {
+					t.Error("Expected custom separator '|||' in context")
+				}
+			},
+		},
+		{
+			name: "max tokens limits output",
+			docs: []Document{
+				{Content: "word1 word2 word3", Score: 0.9},
+				{Content: "word4 word5 word6", Score: 0.8},
+			},
+			opts: &SearchOptions{
+				MaxTokens: 3, // Very small
+				Strategy:  ptr(StrategyRelevant),
+			},
+			store:    &mockVectorStore{},
+			isNative: false,
+			checkFn: func(t *testing.T, context string, err error) {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				// Should only include first doc
+				if strings.Contains(context, "word4") {
+					t.Error("Expected second document to be excluded")
+				}
+			},
+		},
+		{
+			name: "native token estimation",
+			docs: []Document{
+				{Content: "content1", Score: 0.9},
+				{Content: "content2", Score: 0.8},
+			},
+			opts: &SearchOptions{
+				MaxTokens: 15,
+				Strategy:  ptr(StrategyRelevant),
+			},
+			store: &mockTokenEstimatorStore{
+				tokensPerDoc: 10,
+			},
+			isNative: false,
+			checkFn: func(t *testing.T, context string, err error) {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				// With 10 tokens per doc and limit of 15, should only fit 1 doc
+				if strings.Contains(context, "content2") {
+					t.Error("Expected second doc to be excluded due to token limit")
+				}
+			},
+		},
+		{
+			name: "isNative skips strategy application",
+			docs: []Document{
+				{Content: "low score", Score: 0.5},
+				{Content: "high score", Score: 0.9},
+			},
+			opts: &SearchOptions{
+				Strategy: ptr(StrategyRelevant),
+			},
+			store:    &mockVectorStore{},
+			isNative: true, // Native processing already applied
+			checkFn: func(t *testing.T, context string, err error) {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				// Should preserve original order since isNative=true
+				idx1 := strings.Index(context, "low score")
+				idx2 := strings.Index(context, "high score")
+				if idx1 > idx2 {
+					t.Error("Expected original order to be preserved with isNative=true")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := buildContext(tt.docs, tt.opts, tt.store, tt.isNative)
+
+			if tt.checkFn != nil {
+				tt.checkFn(t, result, err)
+			}
+		})
+	}
 }
