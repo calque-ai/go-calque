@@ -5,7 +5,7 @@
   
   <p>
      <!-- <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/github/v/release/calque-ai/go-calque?include_prereleases&style=flat&label=Latest%20release" alt="Latest release"></a> -->
-    <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/badge/Pre--release-v0.3.0-orange?style=flat" alt="Pre-release"></a>
+    <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/badge/Pre--release-v0.4.0-orange?style=flat" alt="Pre-release"></a>
     <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.24+-blue.svg?style=flat" alt="Go Version"></a>
     <a href="https://goreportcard.com/report/github.com/calque-ai/go-calque"><img src="https://goreportcard.com/badge/github.com/calque-ai/go-calque?style=flat" alt="Go Report Card"></a>
     <a href="https://pkg.go.dev/github.com/calque-ai/go-calque"><img src="https://pkg.go.dev/badge/github.com/calque-ai/go-calque.svg" alt="Go Reference"></a>
@@ -240,25 +240,45 @@ Go-Calque includes middleware for common AI and data processing patterns:
 - **Input-Based Keys**: Automatic cache key generation from input content hashes
 - **TTL Support**: Time-based expiration with automatic cleanup
 
+### Retrieval & RAG (`retrieval/`)
+
+- **Vector Search**: `retrieval.VectorSearch(store, opts)` - Semantic similarity search with context building
+  - Multiple context strategies: Relevant, Recent, Diverse (MMR), Summary
+  - Token-limited context assembly with custom separators
+  - Adaptive similarity algorithms (Cosine, Jaccard, Jaro-Winkler, Hybrid)
+- **Document Loading**: `retrieval.DocumentLoader(sources...)` - Load documents from files and URLs
+  - Glob pattern support for file paths
+  - Concurrent loading with worker pools
+  - Automatic metadata extraction
+- **Vector Store Interface**: Provider-agnostic interface for multiple backends
+  - Weaviate, Qdrant, and PGVector client implementations
+  - Auto-embedding and external embedding provider support
+  - Native diversification (MMR) and reranking capabilities
+
 ### Model Context Protocol (`mcp/`)
 
 - **MCP Client**: Connect to MCP servers to access tools, resources, and prompts
-- **Multiple Transports**: Stdio, SSE, and HTTP streaming support
-- **Tool Integration**: `mcp.Tools(ctx, client)` - Fetch MCP tools as Go-Calque tool instances
+- **Multiple Transports**: Stdio, SSE, and StreamableHTTP support
+- **Native LLM Tool Calling**: MCP tools converted to native LLM format for better accuracy
   - Use MCP tools seamlessly with AI agents alongside Go functions
-  - Automatic conversion from MCP schema to Go-Calque tool format
+  - Automatic conversion from MCP schema to native tool format
   - Compatible with standard `ai.WithTools()` workflows
+- **Natural Language Usage**: AI-powered tool discovery and execution
+  - `mcp.RegisterTools(client)` - Register available MCP tools
+  - `mcp.DetectTools(client, llmClient)` - AI-powered tool selection from natural language
+  - `mcp.ExtractToolParams(client, llmClient)` - Extract parameters from user input
+  - `mcp.ExecuteTools(client)` - Execute detected tools
+  - Customizable prompts via `WithPromptTemplate()` option
 - **Registry Access**:
-  - `mcp.ToolRegistry(client)` - List available MCP tools
-  - `mcp.ResourceRegistry(client)` - Access MCP resources
-  - `mcp.PromptRegistry(client)` - Use MCP prompt templates
-- **Auto Detection**: `mcp.DetectTool(llmClient)` - AI-powered tool/resource/prompt selection
-- **Execution**: `mcp.ExecuteTool()`, `mcp.ExecuteResource()`, `mcp.ExecutePrompt()` - Execute selected capabilities
-- **Intelligent Caching**: Built-in caching with separate TTL controls for registries, resources, and prompts
+  - `mcp.RegisterResources(client)` - Register and access MCP resources
+  - `mcp.RegisterPrompts(client)` - Register MCP prompt templates
+  - `mcp.DetectResources()`, `mcp.DetectPrompts()` - AI-powered selection
+- **Intelligent Caching**: Built-in caching with separate TTL controls
   - Registry caching for fast tool/resource/prompt discovery
   - Resource content caching to minimize server calls
   - Prompt template caching with argument-aware keys
   - Configurable TTLs via `WithCache(store, &CacheConfig{...})`
+- **Additional Options**: `WithEnv()` for environment variables, `RawOutput` for JSON output
 
 ## Converters
 
@@ -551,11 +571,11 @@ _Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 ### Priority Middleware
 
 **Tool Calling** - ✅ Function execution for AI agents
-**Information Retrieval** - 🔲 Vector search, context building, semantic filtering
-**Multi-Agent Collaboration** - 🔲 Agent selection, ✅ load balancing, ✅ conditional routing  
-**Guardrails & Safety** - 🔲 Input filtering, 🔲 output validation, ✅ schema compliance  
+**Information Retrieval** - ✅ Vector search, ✅ context building, ✅ semantic filtering
+**Multi-Agent Collaboration** - 🔲 Agent selection, ✅ load balancing, ✅ conditional routing
+**Guardrails & Safety** - 🔲 Input filtering, 🔲 output validation, ✅ schema compliance
 **HTTP/API Integration** - ✅ streaming responses
-**Model Context Protocol** - ✅ MCP client
+**Model Context Protocol** - ✅ MCP client, ✅ natural language tools, ✅ StreamableHTTP
 
 ### Framework Improvements
 
@@ -564,9 +584,9 @@ _Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 
 ### Essential Examples
 
-**Core Framework**: ✅ basics, ✅ converters, ✅ converters-jsonschema, ✅ streaming-chats  
-**Data Processing**: ✅ memory, ✅ batch-processing, ✅ flow-composition  
-**AI Agents**: ✅ tool-calling, 🔲 rag, 🔲 multi-agent-workflow, 🔲 guardrails-validation  
+**Core Framework**: ✅ basics, ✅ converters, ✅ converters-jsonschema, ✅ streaming-chats
+**Data Processing**: ✅ memory, ✅ batch-processing, ✅ flow-composition
+**AI Agents**: ✅ tool-calling, ✅ retrieval, 🔲 multi-agent-workflow, 🔲 guardrails-validation
 **Advanced**: ✅ web-api-agent, 🔲 human-in-the-loop
 
 ### Nice-to-Have
