@@ -242,7 +242,10 @@ func main() {
         json.NewDecoder(r.Body).Decode(&req)
 
         var response string
-        chatbot.Run(r.Context(), req.Message, &response)
+        if err := chatbot.Run(r.Context(), req.Message, &response); err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
 
         json.NewEncoder(w).Encode(ChatResponse{Message: response})
     })
@@ -283,7 +286,10 @@ Answer based only on the provided context. If the answer isn't in the context, s
         question := r.URL.Query().Get("q")
 
         var answer string
-        ragFlow.Run(r.Context(), question, &answer)
+        if err := ragFlow.Run(r.Context(), question, &answer); err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
 
         fmt.Fprint(w, answer)
     })
