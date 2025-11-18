@@ -2,7 +2,7 @@
 
 <div align="center">
   <img src=".github/images/go-calque.webp" alt="Go-Calque" width="400">
-  
+
   <p>
      <!-- <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/github/v/release/calque-ai/go-calque?include_prereleases&style=flat&label=Latest%20release" alt="Latest release"></a> -->
     <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/badge/Pre--release-v0.4.0-orange?style=flat" alt="Pre-release"></a>
@@ -24,9 +24,21 @@
   </p>
 </div>
 
-An idiomatic streaming **multi-agent AI framework** for Go.
+A **composable AI agent framework** for Go that makes it easy to build production-ready AI applications.
 
 _Developed by [Calque AI](https://calque.ai)_
+
+## The Problem
+
+Building AI apps in Go means wrestling with:
+
+- **Provider lock-in** - Switching between OpenAI, Gemini, or local models requires rewriting code
+- **Conversation state** - Managing chat history and context windows across requests
+- **Tool calling** - Connecting AI to your Go functions with proper error handling
+- **Structured outputs** - Getting reliable JSON responses that match your types
+- **RAG pipelines** - Coordinating document retrieval, embedding, and generation
+
+Go-Calque solves these with a simple, composable middleware pattern that feels native to Go.
 
 ## Installation
 
@@ -36,13 +48,15 @@ go get github.com/calque-ai/go-calque
 
 ## Quickstart
 
+### Simple AI Chat
+
 ```go
 package main
 
 import (
     "context"
+    "fmt"
     "log"
-    "time"
 
     "github.com/calque-ai/go-calque/pkg/calque"
     "github.com/calque-ai/go-calque/pkg/middleware/ai"
@@ -56,44 +70,350 @@ func main() {
         log.Fatal(err)
     }
 
-    // Create AI flow
-    flow := calque.NewFlow().
-        Use(ai.Agent(client)).
+    // Create flow and run
+    flow := calque.NewFlow().Use(ai.Agent(client))
 
     var result string
     err = flow.Run(context.Background(), "What's the capital of France?", &result)
     if err != nil {
         log.Fatal(err)
     }
+    fmt.Println(result)
 }
 ```
 
-## Features
+That's it. Three lines to set up, one line to run.
 
-✅ **Streaming First** - Process data as it flows, not after it's fully loaded  
-✅ **True Concurrency** - Each middleware runs in its own goroutine  
-✅ **Memory Efficient** - Constant memory usage regardless of input size  
-✅ **Real-time Processing** - Responses begin immediately, no waiting for full datasets  
-✅ **Composable** - Chain middleware just like HTTP handlers  
-✅ **AI-Native** - Built-in support for LLMs and AI workflows  
-✅ **Go-Idiomatic** - Built with Go conventions using `io.Reader`/`io.Writer`, not porting Python patterns
+## Progressive Complexity
 
-## Philosophy
+Go-Calque grows with your needs. Start simple, add capabilities as required.
 
-Go-Calque brings **HTTP middleware patterns** to AI and data processing. Instead of handling HTTP requests, you compose flows where each middleware processes streaming data through `io.Pipe` connections.
+### With Conversation Memory
 
-**The Pattern**: Chain middleware like HTTP handlers, but for streaming data:
+```go
+client, _ := ollama.New("llama3.2:1b")
+convMem := memory.NewConversation()
+
+flow := calque.NewFlow().
+    Use(convMem.Input("user123")).    // Store user input
+    Use(ai.Agent(client)).
+    Use(convMem.Output("user123"))    // Store AI response
+
+// First message
+flow.Run(ctx, "My name is Alice", &response)
+
+// Second message - AI remembers the conversation
+flow.Run(ctx, "What's my name?", &response)
+// Response: "Your name is Alice"
+```
+
+### With Tool Calling
+
+```go
+// Create tools
+calculator := tools.Simple("calculator", "Performs math calculations",
+    func(jsonArgs string) string {
+        var args struct{ Expression string `json:"expression"` }
+        json.Unmarshal([]byte(jsonArgs), &args)
+        // Calculate and return result
+        return evaluate(args.Expression)
+    })
+
+weather := tools.Simple("get_weather", "Gets current weather for a city",
+    func(jsonArgs string) string {
+        var args struct{ City string `json:"city"` }
+        json.Unmarshal([]byte(jsonArgs), &args)
+        return fetchWeather(args.City)
+    })
+
+// Agent automatically calls tools when needed
+flow := calque.NewFlow().
+    Use(ai.Agent(client, ai.WithTools(calculator, weather)))
+
+flow.Run(ctx, "What's the weather in Tokyo and what's 15% of 340?", &result)
+// AI calls both tools and synthesizes the response
+```
+
+### With Structured Output
+
+```go
+type TaskAnalysis struct {
+    TaskType string `json:"task_type" jsonschema:"required,description=Type of task"`
+    Priority string `json:"priority" jsonschema:"required,enum=low;medium;high"`
+    Hours    int    `json:"hours" jsonschema:"description=Estimated hours"`
+}
+
+flow := calque.NewFlow().
+    Use(ai.Agent(client, ai.WithSchema(&TaskAnalysis{})))
+
+var analysis TaskAnalysis
+flow.Run(ctx, "Build a user authentication system",
+    convert.FromJSONSchema[TaskAnalysis](&analysis))
+
+fmt.Printf("Type: %s, Priority: %s, Hours: %d\n",
+    analysis.TaskType, analysis.Priority, analysis.Hours)
+```
+
+### With RAG (Retrieval-Augmented Generation)
+
+```go
+// Initialize vector store (Weaviate, Qdrant, or PGVector)
+store := weaviate.New("http://localhost:8080", "Documents")
+
+// Configure retrieval with diversity strategy
+strategy := retrieval.StrategyDiverse
+searchOpts := &retrieval.SearchOptions{
+    Threshold: 0.7,
+    Limit:     5,
+    Strategy:  &strategy,
+    MaxTokens: 2000,
+}
+
+// Build RAG pipeline
+flow := calque.NewFlow().
+    Use(retrieval.VectorSearch(store, searchOpts)).  // Retrieve context
+    Use(prompt.Template(`Answer based on this context:
+{{.Input}}
+
+Question: {{.Query}}`)).
+    Use(ai.Agent(client))
+
+flow.Run(ctx, "How do I configure authentication?", &result)
+```
+
+## Why Go-Calque vs. Raw SDKs?
+
+| Challenge               | Raw SDK Approach                                     | Go-Calque Approach                                            |
+| ----------------------- | ---------------------------------------------------- | ------------------------------------------------------------- |
+| **Provider switching**  | Rewrite API calls, handle different response formats | Change one line: `ollama.New()` → `openai.New()`              |
+| **Conversation memory** | Manual state management, serialize/deserialize       | `convMem.Input()` / `convMem.Output()` middleware             |
+| **Tool calling**        | Parse responses, match functions, handle errors      | `ai.WithTools(...)` - automatic discovery & execution         |
+| **Retries & fallbacks** | Custom retry loops, fallback logic                   | `ctrl.Retry(handler, 3)`, `ctrl.Fallback(primary, backup)`    |
+| **Structured output**   | Hope the AI follows instructions, validate manually  | `ai.WithSchema()` - guaranteed valid JSON matching your types |
+| **RAG pipelines**       | Coordinate embeddings, search, prompt building       | Chain middleware: `VectorSearch → Template → Agent`           |
+| **Testing**             | Mock HTTP clients, parse responses                   | Test each middleware independently                            |
+
+### Code Comparison
+
+**Raw OpenAI SDK:**
+
+```go
+// 50+ lines: create client, build messages array, handle streaming,
+// parse tool calls, execute functions, rebuild messages, retry on error,
+// extract final response, handle rate limits...
+```
+
+**Go-Calque:**
 
 ```go
 flow := calque.NewFlow().
-    Use(middleware1).
-    Use(middleware2).
-    Use(middleware3)
+    Use(convMem.Input(userID)).
+    Use(ctrl.Retry(ai.Agent(client, ai.WithTools(myTools...)), 3)).
+    Use(convMem.Output(userID))
 
-err := flow.Run(ctx, input, &output)
+flow.Run(ctx, userMessage, &response)
 ```
 
-## Architecture Overview
+## Real-World Examples
+
+### Chatbot with Memory and Tools
+
+```go
+func main() {
+    client, _ := openai.New("gpt-4")
+    convMem := memory.NewConversation()
+
+    // Define tools
+    searchDocs := tools.Simple("search_docs", "Search documentation", searchHandler)
+    createTicket := tools.Simple("create_ticket", "Create support ticket", ticketHandler)
+
+    // Build chatbot flow
+    chatbot := calque.NewFlow().
+        Use(convMem.Input("session")).
+        Use(ctrl.Retry(
+            ai.Agent(client, ai.WithTools(searchDocs, createTicket)),
+            3,
+        )).
+        Use(convMem.Output("session"))
+
+    // Handle messages
+    http.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
+        var req ChatRequest
+        json.NewDecoder(r.Body).Decode(&req)
+
+        var response string
+        chatbot.Run(r.Context(), req.Message, &response)
+
+        json.NewEncoder(w).Encode(ChatResponse{Message: response})
+    })
+}
+```
+
+### RAG Application
+
+```go
+func main() {
+    client, _ := ollama.New("llama3.2:3b")
+    store := qdrant.New("localhost:6334", "knowledge_base")
+
+    // Retrieval configuration
+    strategy := retrieval.StrategyRelevant
+    searchOpts := &retrieval.SearchOptions{
+        Threshold: 0.75,
+        Limit:     5,
+        Strategy:  &strategy,
+        MaxTokens: 3000,
+    }
+
+    // RAG pipeline
+    ragFlow := calque.NewFlow().
+        Use(retrieval.VectorSearch(store, searchOpts)).
+        Use(prompt.Template(`You are a helpful assistant. Use the following context to answer questions.
+
+Context:
+{{.Input}}
+
+Question: {{.Query}}
+
+Answer based only on the provided context. If the answer isn't in the context, say so.`)).
+        Use(ai.Agent(client))
+
+    // API endpoint
+    http.HandleFunc("/ask", func(w http.ResponseWriter, r *http.Request) {
+        question := r.URL.Query().Get("q")
+
+        var answer string
+        ragFlow.Run(r.Context(), question, &answer)
+
+        fmt.Fprint(w, answer)
+    })
+}
+```
+
+### Multi-Agent Router
+
+```go
+// Create specialized agents
+mathAgent := multiagent.Route(
+    ai.Agent(mathClient),
+    "math",
+    "Solve mathematical problems and calculations",
+    "calculate,solve,math,equation")
+
+codeAgent := multiagent.Route(
+    ai.Agent(codeClient),
+    "code",
+    "Programming, debugging, code review",
+    "code,program,debug,function")
+
+// Router automatically selects best agent
+flow := calque.NewFlow().
+    Use(multiagent.Router(routerClient, mathAgent, codeAgent))
+
+flow.Run(ctx, "What's the factorial of 10?", &result)  // Routes to mathAgent
+flow.Run(ctx, "Write a bubble sort in Go", &result)    // Routes to codeAgent
+```
+
+## Middleware Packages
+
+### AI & LLM (`ai/`, `prompt/`)
+
+- **AI Agents**: `ai.Agent(client)` - Connect to OpenAI, Gemini, Ollama, or custom providers
+- **Prompt Templates**: `prompt.Template("Question: {{.Input}}")` - Dynamic prompt formatting
+- **Structured Output**: `ai.WithSchema(&MyType{})` - Guaranteed JSON matching your types
+- **Tool Calling**: `ai.WithTools(tools...)` - Automatic function discovery and execution
+
+### Retrieval & RAG (`retrieval/`)
+
+- **Vector Search**: `retrieval.VectorSearch(store, opts)` - Semantic similarity search with context building
+  - Multiple context strategies: Relevant, Recent, Diverse (MMR), Summary
+  - Token-limited context assembly with custom separators
+  - Adaptive similarity algorithms (Cosine, Jaccard, Jaro-Winkler, Hybrid)
+- **Document Loading**: `retrieval.DocumentLoader(sources...)` - Load documents from files and URLs
+  - Glob pattern support for file paths
+  - Concurrent loading with worker pools
+  - Automatic metadata extraction
+- **Vector Store Interface**: Provider-agnostic interface for multiple backends
+  - Weaviate, Qdrant, and PGVector client implementations
+  - Auto-embedding and external embedding provider support
+  - Native diversification (MMR) and reranking capabilities
+
+### Memory & State (`memory/`)
+
+- **Conversation Memory**: Track chat history with configurable limits
+- **Context Windows**: Sliding window memory management for long conversations
+- **Storage Backends**: In-memory, Badger, or add a custom storage adapter
+
+### Flow Control (`ctrl/`)
+
+- **Timeouts**: `ctrl.Timeout(handler, duration)` - Prevent hanging operations
+- **Retries**: `ctrl.Retry(handler, attempts)` - Handle transient failures
+- **Fallbacks**: `ctrl.Fallback(primary, backup)` - Graceful degradation
+- **Parallel Processing**: `ctrl.Parallel(handlers...)` - Concurrent execution
+- **Chain Composition**: `ctrl.Chain(handlers...)` - Sequential middleware chains
+
+### Tool Integration (`tools/`)
+
+- **Function Calling**: Execute Go functions from AI agents
+- **Tool Registry**: Manage and discover available functions
+- **Concurrent Execution**: Run multiple tools in parallel
+- **Error Handling**: Configurable behavior when tools fail
+
+### Multi-Agent (`multiagent/`)
+
+- **Agent Routing**: Route requests to specialized agents based on content
+- **Load Balancing**: Distribute load across multiple agent instances
+
+### Model Context Protocol (`mcp/`)
+
+- **MCP Client**: Connect to MCP servers to access tools, resources, and prompts
+- **Multiple Transports**: Stdio, SSE, and StreamableHTTP support
+- **Native LLM Tool Calling**: MCP tools converted to native LLM format for better accuracy
+- **Natural Language Usage**: AI-powered tool discovery and execution
+  - `mcp.RegisterTools(client)` - Register available MCP tools
+  - `mcp.DetectTools(client, llmClient)` - AI-powered tool selection
+  - `mcp.ExtractToolParams(client, llmClient)` - Extract parameters from user input
+  - `mcp.ExecuteTools(client)` - Execute detected tools
+
+### Caching (`cache/`)
+
+- **Response Caching**: `cache.Cache(handler, ttl)` - Cache handler responses with TTL
+- **Pluggable Backends**: In-memory store or custom storage adapters
+
+### Observability (`logger/`)
+
+- **Logging**: `logger.Print(label)` - Log the whole input with a prefix label
+- **Head Logging**: `logger.Head(label, bytes)` - Log first N bytes for streaming
+- **Chunk Logging**: `logger.Chunks(label, size)` - Log streaming data in chunks
+
+## Converters
+
+Transform structured data at flow boundaries:
+
+**Input Converters** (prepare data for processing):
+
+```go
+convert.ToJSON(struct)         // Struct → JSON stream
+convert.ToYAML(struct)         // Struct → YAML stream
+convert.ToJSONSchema(struct)   // Struct + schema → stream (for AI context)
+convert.ToProtobuf(msg)        // Proto message → binary stream
+convert.ToSSE(data)            // Data → Server-Sent Events stream
+```
+
+**Output Converters** (parse results):
+
+```go
+convert.FromJSON(&result)           // JSON stream → struct
+convert.FromYAML(&result)           // YAML stream → struct
+convert.FromJSONSchema(&result)     // JSON stream → struct (validates against schema)
+convert.FromProtobuf(&result)       // Binary stream → proto message
+```
+
+## Architecture Deep Dive
+
+Go-Calque brings **HTTP middleware patterns** to AI and data processing. Instead of handling HTTP requests, you compose flows where each middleware processes data through `io.Pipe` connections.
+
+### Streaming Architecture
 
 ```mermaid
 flowchart TB
@@ -163,7 +483,7 @@ flowchart TB
     classDef decision fill:#4c0519,stroke:#f43f5e,stroke-width:2px,color:#ffe4e6
 ```
 
-**Key Architecture Patterns:**
+### Key Architecture Patterns
 
 🔄 **Streaming Pipeline**: `Input → Middleware1 → Middleware2 → Middleware3 → Output` connected by **io.Pipe** with each middleware running in its own **goroutine**
 
@@ -176,258 +496,18 @@ flowchart TB
 
 🔗 **Context Propagation**: Cancellation and timeouts flow through the entire chain
 
-🤖 **AI Agent Processing**: Intelligent decision-making for tool calling vs direct chat, with response synthesis
+### Why Streaming Matters
 
-🌐 **LLM Provider Layer**:
+- **Memory Efficient**: Constant memory usage regardless of input size
+- **Real-time Processing**: Responses begin immediately, no waiting for full datasets
+- **True Concurrency**: Each middleware runs in its own goroutine
+- **Go-Idiomatic**: Built with Go conventions using `io.Reader`/`io.Writer`
 
-- **OpenAI** ⚡ Leading AI API (GPT-4, GPT-5, advanced capabilities)
-- **Ollama** 🏠 Local server (privacy, no API costs)
-- **Gemini** ☁️ Google Cloud API (advanced capabilities)
-
-🧩 **Available Middleware**: Memory (Context/Conversation), Prompt Templates, Ctrl (Chain/Batch/Fallback), Tools (Registry/Detect/Execute), Cache, MultiAgent (Routing/Consensus)
-
-## Middleware Packages
-
-Go-Calque includes middleware for common AI and data processing patterns:
-
-### AI & LLM (`ai/`, `prompt/`)
-
-- **AI Agents**: `ai.Agent(client)` - Connect to OpenAI, Gemini, Ollama, or custom providers
-- **Prompt Templates**: `prompt.Template("Question: {{.Input}}")` - Dynamic prompt formatting
-- **Streaming Support**: Real-time response processing as tokens arrive
-
-### Flow Control (`ctrl/`)
-
-- **Timeouts**: `ctrl.Timeout(handler, duration)` - Prevent hanging operations
-- **Retries**: `ctrl.Retry(handler, attempts)` - Handle transient failures
-- **Parallel Processing**: `ctrl.Parallel(handlers...)` - Concurrent execution
-- **Chain Composition**: `ctrl.Chain(handlers...)` - Sequential middleware chains
-- **Conditional Logic**: `ctrl.Branch(condition, ifTrue, ifFalse)` - Dynamic routing
-
-### Data Processing (`text/`)
-
-- **Text Transform**: `text.Transform(func)` - Simple string transformations
-- **Line Processing**: `text.LineProcessor(func)` - Process large files line-by-line
-- **Text Branching**: `text.Branch(condition, ifTrue, ifFalse)` - Conditional text processing
-
-### Memory & State (`memory/`)
-
-- **Conversation Memory**: Track chat history with configurable limits
-- **Context Windows**: Sliding window memory management for long conversations
-- **Storage Backends**: In-memory, Badger, or add a custom storage adapter
-
-### Observability (`logger/`)
-
-- **Logging**: `logger.Print(label)` - Log the whole input with a prefix label
-- **Head Logging**: `logger.Head(label, bytes)` - Log first N bytes for streaming
-- **Chunk Logging**: `logger.Chunks(label, size)` - Log streaming data in chunks
-
-### Tool Integration (`tools/`)
-
-- **Function Calling**: Execute Go functions from AI agents
-- **Tool Registry**: Manage and discover available functions
-- **Automatic Detection**: Parse AI responses for function calls
-
-### Multi-Agent (`multiagent/`)
-
-- **Agent Routing**: Route requests to different agents based on content
-- **Load Balancing**: Distribute load across multiple agent instances
-
-### Caching (`cache/`)
-
-- **Response Caching**: `cache.Cache(handler, ttl)` - Cache handler responses with TTL
-- **Pluggable Backends**: In-memory store or custom storage adapters
-- **Input-Based Keys**: Automatic cache key generation from input content hashes
-- **TTL Support**: Time-based expiration with automatic cleanup
-
-### Retrieval & RAG (`retrieval/`)
-
-- **Vector Search**: `retrieval.VectorSearch(store, opts)` - Semantic similarity search with context building
-  - Multiple context strategies: Relevant, Recent, Diverse (MMR), Summary
-  - Token-limited context assembly with custom separators
-  - Adaptive similarity algorithms (Cosine, Jaccard, Jaro-Winkler, Hybrid)
-- **Document Loading**: `retrieval.DocumentLoader(sources...)` - Load documents from files and URLs
-  - Glob pattern support for file paths
-  - Concurrent loading with worker pools
-  - Automatic metadata extraction
-- **Vector Store Interface**: Provider-agnostic interface for multiple backends
-  - Weaviate, Qdrant, and PGVector client implementations
-  - Auto-embedding and external embedding provider support
-  - Native diversification (MMR) and reranking capabilities
-
-### Model Context Protocol (`mcp/`)
-
-- **MCP Client**: Connect to MCP servers to access tools, resources, and prompts
-- **Multiple Transports**: Stdio, SSE, and StreamableHTTP support
-- **Native LLM Tool Calling**: MCP tools converted to native LLM format for better accuracy
-  - Use MCP tools seamlessly with AI agents alongside Go functions
-  - Automatic conversion from MCP schema to native tool format
-  - Compatible with standard `ai.WithTools()` workflows
-- **Natural Language Usage**: AI-powered tool discovery and execution
-  - `mcp.RegisterTools(client)` - Register available MCP tools
-  - `mcp.DetectTools(client, llmClient)` - AI-powered tool selection from natural language
-  - `mcp.ExtractToolParams(client, llmClient)` - Extract parameters from user input
-  - `mcp.ExecuteTools(client)` - Execute detected tools
-  - Customizable prompts via `WithPromptTemplate()` option
-- **Registry Access**:
-  - `mcp.RegisterResources(client)` - Register and access MCP resources
-  - `mcp.RegisterPrompts(client)` - Register MCP prompt templates
-  - `mcp.DetectResources()`, `mcp.DetectPrompts()` - AI-powered selection
-- **Intelligent Caching**: Built-in caching with separate TTL controls
-  - Registry caching for fast tool/resource/prompt discovery
-  - Resource content caching to minimize server calls
-  - Prompt template caching with argument-aware keys
-  - Configurable TTLs via `WithCache(store, &CacheConfig{...})`
-- **Additional Options**: `WithEnv()` for environment variables, `RawOutput` for JSON output
-
-## Converters
-
-Transform structured data at flow boundaries:
-
-**Input Converters** (prepare data for processing):
-
-```go
-convert.ToJSON(struct)         // Struct → JSON stream
-convert.ToYAML(struct)         // Struct → YAML stream
-convert.ToJSONSchema(struct)   // Struct + schema → stream (for AI context)
-convert.ToProtobuf(msg)        // Proto message → binary stream
-convert.ToSSE(data)            // Data → Server-Sent Events stream
-```
-
-**Output Converters** (parse results):
-
-```go
-convert.FromJSON(&result)           // JSON stream → struct
-convert.FromYAML(&result)           // YAML stream → struct
-convert.FromJSONSchema(&result)     // JSON stream → struct (validates against schema)
-convert.FromProtobuf(&result)       // Binary stream → proto message
-```
-
-**Usage:**
-
-```go
-// JSON processing flow
-err := flow.Run(ctx, convert.ToJSON(data), convert.FromJSON(&result))
-
-// JSON with schema validation (useful for AI structured output)
-err := flow.Run(ctx, convert.ToJSONSchema(input), convert.FromJSONSchema[Output](&result))
-
-// Protobuf processing
-err := flow.Run(ctx, convert.ToProtobuf(protoMsg), convert.FromProtobuf(&result))
-
-// Server-Sent Events streaming for any result
-err := flow.Run(ctx, data, convert.ToSSE(&result))
-```
-
-## Examples
-
-### Basic Text Processing
-
-```go
-flow := calque.NewFlow().
-    Use(text.Transform(strings.ToUpper)).
-    Use(text.Transform(func(s string) string {
-        return fmt.Sprintf("Processed: %s", s)
-    }))
-
-var result string
-flow.Run(ctx, "hello", &result)
-// Result: "Processed: HELLO"
-```
-
-### AI Chat with Memory
-
-```go
-// with ollama
-client, _ := ollama.New("llama3.2:1b")
-convMem := memory.NewConversation()
-
-flow := calque.NewFlow().
-    Use(convMem.Input("user123")). //store input
-    Use(prompt.Template("User: {{.Input}}\nAssistant:")).
-    Use(ai.Agent(client)).
-    Use(convMem.Output("user123")) //store ai response
-
-var response string
-flow.Run(ctx, "What's the capital of France?", &response)
-```
-
-```go
-// With OpenAI
-client, _ := openai.New("gpt-5")
-convMem := memory.NewConversation()
-
-flow := calque.NewFlow().
-    Use(convMem.Input("user123")).
-    Use(ai.Agent(client)).
-    Use(convMem.Output("user123"))
-
-var response string
-flow.Run(ctx, "What's the capital of France?", &response)
-```
-
-### JSON Schema Validation
-
-```go
-type TaskAnalysis struct {
-    TaskType string `json:"task_type" jsonschema:"required,description=Type of development task"`
-    Priority string `json:"priority" jsonschema:"required,description=Task priority level"`
-    Hours    int    `json:"hours" jsonschema:"description=Estimated hours to complete"`
-}
-
-flow := calque.NewFlow().
-    Use(ai.Agent(client, ai.WithSchema(&TaskAnalysis{})))
-
-var analysis TaskAnalysis
-flow.Run(ctx, "Build a chat app", convert.FromJSONSchema[TaskAnalysis](&analysis))
-```
-
-### Flow Composition
-
-```go
-// Build reusable sub-flows
-textPreprocessor := calque.NewFlow().
-    Use(text.Transform(strings.TrimSpace)).
-    Use(text.Transform(strings.ToLower))
-
-textAnalyzer := calque.NewFlow().
-    Use(text.Transform(func(s string) string {
-        wordCount := len(strings.Fields(s))
-        return fmt.Sprintf("TEXT: %s\nWORDS: %d", s, wordCount)
-    }))
-
-// Compose sub-flows into main flow
-mainFlow := calque.NewFlow().
-    Use(logger.Print("INPUT")).
-    Use(textPreprocessor).              // Use preprocessing sub-flow
-    Use(text.Branch(                    // Branch based on content length
-        func(s string) bool { return len(s) > 50 },
-        textAnalyzer,                   // Long text: use analysis sub-flow
-        text.Transform(func(s string) string {
-            return s + " [SHORT TEXT]"
-        }), // Short text: simple processing
-    )).
-    Use(logger.Print("OUTPUT"))
-
-var result string
-mainFlow.Run(ctx, "  Hello WORLD!  This is a Test  ", &result)
-```
-
-## Writing Custom Middleware
+### Writing Custom Middleware
 
 Create your own middleware by implementing `calque.HandlerFunc`:
 
 ```go
-package main
-
-import (
-    "fmt"
-    "strings"
-    "time"
-
-    "github.com/calque-ai/go-calque/pkg/calque"
-)
-
 // Custom middleware that adds timestamps (BUFFERED - reads all input first)
 func AddTimestamp(prefix string) calque.HandlerFunc {
     return func(req *calque.Request, res *calque.Response) error {
@@ -447,15 +527,9 @@ func AddTimestamp(prefix string) calque.HandlerFunc {
 }
 
 // Usage
-func main() {
-    flow := calque.NewFlow().
-        Use(AddTimestamp("LOG")).
-        Use(text.Transform(strings.ToUpper))
-
-    var result string
-    flow.Run(ctx, "hello world", &result)
-    // Result: "[LOG 2024-01-15 14:30:45] HELLO WORLD"
-}
+flow := calque.NewFlow().
+    Use(AddTimestamp("LOG")).
+    Use(text.Transform(strings.ToUpper))
 ```
 
 ### Streaming Middleware
@@ -479,8 +553,6 @@ func StreamingProcessor() calque.HandlerFunc {
 }
 ```
 
-## Advanced Topics
-
 ### Concurrency Control
 
 ```go
@@ -491,9 +563,10 @@ config := calque.FlowConfig{
 }
 
 flow := calque.NewFlow(config).
-    Use(ai.Agent(client)).
-    Use(logger.Print("RESPONSE"))
+    Use(ai.Agent(client))
 ```
+
+## Advanced Topics
 
 ### Error Handling & Retries
 
@@ -506,43 +579,56 @@ flow := calque.NewFlow().
     ))
 ```
 
-### Multi-Agent Routing
+### Flow Composition
 
 ```go
-// Create routed handlers with metadata
-mathHandler := multiagent.Route(
-    ai.Agent(mathClient),
-    "math",
-    "Solve mathematical problems, calculations, equations",
-    "calculate,solve,math,equation")
+// Build reusable sub-flows
+textPreprocessor := calque.NewFlow().
+    Use(text.Transform(strings.TrimSpace)).
+    Use(text.Transform(strings.ToLower))
 
-codeHandler := multiagent.Route(
-    ai.Agent(codeClient),
-    "code",
-    "Programming, debugging, code review",
-    "code,program,debug,function")
+textAnalyzer := calque.NewFlow().
+    Use(text.Transform(func(s string) string {
+        wordCount := len(strings.Fields(s))
+        return fmt.Sprintf("TEXT: %s\nWORDS: %d", s, wordCount)
+    }))
 
-// selectionClient automatically selects best handler based on flow input
-flow := calque.NewFlow().
-    Use(multiagent.Router(selectionClient, mathHandler, codeHandler))
+// Compose sub-flows into main flow
+mainFlow := calque.NewFlow().
+    Use(textPreprocessor).
+    Use(text.Branch(
+        func(s string) bool { return len(s) > 50 },
+        textAnalyzer,
+        text.Transform(func(s string) string { return s + " [SHORT]" }),
+    ))
 ```
 
-### Tool Calling
+### HTTP API Integration
 
 ```go
-// Create tools
-calculator := tools.Simple("calculator", "Performs basic math calculations", func(expression string) string {
-    // tool implementation
-    return "42"
-})
+// Expose your flow as an HTTP endpoint
+http.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
+    var req ChatRequest
+    json.NewDecoder(r.Body).Decode(&req)
 
-currentTime := tools.Simple("current_time", "Gets current date and time", func(format string) string {
-    return time.Now().Format("2006-01-02 15:04:05")
-})
+    var response string
+    flow.Run(r.Context(), req.Message, &response)
 
-// Agent with tools
-flow := calque.NewFlow().
-    Use(ai.Agent(client, ai.WithTools(calculator, currentTime)))
+    json.NewEncoder(w).Encode(ChatResponse{Message: response})
+})
+```
+
+### SSE Streaming
+
+```go
+http.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "text/event-stream")
+
+    sseConverter := convert.ToSSE(w, userID).
+        WithChunkMode(convert.SSEChunkByWord)
+
+    flow.Run(r.Context(), message, sseConverter)
+})
 ```
 
 ## Performance
@@ -579,8 +665,9 @@ _Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 
 ### Framework Improvements
 
-**Enhanced Memory** - 🔲 Vector-based semantic memory retrieval  
+**Enhanced Memory** - 🔲 Vector-based semantic memory retrieval
 **Advanced Agents** - 🔲 Planning, 🔲 reflection, 🔲 self-evaluation capabilities
+**Additional Providers** - 🔲 Anthropic/Claude support
 
 ### Essential Examples
 
@@ -591,7 +678,7 @@ _Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 
 ### Nice-to-Have
 
-**Batch Processing** - 🔲 Splitters, 🔲 aggregators, ✅ parallel processors  
+**Batch Processing** - 🔲 Splitters, 🔲 aggregators, ✅ parallel processors
 **State Management** - 🔲 State machines, 🔲 checkpoints, ✅ conditional flows
 **Agent2Agent Protocol** - 🔲 A2A server, 🔲 examples
 
