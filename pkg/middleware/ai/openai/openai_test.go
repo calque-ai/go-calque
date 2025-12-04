@@ -1233,3 +1233,87 @@ func TestFinalizeToolCalls(t *testing.T) {
 		})
 	}
 }
+
+// TestUsageHandler tests that the usage handler callback is invoked correctly
+func TestUsageHandler(t *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: &Config{APIKey: "test-key"},
+	}
+
+	tests := []struct {
+		name           string
+		setupUsage     func(*Client)
+		expectedCalled bool
+		expectedTokens int
+		description    string
+	}{
+		{
+			name: "handler called with usage data",
+			setupUsage: func(c *Client) {
+				c.lastUsage = &ai.UsageMetadata{
+					PromptTokens:     100,
+					CompletionTokens: 50,
+					TotalTokens:      150,
+				}
+			},
+			expectedCalled: true,
+			expectedTokens: 150,
+			description:    "Should invoke handler when usage data is present",
+		},
+		{
+			name: "handler not called without usage data",
+			setupUsage: func(c *Client) {
+				c.lastUsage = nil
+			},
+			expectedCalled: false,
+			expectedTokens: 0,
+			description:    "Should not invoke handler when no usage data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setupUsage(client)
+
+			var called bool
+			var receivedTokens int
+
+			opts := &ai.AgentOptions{
+				UsageHandler: func(usage *ai.UsageMetadata) {
+					called = true
+					receivedTokens = usage.TotalTokens
+				},
+			}
+
+			client.reportUsage(opts)
+
+			if called != tt.expectedCalled {
+				t.Errorf("%s: handler called = %v, want %v", tt.description, called, tt.expectedCalled)
+			}
+
+			if tt.expectedCalled && receivedTokens != tt.expectedTokens {
+				t.Errorf("%s: received tokens = %d, want %d", tt.description, receivedTokens, tt.expectedTokens)
+			}
+		})
+	}
+}
+
+// TestUsageHandler_NilOptions tests that reportUsage handles nil options safely
+func TestUsageHandler_NilOptions(_ *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: &Config{APIKey: "test-key"},
+		lastUsage: &ai.UsageMetadata{
+			PromptTokens:     100,
+			CompletionTokens: 50,
+			TotalTokens:      150,
+		},
+	}
+
+	// Should not panic with nil options
+	client.reportUsage(nil)
+
+	// Should not panic with options but no handler
+	client.reportUsage(&ai.AgentOptions{})
+}

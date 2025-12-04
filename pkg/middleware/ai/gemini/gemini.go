@@ -31,9 +31,10 @@ const applicationJSON = "application/json"
 //	client, _ := gemini.New("gemini-1.5-pro")
 //	agent := ai.Agent(client)
 type Client struct {
-	client *genai.Client
-	model  string
-	config *Config
+	client    *genai.Client
+	model     string
+	config    *Config
+	lastUsage *ai.UsageMetadata
 }
 
 // Config holds Gemini-specific configuration.
@@ -223,7 +224,7 @@ func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Execute the request with the configured chat
-	return g.executeRequest(config, r, w)
+	return g.executeRequest(config, r, w, opts)
 }
 
 // buildGenerateConfig creates a Gemini GenerateContentConfig from provider config and optional schema override
@@ -350,25 +351,44 @@ func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInp
 }
 
 // executeRequest executes the configured request
-func (g *Client) executeRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
+func (g *Client) executeRequest(config *RequestConfig, r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	// Determine if we should stream
 	// Tools force non-streaming to avoid mixing text with function call JSON
 	shouldStream := !config.HasTools && (g.config.Stream == nil || *g.config.Stream)
 
 	if shouldStream {
-		return g.executeStreamingRequest(config, r, w)
+		return g.executeStreamingRequest(config, r, w, opts)
 	}
 
-	return g.executeNonStreamingRequest(config, r, w)
+	return g.executeNonStreamingRequest(config, r, w, opts)
+}
+
+// reportUsage invokes the usage handler if present
+func (g *Client) reportUsage(opts *ai.AgentOptions) {
+	if g.lastUsage != nil && opts != nil && opts.UsageHandler != nil {
+		opts.UsageHandler(g.lastUsage)
+	}
 }
 
 // executeNonStreamingRequest executes a non-streaming request using SendMessage
-func (g *Client) executeNonStreamingRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
+func (g *Client) executeNonStreamingRequest(config *RequestConfig, r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	// Use SendMessage for buffered response
 	result, err := config.Chat.SendMessage(r.Context, config.Parts...)
 	if err != nil {
 		return fmt.Errorf("failed to get response: %w", err)
 	}
+
+	// Capture usage metadata
+	if result.UsageMetadata != nil {
+		g.lastUsage = &ai.UsageMetadata{
+			PromptTokens:     int(result.UsageMetadata.PromptTokenCount),
+			CompletionTokens: int(result.UsageMetadata.CandidatesTokenCount),
+			TotalTokens:      int(result.UsageMetadata.TotalTokenCount),
+		}
+	}
+
+	// Report usage
+	g.reportUsage(opts)
 
 	// Check for function calls first
 	functionCalls := result.FunctionCalls()
@@ -387,11 +407,20 @@ func (g *Client) executeNonStreamingRequest(config *RequestConfig, r *calque.Req
 }
 
 // executeStreamingRequest executes a streaming request using SendMessageStream
-func (g *Client) executeStreamingRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
+func (g *Client) executeStreamingRequest(config *RequestConfig, r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	// Stream response chunks directly
 	for result, err := range config.Chat.SendMessageStream(r.Context, config.Parts...) {
 		if err != nil {
 			return fmt.Errorf("failed to get response: %w", err)
+		}
+
+		// Capture usage metadata from stream chunks
+		if result.UsageMetadata != nil {
+			g.lastUsage = &ai.UsageMetadata{
+				PromptTokens:     int(result.UsageMetadata.PromptTokenCount),
+				CompletionTokens: int(result.UsageMetadata.CandidatesTokenCount),
+				TotalTokens:      int(result.UsageMetadata.TotalTokenCount),
+			}
 		}
 
 		// Get text from chunk and stream it
@@ -402,6 +431,9 @@ func (g *Client) executeStreamingRequest(config *RequestConfig, r *calque.Reques
 			}
 		}
 	}
+
+	// Report usage after stream completes
+	g.reportUsage(opts)
 
 	return nil
 }

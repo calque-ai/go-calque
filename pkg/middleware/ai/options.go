@@ -34,6 +34,7 @@ type AgentOptions struct {
 	MultimodalData      *MultimodalInput
 	ToolResultFormatter ToolResultFormatterFunc
 	ToolFormatterClient Client
+	UsageHandler        func(*UsageMetadata)
 }
 
 // AgentOption interface for functional options pattern.
@@ -219,4 +220,46 @@ func WithToolResultFormatter(formatter ToolResultFormatterFunc, client ...Client
 		opt.client = client[0]
 	}
 	return opt
+}
+
+type usageHandlerOption struct{ handler func(*UsageMetadata) }
+
+func (o usageHandlerOption) Apply(opts *AgentOptions) {
+	opts.UsageHandler = o.handler
+}
+
+// WithUsageHandler sets a callback for token usage tracking.
+//
+// Input: handler function called after each AI request
+// Output: AgentOption for configuration
+// Behavior: Invokes handler with usage metadata after each AI API call
+//
+// The handler receives token count information from the AI provider.
+// In tool-calling scenarios, the handler is called multiple times:
+// once for the initial request and once for the synthesis request.
+//
+// Users are responsible for any required synchronization if tracking
+// cumulative usage across concurrent requests.
+//
+// Example:
+//
+//	// Simple logging
+//	agent := ai.Agent(client,
+//		ai.WithUsageHandler(func(usage *ai.UsageMetadata) {
+//			log.Printf("Used %d tokens", usage.TotalTokens)
+//		}),
+//	)
+//
+//	// Track cumulative usage
+//	var totalTokens int
+//	var mu sync.Mutex
+//	agent := ai.Agent(client,
+//		ai.WithUsageHandler(func(usage *ai.UsageMetadata) {
+//			mu.Lock()
+//			defer mu.Unlock()
+//			totalTokens += usage.TotalTokens
+//		}),
+//	)
+func WithUsageHandler(handler func(*UsageMetadata)) AgentOption {
+	return usageHandlerOption{handler: handler}
 }

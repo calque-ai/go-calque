@@ -35,3 +35,19 @@ type ResponseFormat struct {
 	Type   string             `json:"type"`             // "json_object" or "json_schema"
 	Schema *jsonschema.Schema `json:"schema,omitempty"` // JSON schema for validation
 }
+
+// UsageMetadata contains token usage information from AI requests.
+//
+// Tracks the number of tokens consumed by prompts and completions.
+// Useful for monitoring costs and optimizing token usage.
+//
+// Example:
+//
+//	agent := ai.Agent(client, ai.WithUsageHandler(func(usage *ai.UsageMetadata) {
+//		log.Printf("Total tokens: %d", usage.TotalTokens)
+//	}))
+type UsageMetadata struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}

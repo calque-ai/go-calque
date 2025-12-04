@@ -1,3 +1,4 @@
+// Package main demonstrates usage tracking with different AI providers.
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/openai"
 	"github.com/joho/godotenv"
 )
@@ -29,6 +31,9 @@ func main() {
 
 	// Example 3: Cost estimation
 	example3CostEstimation()
+
+	// Example 4: Ollama token tracking
+	example4OllamaTokenTracking()
 }
 
 // Example 1: Simple logging of token usage
@@ -180,4 +185,39 @@ func example3CostEstimation() {
 	}
 
 	fmt.Printf("\nTotal estimated cost: $%.6f\n\n", totalCost)
+}
+
+// Example 4: Ollama token tracking
+func example4OllamaTokenTracking() {
+	fmt.Println("=== Example 4: Ollama Token Tracking ===")
+
+	// Create Ollama client (connects to localhost:11434 by default)
+	client, err := ollama.New("llama3.2:1b")
+	if err != nil {
+		log.Fatal("Failed to create Ollama provider:", err)
+	}
+
+	agent := ai.Agent(client,
+		ai.WithUsageHandler(func(usage *ai.UsageMetadata) {
+			fmt.Printf("Token Usage:\n")
+			fmt.Printf("  Prompt tokens: %d\n", usage.PromptTokens)
+			fmt.Printf("  Completion tokens: %d\n", usage.CompletionTokens)
+			fmt.Printf("  Total tokens: %d\n", usage.TotalTokens)
+		}),
+	)
+
+	flow := calque.NewFlow().Use(agent)
+
+	// Make a request
+	question := "Explain what a neural network is in one sentence."
+	fmt.Printf("\nQuestion: %s\n", question)
+
+	var output string
+	err = flow.Run(context.Background(), question, &output)
+	if err != nil {
+		log.Printf("Request failed: %v", err)
+		return
+	}
+
+	fmt.Printf("Response: %s\n", output)
 }
