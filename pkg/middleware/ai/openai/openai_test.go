@@ -131,8 +131,8 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("expected API key %s, got %s", testKey, config.APIKey)
 	}
 
-	if config.Temperature == nil || *config.Temperature != 0.7 {
-		t.Errorf("expected temperature 0.7, got %v", config.Temperature)
+	if config.Temperature == nil || *config.Temperature != 1.0 {
+		t.Errorf("expected temperature 1.0, got %v", config.Temperature)
 	}
 
 	if config.Stream == nil || !*config.Stream {
