@@ -32,9 +32,10 @@ import (
 //	client, _ := ollama.New("llama3.2")
 //	agent := ai.Agent(client)
 type Client struct {
-	client *api.Client
-	model  string
-	config *Config
+	client    *api.Client
+	model     string
+	config    *Config
+	lastUsage *ai.UsageMetadata
 }
 
 // Config holds Ollama-specific configuration.
@@ -213,7 +214,7 @@ func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Execute the request with the configured chat
-	return o.executeRequest(config, r, w)
+	return o.executeRequest(config, r, w, opts)
 }
 
 // buildRequestConfig creates configuration for the request
@@ -237,10 +238,18 @@ func (o *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.Respon
 	}, nil
 }
 
+// reportUsage invokes the usage handler if present
+func (o *Client) reportUsage(opts *ai.AgentOptions) {
+	if o.lastUsage != nil && opts != nil && opts.UsageHandler != nil {
+		opts.UsageHandler(o.lastUsage)
+	}
+}
+
 // executeRequest executes the configured request
-func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *calque.Response) error {
+func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	var fullResponse strings.Builder
 	var toolCalls []api.ToolCall
+	var promptTokens, completionTokens int
 
 	// Determine if we need to buffer the response
 	shouldBuffer := len(config.ChatRequest.Tools) > 0 || config.ChatRequest.Format != nil
@@ -249,6 +258,14 @@ func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 		// Collect tool calls
 		if len(resp.Message.ToolCalls) > 0 {
 			toolCalls = append(toolCalls, resp.Message.ToolCalls...)
+		}
+
+		// Capture token counts
+		if resp.PromptEvalCount > 0 {
+			promptTokens = resp.PromptEvalCount
+		}
+		if resp.EvalCount > 0 {
+			completionTokens = resp.EvalCount
 		}
 
 		if shouldBuffer {
@@ -267,6 +284,18 @@ func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 	if err != nil {
 		return fmt.Errorf("failed to chat with ollama: %w", err)
 	}
+
+	// Capture usage metadata
+	if promptTokens > 0 || completionTokens > 0 {
+		o.lastUsage = &ai.UsageMetadata{
+			PromptTokens:     promptTokens,
+			CompletionTokens: completionTokens,
+			TotalTokens:      promptTokens + completionTokens,
+		}
+	}
+
+	// Report usage
+	o.reportUsage(opts)
 
 	// Process tool calls if found
 	if len(toolCalls) > 0 {

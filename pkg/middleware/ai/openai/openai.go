@@ -53,9 +53,10 @@ import (
 //	client, _ := openai.New("gpt-4o")
 //	agent := ai.Agent(client)
 type Client struct {
-	client *openai.Client
-	model  shared.ChatModel
-	config *Config
+	client    *openai.Client
+	model     shared.ChatModel
+	config    *Config
+	lastUsage *ai.UsageMetadata
 }
 
 // Config holds OpenAI-specific configuration.
@@ -161,7 +162,7 @@ func WithConfig(cfg *Config) Option {
 func DefaultConfig() *Config {
 	return &Config{
 		APIKey:      os.Getenv("OPENAI_API_KEY"),
-		Temperature: helpers.PtrOf(float32(0.7)),
+		Temperature: helpers.PtrOf(float32(1.0)),
 		Stream:      helpers.PtrOf(true),
 	}
 }
@@ -238,7 +239,7 @@ func (c *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Execute the request
-	return c.executeRequest(params, r, w)
+	return c.executeRequest(params, r, w, opts)
 }
 
 // buildChatParams creates OpenAI chat completion parameters
@@ -271,20 +272,32 @@ func (c *Client) buildChatParams(input *ai.ClassifiedInput, schema *ai.ResponseF
 }
 
 // executeRequest executes the configured request
-func (c *Client) executeRequest(params openai.ChatCompletionNewParams, r *calque.Request, w *calque.Response) error {
+func (c *Client) executeRequest(params openai.ChatCompletionNewParams, r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	// Determine if we should stream
 	shouldStream := c.config.Stream == nil || *c.config.Stream
 
 	if shouldStream {
-		return c.executeStreamingRequest(params, r, w)
+		return c.executeStreamingRequest(params, r, w, opts)
 	}
 
-	return c.executeNonStreamingRequest(params, r, w)
+	return c.executeNonStreamingRequest(params, r, w, opts)
 
 }
 
+// reportUsage invokes the usage handler if present
+func (c *Client) reportUsage(opts *ai.AgentOptions) {
+	if c.lastUsage != nil && opts != nil && opts.UsageHandler != nil {
+		opts.UsageHandler(c.lastUsage)
+	}
+}
+
 // executeStreamingRequest executes a streaming request
-func (c *Client) executeStreamingRequest(params openai.ChatCompletionNewParams, r *calque.Request, w *calque.Response) (err error) {
+func (c *Client) executeStreamingRequest(params openai.ChatCompletionNewParams, r *calque.Request, w *calque.Response, opts *ai.AgentOptions) (err error) {
+	// Enable stream options to get usage data in streaming mode
+	params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
+		IncludeUsage: openai.Bool(true),
+	}
+
 	// Create streaming request
 	stream := c.client.Chat.Completions.NewStreaming(r.Context, params)
 	defer func() {
@@ -302,6 +315,17 @@ func (c *Client) executeStreamingRequest(params openai.ChatCompletionNewParams, 
 	for stream.Next() {
 		chunk := stream.Current()
 
+		// Capture usage from chunk if present
+		// Note: Usage is typically only present in the final chunk when stream_options.include_usage=true
+		if chunk.Usage.TotalTokens > 0 {
+			c.lastUsage = &ai.UsageMetadata{
+				PromptTokens:     int(chunk.Usage.PromptTokens),
+				CompletionTokens: int(chunk.Usage.CompletionTokens),
+				TotalTokens:      int(chunk.Usage.TotalTokens),
+			}
+		}
+
+		// Skip chunks with no choices (e.g., final usage-only chunk)
 		if len(chunk.Choices) == 0 {
 			continue
 		}
@@ -317,6 +341,9 @@ func (c *Client) executeStreamingRequest(params openai.ChatCompletionNewParams, 
 	if err := stream.Err(); err != nil {
 		return fmt.Errorf("failed to receive stream response: %w", err)
 	}
+
+	// Report usage before finalizing
+	c.reportUsage(opts)
 
 	// Finalize accumulated tool calls
 	return c.finalizeToolCalls(toolCalls, w)
@@ -381,7 +408,7 @@ func (c *Client) finalizeToolCalls(toolCalls map[int]*openai.ChatCompletionMessa
 }
 
 // executeNonStreamingRequest executes a non-streaming request
-func (c *Client) executeNonStreamingRequest(params openai.ChatCompletionNewParams, r *calque.Request, w *calque.Response) error {
+func (c *Client) executeNonStreamingRequest(params openai.ChatCompletionNewParams, r *calque.Request, w *calque.Response, opts *ai.AgentOptions) error {
 	// Create request
 	response, err := c.client.Chat.Completions.New(r.Context, params)
 	if err != nil {
@@ -391,6 +418,18 @@ func (c *Client) executeNonStreamingRequest(params openai.ChatCompletionNewParam
 	if len(response.Choices) == 0 {
 		return fmt.Errorf("no response choices returned")
 	}
+
+	// Capture usage metadata
+	if response.Usage.TotalTokens > 0 {
+		c.lastUsage = &ai.UsageMetadata{
+			PromptTokens:     int(response.Usage.PromptTokens),
+			CompletionTokens: int(response.Usage.CompletionTokens),
+			TotalTokens:      int(response.Usage.TotalTokens),
+		}
+	}
+
+	// Report usage
+	c.reportUsage(opts)
 
 	// Process all choices
 	return c.processChoices(response.Choices, w)

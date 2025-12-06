@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
+	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
 func TestIsMultimodalJSON(t *testing.T) {
@@ -277,5 +278,196 @@ func TestClassifyInputStreamingMultimodalPriority(t *testing.T) {
 	// Should use streaming multimodal data, not parse JSON
 	if result.Multimodal != opts.MultimodalData {
 		t.Error("ClassifyInput() should use streaming multimodal data when both are present")
+	}
+}
+
+func TestGetSchema(t *testing.T) {
+	tests := []struct {
+		name           string
+		opts           *AgentOptions
+		expectedSchema *ResponseFormat
+		expectNil      bool
+	}{
+		{
+			name:      "nil options",
+			opts:      nil,
+			expectNil: true,
+		},
+		{
+			name:      "options without schema",
+			opts:      &AgentOptions{},
+			expectNil: true,
+		},
+		{
+			name: "options with json_object schema",
+			opts: &AgentOptions{
+				Schema: &ResponseFormat{
+					Type: "json_object",
+				},
+			},
+			expectedSchema: &ResponseFormat{
+				Type: "json_object",
+			},
+			expectNil: false,
+		},
+		{
+			name: "options with json_schema",
+			opts: &AgentOptions{
+				Schema: &ResponseFormat{
+					Type:   "json_schema",
+					Schema: nil,
+				},
+			},
+			expectedSchema: &ResponseFormat{
+				Type:   "json_schema",
+				Schema: nil,
+			},
+			expectNil: false,
+		},
+		{
+			name: "options with other fields but no schema",
+			opts: &AgentOptions{
+				Tools: []tools.Tool{
+					tools.Simple("test", "test tool", func(s string) string { return s }),
+				},
+			},
+			expectNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetSchema(tt.opts)
+
+			if tt.expectNil {
+				if result != nil {
+					t.Errorf("GetSchema() = %v, want nil", result)
+				}
+				return
+			}
+
+			if result == nil {
+				t.Error("GetSchema() should not be nil")
+				return
+			}
+
+			if result.Type != tt.expectedSchema.Type {
+				t.Errorf("GetSchema() Type = %v, want %v", result.Type, tt.expectedSchema.Type)
+			}
+
+			// For pointer equality check when we expect the same object
+			if result != tt.opts.Schema {
+				t.Error("GetSchema() should return the exact schema object from opts")
+			}
+		})
+	}
+}
+
+func TestGetTools(t *testing.T) {
+	tool1 := tools.Simple("tool1", "First tool", func(s string) string { return s })
+	tool2 := tools.Simple("tool2", "Second tool", func(s string) string { return s })
+
+	tests := []struct {
+		name        string
+		opts        *AgentOptions
+		expectedLen int
+		expectNil   bool
+	}{
+		{
+			name:      "nil options",
+			opts:      nil,
+			expectNil: true,
+		},
+		{
+			name:      "options without tools",
+			opts:      &AgentOptions{},
+			expectNil: true,
+		},
+		{
+			name: "options with single tool",
+			opts: &AgentOptions{
+				Tools: []tools.Tool{tool1},
+			},
+			expectedLen: 1,
+			expectNil:   false,
+		},
+		{
+			name: "options with multiple tools",
+			opts: &AgentOptions{
+				Tools: []tools.Tool{tool1, tool2},
+			},
+			expectedLen: 2,
+			expectNil:   false,
+		},
+		{
+			name: "options with empty tools slice",
+			opts: &AgentOptions{
+				Tools: []tools.Tool{},
+			},
+			expectedLen: 0,
+			expectNil:   false,
+		},
+		{
+			name: "options with other fields but no tools",
+			opts: &AgentOptions{
+				Schema: &ResponseFormat{Type: "json_object"},
+			},
+			expectNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetTools(tt.opts)
+
+			if tt.expectNil {
+				if result != nil {
+					t.Errorf("GetTools() = %v, want nil", result)
+				}
+				return
+			}
+
+			if result == nil {
+				t.Error("GetTools() should not be nil")
+				return
+			}
+
+			if len(result) != tt.expectedLen {
+				t.Errorf("GetTools() length = %v, want %v", len(result), tt.expectedLen)
+			}
+
+			// Verify it's the exact same slice (pointer equality)
+			if tt.opts != nil && len(tt.opts.Tools) > 0 {
+				if &result[0] != &tt.opts.Tools[0] {
+					t.Error("GetTools() should return the exact tools slice from opts")
+				}
+			}
+		})
+	}
+}
+
+func TestGetSchemaAndGetToolsTogether(t *testing.T) {
+	// Test that both functions work correctly on the same options object
+	tool := tools.Simple("test", "test", func(s string) string { return s })
+	schema := &ResponseFormat{Type: "json_object"}
+
+	opts := &AgentOptions{
+		Tools:  []tools.Tool{tool},
+		Schema: schema,
+	}
+
+	resultTools := GetTools(opts)
+	resultSchema := GetSchema(opts)
+
+	if resultTools == nil {
+		t.Error("GetTools() should return tools")
+	} else if len(resultTools) != 1 {
+		t.Errorf("GetTools() length = %v, want 1", len(resultTools))
+	}
+
+	if resultSchema == nil {
+		t.Error("GetSchema() should return schema")
+	} else if resultSchema.Type != "json_object" {
+		t.Errorf("GetSchema() Type = %v, want json_object", resultSchema.Type)
 	}
 }
