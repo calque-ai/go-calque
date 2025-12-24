@@ -106,20 +106,20 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 		}
 
 		if err := c.connect(ctx); err != nil {
-			return c.handleError(fmt.Errorf("failed to connect for tool %s: %w", name, err))
+			return c.handleError(calque.WrapErr(ctx, err, fmt.Sprintf("failed to connect for tool %s", name)))
 		}
 
 		// Read input as tool arguments
 		var argsJSON []byte
 		if err := calque.Read(req, &argsJSON); err != nil {
-			return c.handleError(fmt.Errorf("failed to read tool arguments: %w", err))
+			return c.handleError(calque.WrapErr(ctx, err, "failed to read tool arguments"))
 		}
 
 		// Parse arguments
 		var args map[string]any
 		if len(argsJSON) > 0 {
 			if err := json.Unmarshal(argsJSON, &args); err != nil {
-				return c.handleError(fmt.Errorf("invalid tool arguments JSON: %w", err))
+				return c.handleError(calque.WrapErr(ctx, err, "invalid tool arguments JSON"))
 			}
 		}
 
@@ -131,7 +131,7 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 
 		result, err := c.session.CallTool(ctx, params)
 		if err != nil {
-			return c.handleError(fmt.Errorf("tool %s failed: %w", name, err))
+			return c.handleError(calque.WrapErr(ctx, err, fmt.Sprintf("tool %s failed", name)))
 		}
 
 		// Register progress callbacks if provided
@@ -155,7 +155,7 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 			if errorMessage == "" {
 				errorMessage = "unknown error (no text content in error response)"
 			}
-			return c.handleError(fmt.Errorf("tool %s returned error: %s", name, errorMessage))
+			return c.handleError(calque.NewErr(ctx, fmt.Sprintf("tool %s returned error: %s", name, errorMessage)))
 		}
 
 		// Collect all content and write in one operation for efficiency
@@ -165,7 +165,7 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 		if result.StructuredContent != nil {
 			structuredJSON, err := json.Marshal(result.StructuredContent)
 			if err != nil {
-				return c.handleError(fmt.Errorf("failed to marshal structured content: %w", err))
+				return c.handleError(calque.WrapErr(ctx, err, "failed to marshal structured content"))
 			}
 			output.Write(structuredJSON)
 		} else {
@@ -250,7 +250,7 @@ func (c *Client) ResourceTemplate(uriTemplates ...string) calque.Handler {
 		var templateVars map[string]string
 		if len(input) > 0 {
 			if err := json.Unmarshal(input, &templateVars); err != nil {
-				return nil, fmt.Errorf("invalid template variables JSON: %w", err)
+				return nil, calque.NewErr(context.Background(), fmt.Sprintf("invalid template variables JSON: %v", err))
 			}
 		}
 
@@ -262,12 +262,12 @@ func (c *Client) ResourceTemplate(uriTemplates ...string) calque.Handler {
 				// Security: Clean path component to prevent traversal
 				cleanValue := filepath.Clean(value)
 				if cleanValue != value || strings.Contains(cleanValue, "..") {
-					return nil, fmt.Errorf("invalid template variable %s: path traversal not allowed", key)
+					return nil, calque.NewErr(context.Background(), fmt.Sprintf("invalid template variable %s: path traversal not allowed", key))
 				}
 
 				// Security: Basic URI component validation
 				if strings.ContainsAny(value, "\n\r\t") {
-					return nil, fmt.Errorf("invalid template variable %s: control characters not allowed", key)
+					return nil, calque.NewErr(context.Background(), fmt.Sprintf("invalid template variable %s: control characters not allowed", key))
 				}
 
 				resolvedURI = strings.ReplaceAll(resolvedURI, "{"+key+"}", value)
@@ -275,9 +275,9 @@ func (c *Client) ResourceTemplate(uriTemplates ...string) calque.Handler {
 
 			// Security: Validate final resolved URI
 			if parsedURI, err := url.Parse(resolvedURI); err != nil {
-				return nil, fmt.Errorf("invalid resolved URI: %w", err)
+				return nil, calque.WrapErr(context.Background(), err, "invalid resolved URI")
 			} else if parsedURI.Scheme == "" {
-				return nil, fmt.Errorf("resolved URI missing scheme: %s", resolvedURI)
+				return nil, calque.NewErr(context.Background(), fmt.Sprintf("resolved URI missing scheme: %s", resolvedURI))
 			}
 
 			resolvedURIs = append(resolvedURIs, resolvedURI)
@@ -322,20 +322,20 @@ func (c *Client) Prompt(name string) calque.Handler {
 		}
 
 		if err := c.connect(ctx); err != nil {
-			return c.handleError(fmt.Errorf("failed to connect for prompt %s: %w", name, err))
+			return c.handleError(calque.WrapErr(ctx, err, fmt.Sprintf("failed to connect for prompt %s", name)))
 		}
 
 		// Read input as template arguments
 		var argsJSON []byte
 		if err := calque.Read(req, &argsJSON); err != nil {
-			return c.handleError(fmt.Errorf("failed to read prompt arguments: %w", err))
+			return c.handleError(calque.WrapErr(ctx, err, "failed to read prompt arguments"))
 		}
 
 		// Parse arguments
 		var args map[string]string
 		if len(argsJSON) > 0 {
 			if err := json.Unmarshal(argsJSON, &args); err != nil {
-				return c.handleError(fmt.Errorf("invalid prompt arguments JSON: %w", err))
+				return c.handleError(calque.WrapErr(ctx, err, "invalid prompt arguments JSON"))
 			}
 		}
 
@@ -347,7 +347,7 @@ func (c *Client) Prompt(name string) calque.Handler {
 
 		result, err := c.session.GetPrompt(ctx, params)
 		if err != nil {
-			return c.handleError(fmt.Errorf("prompt %s failed: %w", name, err))
+			return c.handleError(calque.WrapErr(ctx, err, fmt.Sprintf("prompt %s failed", name)))
 		}
 
 		// Write prompt messages
@@ -399,7 +399,7 @@ func (c *Client) SubscribeToResource(uri string, onChange func(*ResourceUpdatedN
 		}
 
 		if err := c.connect(ctx); err != nil {
-			return c.handleError(fmt.Errorf("failed to connect for resource subscription %s: %w", uri, err))
+			return c.handleError(calque.WrapErr(ctx, err, fmt.Sprintf("failed to connect for resource subscription %s", uri)))
 		}
 
 		// Register the subscription callback
@@ -417,13 +417,13 @@ func (c *Client) SubscribeToResource(uri string, onChange func(*ResourceUpdatedN
 			c.mu.Lock()
 			delete(c.subscriptions, uri)
 			c.mu.Unlock()
-			return c.handleError(fmt.Errorf("failed to subscribe to resource %s: %w", uri, err))
+			return c.handleError(calque.WrapErr(ctx, err, fmt.Sprintf("failed to subscribe to resource %s", uri)))
 		}
 
 		// Pass through the input
 		var input []byte
 		if err := calque.Read(req, &input); err != nil {
-			return c.handleError(fmt.Errorf("failed to read input: %w", err))
+			return c.handleError(calque.WrapErr(ctx, err, "failed to read input"))
 		}
 
 		return calque.Write(res, input)
@@ -447,42 +447,42 @@ func (c *Client) SubscribeToResource(uri string, onChange func(*ResourceUpdatedN
 //	flow.Use(handler) // Input: completion request → Output: suggestion list
 func (c *Client) Complete() calque.Handler {
 	handler := calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		if !c.completionEnabled {
-			return c.handleError(fmt.Errorf("completion not enabled on client"))
-		}
-
-		// Establish connection if needed
 		ctx := req.Context
 		if ctx == nil {
 			ctx = context.Background()
 		}
 
+		if !c.completionEnabled {
+			return c.handleError(calque.NewErr(ctx, "completion not enabled on client"))
+		}
+
+		// Establish connection if needed
 		if err := c.connect(ctx); err != nil {
-			return c.handleError(fmt.Errorf("failed to connect for completion: %w", err))
+			return c.handleError(calque.WrapErr(ctx, err, "failed to connect for completion"))
 		}
 
 		// Read completion request
 		var requestJSON []byte
 		if err := calque.Read(req, &requestJSON); err != nil {
-			return c.handleError(fmt.Errorf("failed to read completion request: %w", err))
+			return c.handleError(calque.WrapErr(ctx, err, "failed to read completion request"))
 		}
 
 		// Parse completion parameters
 		var params mcp.CompleteParams
 		if err := json.Unmarshal(requestJSON, &params); err != nil {
-			return c.handleError(fmt.Errorf("invalid completion request JSON: %w", err))
+			return c.handleError(calque.WrapErr(ctx, err, "invalid completion request JSON"))
 		}
 
 		// Call completion
 		result, err := c.session.Complete(ctx, &params)
 		if err != nil {
-			return c.handleError(fmt.Errorf("completion failed: %w", err))
+			return c.handleError(calque.WrapErr(ctx, err, "completion failed"))
 		}
 
 		// Write completion results
 		resultJSON, err := json.Marshal(result)
 		if err != nil {
-			return c.handleError(fmt.Errorf("failed to marshal completion result: %w", err))
+			return c.handleError(calque.WrapErr(ctx, err, "failed to marshal completion result"))
 		}
 
 		return calque.Write(res, resultJSON)
@@ -506,13 +506,13 @@ func (c *Client) multiResourceHandler(getURIs func([]byte) ([]string, error), de
 		}
 
 		if err := c.connect(ctx); err != nil {
-			return c.handleError(fmt.Errorf("failed to connect for %s: %w", description, err))
+			return c.handleError(calque.WrapErr(ctx, err, fmt.Sprintf("failed to connect for %s", description)))
 		}
 
 		// Read original input
 		var input []byte
 		if err := calque.Read(req, &input); err != nil {
-			return c.handleError(fmt.Errorf("failed to read input: %w", err))
+			return c.handleError(calque.WrapErr(ctx, err, "failed to read input"))
 		}
 
 		// Get the URIs (either static or resolved from templates)

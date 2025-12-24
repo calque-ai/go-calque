@@ -4,8 +4,8 @@
 package memory
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strings"
 	"unicode"
@@ -133,7 +133,7 @@ func trimToTokenLimit(content []byte, maxTokens int) []byte {
 }
 
 // getContext retrieves context data from store
-func (cm *ContextMemory) getContext(key string) (*contextData, error) {
+func (cm *ContextMemory) getContext(ctx context.Context, key string) (*contextData, error) {
 	data, err := cm.store.Get(key)
 	if err != nil {
 		return nil, err
@@ -143,19 +143,19 @@ func (cm *ContextMemory) getContext(key string) (*contextData, error) {
 		return nil, nil // No context found
 	}
 
-	var ctx contextData
-	if err := json.Unmarshal(data, &ctx); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal context: %w", err)
+	var ctxData contextData
+	if err := json.Unmarshal(data, &ctxData); err != nil {
+		return nil, calque.WrapErr(ctx, err, "failed to unmarshal context")
 	}
 
-	return &ctx, nil
+	return &ctxData, nil
 }
 
 // saveContext stores context data to store
-func (cm *ContextMemory) saveContext(key string, ctx *contextData) error {
-	data, err := json.Marshal(ctx)
+func (cm *ContextMemory) saveContext(ctx context.Context, key string, ctxData *contextData) error {
+	data, err := json.Marshal(ctxData)
 	if err != nil {
-		return fmt.Errorf("failed to marshal context: %w", err)
+		return calque.WrapErr(ctx, err, "failed to marshal context")
 	}
 
 	return cm.store.Set(key, data)
@@ -169,21 +169,21 @@ func (cm *ContextMemory) saveContext(key string, ctx *contextData) error {
 //
 // Example:
 //
-//	content, err := mem.GetContext("session1")
+//	content, err := mem.GetContext(ctx, "session1")
 //	if err == nil { fmt.Printf("Context: %s", content) }
-func (cm *ContextMemory) GetContext(key string) ([]byte, error) {
-	ctx, err := cm.getContext(key)
+func (cm *ContextMemory) GetContext(ctx context.Context, key string) ([]byte, error) {
+	ctxData, err := cm.getContext(ctx, key)
 	if err != nil {
 		return nil, err
 	}
 
-	if ctx == nil {
+	if ctxData == nil {
 		return nil, nil
 	}
 
 	// Return copy to prevent external modification
-	result := make([]byte, len(ctx.Content))
-	copy(result, ctx.Content)
+	result := make([]byte, len(ctxData.Content))
+	copy(result, ctxData.Content)
 	return result, nil
 }
 
@@ -198,31 +198,31 @@ func (cm *ContextMemory) GetContext(key string) ([]byte, error) {
 //
 // Example:
 //
-//	err := mem.AddToContext("session1", []byte("Hello world"), 1000)
-func (cm *ContextMemory) AddToContext(key string, content []byte, maxTokens int) error {
+//	err := mem.AddToContext(ctx, "session1", []byte("Hello world"), 1000)
+func (cm *ContextMemory) AddToContext(ctx context.Context, key string, content []byte, maxTokens int) error {
 	// Get or create context
-	ctx, err := cm.getContext(key)
+	ctxData, err := cm.getContext(ctx, key)
 	if err != nil {
 		return err
 	}
 
-	if ctx == nil {
-		ctx = &contextData{
+	if ctxData == nil {
+		ctxData = &contextData{
 			MaxTokens: maxTokens,
 			Content:   make([]byte, 0),
 		}
 	}
 
 	// Update max tokens if different
-	ctx.MaxTokens = maxTokens
+	ctxData.MaxTokens = maxTokens
 
 	// Append new content
-	ctx.Content = append(ctx.Content, content...)
+	ctxData.Content = append(ctxData.Content, content...)
 
 	// Trim to token limit
-	ctx.Content = trimToTokenLimit(ctx.Content, maxTokens)
+	ctxData.Content = trimToTokenLimit(ctxData.Content, maxTokens)
 
-	return cm.saveContext(key, ctx)
+	return cm.saveContext(ctx, key, ctxData)
 }
 
 // Clear removes all context for a key.
@@ -246,20 +246,20 @@ func (cm *ContextMemory) Clear(key string) error {
 //
 // Example:
 //
-//	tokens, max, exists, err := mem.Info("session1")
+//	tokens, max, exists, err := mem.Info(ctx, "session1")
 //	if exists { fmt.Printf("%d/%d tokens", tokens, max) }
-func (cm *ContextMemory) Info(key string) (tokenCount, maxTokens int, exists bool, err error) {
-	ctx, err := cm.getContext(key)
+func (cm *ContextMemory) Info(ctx context.Context, key string) (tokenCount, maxTokens int, exists bool, err error) {
+	ctxData, err := cm.getContext(ctx, key)
 	if err != nil {
 		return 0, 0, false, err
 	}
 
-	if ctx == nil {
+	if ctxData == nil {
 		exists = cm.store.Exists(key)
 		return 0, 0, exists, nil
 	}
 
-	return approximateTokenCount(ctx.Content), ctx.MaxTokens, true, nil
+	return approximateTokenCount(ctxData.Content), ctxData.MaxTokens, true, nil
 }
 
 // ListKeys returns all active context keys.
@@ -296,18 +296,18 @@ func (cm *ContextMemory) Input(key string, maxTokens int) calque.Handler {
 		var input string
 		err := calque.Read(req, &input)
 		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
+			return calque.WrapErr(req.Context, err, "failed to read input")
 		}
 
 		currentInput := strings.TrimSpace(input)
 		if currentInput == "" {
-			return fmt.Errorf("empty input for context")
+			return calque.NewErr(req.Context, "empty input for context")
 		}
 
 		// Get existing context
-		existingContext, err := cm.GetContext(key)
+		existingContext, err := cm.GetContext(req.Context, key)
 		if err != nil {
-			return fmt.Errorf("failed to get context: %w", err)
+			return calque.WrapErr(req.Context, err, "failed to get context")
 		}
 
 		// Build full context
@@ -323,8 +323,8 @@ func (cm *ContextMemory) Input(key string, maxTokens int) calque.Handler {
 		fullContext.WriteString(currentInput)
 
 		// Store current input in sliding window
-		if err := cm.AddToContext(key, []byte(currentInput+"\n"), maxTokens); err != nil {
-			return fmt.Errorf("failed to add to context: %w", err)
+		if err := cm.AddToContext(req.Context, key, []byte(currentInput+"\n"), maxTokens); err != nil {
+			return calque.WrapErr(req.Context, err, "failed to add to context")
 		}
 
 		// Write full context to output
@@ -355,14 +355,14 @@ func (cm *ContextMemory) Output(key string, maxTokens int) calque.Handler {
 		// Stream through to output
 		_, err := io.Copy(res.Data, teeReader)
 		if err != nil {
-			return fmt.Errorf("failed to stream response: %w", err)
+			return calque.WrapErr(req.Context, err, "failed to stream response")
 		}
 
 		// Add response to context window
 		response := responseBuffer.String()
 		if response != "" {
-			if err := cm.AddToContext(key, []byte("Assistant: "+response+"\n"), maxTokens); err != nil {
-				return fmt.Errorf("failed to add response to context: %w", err)
+			if err := cm.AddToContext(req.Context, key, []byte("Assistant: "+response+"\n"), maxTokens); err != nil {
+				return calque.WrapErr(req.Context, err, "failed to add response to context")
 			}
 		}
 

@@ -1,13 +1,21 @@
 package helpers
 
 import (
+	"context"
 	"errors"
 	"testing"
+
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 func TestWrapError(t *testing.T) {
+	ctx := context.Background()
+	ctx = calque.WithTraceID(ctx, "calque-trace-test-wrap-error")
+	ctx = calque.WithRequestID(ctx, "calque-req-test-wrap-error")
+
 	tests := []struct {
 		name     string
+		ctx      context.Context
 		err      error
 		message  string
 		expected string
@@ -15,6 +23,7 @@ func TestWrapError(t *testing.T) {
 	}{
 		{
 			name:     "wrap non-nil error",
+			ctx:      ctx,
 			err:      errors.New("original error"),
 			message:  "failed to process",
 			expected: "failed to process: original error",
@@ -22,6 +31,7 @@ func TestWrapError(t *testing.T) {
 		},
 		{
 			name:     "wrap nil error",
+			ctx:      ctx,
 			err:      nil,
 			message:  "failed to process",
 			expected: "",
@@ -29,9 +39,18 @@ func TestWrapError(t *testing.T) {
 		},
 		{
 			name:     "wrap with empty message",
+			ctx:      ctx,
 			err:      errors.New("original error"),
 			message:  "",
 			expected: ": original error",
+			isNil:    false,
+		},
+		{
+			name:     "wrap without context metadata",
+			ctx:      context.Background(),
+			err:      errors.New("original error"),
+			message:  "failed to process",
+			expected: "failed to process: original error",
 			isNil:    false,
 		},
 	}
@@ -39,7 +58,7 @@ func TestWrapError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := WrapError(tt.err, tt.message)
+			result := WrapError(tt.ctx, tt.err, tt.message)
 
 			if tt.isNil {
 				if result != nil {
@@ -60,13 +79,27 @@ func TestWrapError(t *testing.T) {
 			if tt.err != nil && !errors.Is(result, tt.err) {
 				t.Error("WrapError() should preserve original error for errors.Is()")
 			}
+
+			// Test that calque.Error has context metadata
+			if calqueErr, ok := result.(*calque.Error); ok && tt.ctx != nil {
+				if traceID := calque.TraceID(tt.ctx); traceID != "" {
+					if calqueErr.TraceID() != traceID {
+						t.Errorf("WrapError() traceID = %q, want %q", calqueErr.TraceID(), traceID)
+					}
+				}
+			}
 		})
 	}
 }
 
 func TestWrapErrorf(t *testing.T) {
+	ctx := context.Background()
+	ctx = calque.WithTraceID(ctx, "calque-trace-test-wrap-errorf")
+	ctx = calque.WithRequestID(ctx, "calque-req-test-wrap-errorf")
+
 	tests := []struct {
 		name     string
+		ctx      context.Context
 		err      error
 		format   string
 		args     []interface{}
@@ -75,6 +108,7 @@ func TestWrapErrorf(t *testing.T) {
 	}{
 		{
 			name:     "wrap with formatted message",
+			ctx:      ctx,
 			err:      errors.New("connection failed"),
 			format:   "failed to connect to %s service",
 			args:     []interface{}{"database"},
@@ -83,6 +117,7 @@ func TestWrapErrorf(t *testing.T) {
 		},
 		{
 			name:     "wrap nil error",
+			ctx:      ctx,
 			err:      nil,
 			format:   "failed to connect to %s service",
 			args:     []interface{}{"database"},
@@ -91,6 +126,7 @@ func TestWrapErrorf(t *testing.T) {
 		},
 		{
 			name:     "wrap with multiple args",
+			ctx:      ctx,
 			err:      errors.New("not found"),
 			format:   "user %d in organization %s not found",
 			args:     []interface{}{123, "acme"},
@@ -99,6 +135,7 @@ func TestWrapErrorf(t *testing.T) {
 		},
 		{
 			name:     "wrap with no args",
+			ctx:      ctx,
 			err:      errors.New("timeout"),
 			format:   "operation timed out",
 			args:     []interface{}{},
@@ -110,7 +147,7 @@ func TestWrapErrorf(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := WrapErrorf(tt.err, tt.format, tt.args...)
+			result := WrapErrorf(tt.ctx, tt.err, tt.format, tt.args...)
 
 			if tt.isNil {
 				if result != nil {
@@ -136,42 +173,46 @@ func TestWrapErrorf(t *testing.T) {
 }
 
 func TestNewError(t *testing.T) {
+	ctx := context.Background()
+	ctx = calque.WithTraceID(ctx, "calque-trace-test-new-error")
+	ctx = calque.WithRequestID(ctx, "calque-req-test-new-error")
+
 	tests := []struct {
 		name     string
-		format   string
-		args     []interface{}
+		ctx      context.Context
+		message  string
 		expected string
 	}{
 		{
 			name:     "simple message",
-			format:   "something went wrong",
-			args:     []interface{}{},
+			ctx:      ctx,
+			message:  "something went wrong",
 			expected: "something went wrong",
 		},
 		{
-			name:     "formatted message",
-			format:   "user %d not found",
-			args:     []interface{}{123},
-			expected: "user 123 not found",
-		},
-		{
-			name:     "multiple args",
-			format:   "failed to connect to %s:%d",
-			args:     []interface{}{"localhost", 8080},
-			expected: "failed to connect to localhost:8080",
+			name:     "error message",
+			ctx:      ctx,
+			message:  "user not found",
+			expected: "user not found",
 		},
 		{
 			name:     "empty message",
-			format:   "",
-			args:     []interface{}{},
+			ctx:      ctx,
+			message:  "",
 			expected: "",
+		},
+		{
+			name:     "without context metadata",
+			ctx:      context.Background(),
+			message:  "invalid configuration",
+			expected: "invalid configuration",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := NewError(tt.format, tt.args...)
+			result := NewError(tt.ctx, tt.message)
 
 			if result == nil {
 				t.Fatal("NewError() = nil, want non-nil error")
@@ -179,6 +220,15 @@ func TestNewError(t *testing.T) {
 
 			if result.Error() != tt.expected {
 				t.Errorf("NewError() = %q, want %q", result.Error(), tt.expected)
+			}
+
+			// Test that calque.Error has context metadata
+			if calqueErr, ok := result.(*calque.Error); ok {
+				if traceID := calque.TraceID(tt.ctx); traceID != "" {
+					if calqueErr.TraceID() != traceID {
+						t.Errorf("NewError() traceID = %q, want %q", calqueErr.TraceID(), traceID)
+					}
+				}
 			}
 		})
 	}

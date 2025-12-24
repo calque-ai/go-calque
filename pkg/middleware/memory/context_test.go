@@ -162,7 +162,7 @@ func TestContextMemoryGetContext(t *testing.T) {
 		{
 			name: "existing context",
 			setup: func(cm *ContextMemory) {
-				cm.AddToContext("existing", []byte("test content"), 100)
+				cm.AddToContext(context.Background(), "existing", []byte("test content"), 100)
 			},
 			key:      "existing",
 			expected: []byte("test content"),
@@ -171,7 +171,7 @@ func TestContextMemoryGetContext(t *testing.T) {
 		{
 			name: "empty context",
 			setup: func(cm *ContextMemory) {
-				cm.AddToContext("empty", []byte(""), 100)
+				cm.AddToContext(context.Background(), "empty", []byte(""), 100)
 			},
 			key:      "empty",
 			expected: []byte(""),
@@ -187,7 +187,8 @@ func TestContextMemoryGetContext(t *testing.T) {
 				tt.setup(ctx)
 			}
 
-			got, err := ctx.GetContext(tt.key)
+			ctxBG := context.Background()
+			got, err := ctx.GetContext(ctxBG, tt.key)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetContext() error = %v, wantErr %v", err, tt.wantErr)
@@ -205,9 +206,10 @@ func TestContextMemoryGetContextReturnsCopy(t *testing.T) {
 	ctx := NewContext()
 	original := []byte("original content")
 
-	ctx.AddToContext("test", original, 100)
+	ctxBG := context.Background()
+	ctx.AddToContext(ctxBG, "test", original, 100)
 
-	retrieved, _ := ctx.GetContext("test")
+	retrieved, _ := ctx.GetContext(ctxBG, "test")
 
 	// Modify the retrieved data
 	if len(retrieved) > 0 {
@@ -215,7 +217,7 @@ func TestContextMemoryGetContextReturnsCopy(t *testing.T) {
 	}
 
 	// Original should be unchanged
-	retrievedAgain, _ := ctx.GetContext("test")
+	retrievedAgain, _ := ctx.GetContext(ctxBG, "test")
 	if len(retrievedAgain) > 0 && retrievedAgain[0] == 'X' {
 		t.Errorf("GetContext() should return copy, original data was modified")
 	}
@@ -240,7 +242,7 @@ func TestContextMemoryAddToContext(t *testing.T) {
 		{
 			name: "add to existing context",
 			setup: func(cm *ContextMemory) {
-				cm.AddToContext("existing", []byte("previous content"), 100)
+				cm.AddToContext(context.Background(), "existing", []byte("previous content"), 100)
 			},
 			key:       "existing",
 			content:   []byte("new content"),
@@ -271,7 +273,8 @@ func TestContextMemoryAddToContext(t *testing.T) {
 				tt.setup(ctx)
 			}
 
-			err := ctx.AddToContext(tt.key, tt.content, tt.maxTokens)
+			ctxBG := context.Background()
+			err := ctx.AddToContext(ctxBG, tt.key, tt.content, tt.maxTokens)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddToContext() error = %v, wantErr %v", err, tt.wantErr)
@@ -280,7 +283,7 @@ func TestContextMemoryAddToContext(t *testing.T) {
 
 			// Verify content was added
 			if !tt.wantErr {
-				retrieved, _ := ctx.GetContext(tt.key)
+				retrieved, _ := ctx.GetContext(ctxBG, tt.key)
 				if retrieved == nil {
 					t.Error("AddToContext() did not store content")
 				}
@@ -299,10 +302,11 @@ func TestContextMemoryClear(t *testing.T) {
 	ctx := NewContext()
 
 	// Add some content
-	ctx.AddToContext("test", []byte("test content"), 100)
+	ctxBG := context.Background()
+	ctx.AddToContext(ctxBG, "test", []byte("test content"), 100)
 
 	// Verify it exists
-	content, _ := ctx.GetContext("test")
+	content, _ := ctx.GetContext(ctxBG, "test")
 	if content == nil {
 		t.Error("Expected content to exist before clear")
 	}
@@ -314,7 +318,7 @@ func TestContextMemoryClear(t *testing.T) {
 	}
 
 	// Verify it's gone
-	content, _ = ctx.GetContext("test")
+	content, _ = ctx.GetContext(ctxBG, "test")
 	if content != nil {
 		t.Error("Expected content to be cleared")
 	}
@@ -341,7 +345,7 @@ func TestContextMemoryInfo(t *testing.T) {
 		{
 			name: "existing context",
 			setup: func(cm *ContextMemory) {
-				cm.AddToContext("existing", []byte("hello world test"), 100)
+				cm.AddToContext(context.Background(), "existing", []byte("hello world test"), 100)
 			},
 			key:                "existing",
 			expectedTokenCount: 3, // Approximate for "hello world test"
@@ -352,7 +356,7 @@ func TestContextMemoryInfo(t *testing.T) {
 		{
 			name: "empty context",
 			setup: func(cm *ContextMemory) {
-				cm.AddToContext("empty", []byte(""), 50)
+				cm.AddToContext(context.Background(), "empty", []byte(""), 50)
 			},
 			key:                "empty",
 			expectedTokenCount: 0,
@@ -370,7 +374,8 @@ func TestContextMemoryInfo(t *testing.T) {
 				tt.setup(ctx)
 			}
 
-			tokenCount, maxTokens, exists, err := ctx.Info(tt.key)
+			ctxBG := context.Background()
+			tokenCount, maxTokens, exists, err := ctx.Info(ctxBG, tt.key)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Info() error = %v, wantErr %v", err, tt.wantErr)
@@ -403,9 +408,10 @@ func TestContextMemoryListKeys(t *testing.T) {
 	}
 
 	// Add some contexts
-	ctx.AddToContext("ctx1", []byte("content1"), 100)
-	ctx.AddToContext("ctx2", []byte("content2"), 100)
-	ctx.AddToContext("ctx3", []byte("content3"), 100)
+	ctxBG := context.Background()
+	ctx.AddToContext(ctxBG, "ctx1", []byte("content1"), 100)
+	ctx.AddToContext(ctxBG, "ctx2", []byte("content2"), 100)
+	ctx.AddToContext(ctxBG, "ctx3", []byte("content3"), 100)
 
 	keys = ctx.ListKeys()
 	if len(keys) != 3 {
@@ -448,7 +454,7 @@ func TestContextMemoryInput(t *testing.T) {
 		{
 			name: "input with existing context",
 			setup: func(cm *ContextMemory) {
-				cm.AddToContext("existing", []byte("Previous content\n"), 100)
+				cm.AddToContext(context.Background(), "existing", []byte("Previous content\n"), 100)
 			},
 			key:            "existing",
 			maxTokens:      100,
@@ -524,7 +530,8 @@ func TestContextMemoryInput(t *testing.T) {
 
 			// Verify input was added to context
 			if !tt.wantErr {
-				stored, _ := ctx.GetContext(tt.key)
+				ctxBG := context.Background()
+				stored, _ := ctx.GetContext(ctxBG, tt.key)
 				if stored == nil {
 					t.Error("Input() did not store content in context")
 				}
@@ -554,7 +561,7 @@ func TestContextMemoryOutput(t *testing.T) {
 		{
 			name: "capture response with existing context",
 			setup: func(cm *ContextMemory) {
-				cm.AddToContext("existing", []byte("Previous context\n"), 100)
+				cm.AddToContext(context.Background(), "existing", []byte("Previous context\n"), 100)
 			},
 			key:            "existing",
 			maxTokens:      100,
@@ -607,7 +614,8 @@ func TestContextMemoryOutput(t *testing.T) {
 
 			// Verify response was added to context (only if non-empty)
 			if !tt.wantErr && tt.input != "" {
-				stored, _ := ctx.GetContext(tt.key)
+				ctxBG := context.Background()
+				stored, _ := ctx.GetContext(ctxBG, tt.key)
 				if stored == nil {
 					t.Error("Output() did not store response in context")
 				}
@@ -685,7 +693,8 @@ func TestContextMemoryFullWorkflow(t *testing.T) {
 	}
 
 	// Verify context info
-	tokenCount, maxTok, exists, err := ctx.Info(key)
+	ctxBG := context.Background()
+	tokenCount, maxTok, exists, err := ctx.Info(ctxBG, key)
 	if err != nil {
 		t.Errorf("Info error = %v", err)
 	}
@@ -722,7 +731,8 @@ func TestContextMemoryErrorHandling(t *testing.T) {
 	t.Run("add to context with store set error", func(t *testing.T) {
 		ctx := NewContextWithStore(&errorStore{setError: errors.New("set failed")})
 
-		err := ctx.AddToContext("test", []byte("content"), 100)
+		ctxBG := context.Background()
+		err := ctx.AddToContext(ctxBG, "test", []byte("content"), 100)
 		if err == nil {
 			t.Error("Expected error from store set failure")
 		}
@@ -751,7 +761,8 @@ func TestContextMemoryErrorHandling(t *testing.T) {
 		store.Set("bad-json", []byte("invalid json"))
 
 		ctx := NewContextWithStore(store)
-		_, err := ctx.getContext("bad-json")
+		ctxBG := context.Background()
+		_, err := ctx.getContext(ctxBG, "bad-json")
 
 		if err == nil {
 			t.Error("Expected error from malformed JSON")

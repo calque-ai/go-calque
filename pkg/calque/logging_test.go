@@ -109,15 +109,15 @@ func TestLogInfo(t *testing.T) {
 	t.Run("with context fields", func(t *testing.T) {
 		handler.Reset()
 		ctx := WithLogger(context.Background(), logger)
-		ctx = WithTraceID(ctx, "trace-123")
-		ctx = WithRequestID(ctx, "req-456")
+		ctx = WithTraceID(ctx, "calque-trace-test-log-info")
+		ctx = WithRequestID(ctx, "calque-req-test-log-info")
 
 		LogInfo(ctx, "request started")
 		output := handler.String()
-		if !strings.Contains(output, "trace_id=trace-123") {
+		if !strings.Contains(output, "trace_id=calque-trace-test-log-info") {
 			t.Errorf("expected trace_id, got: %s", output)
 		}
-		if !strings.Contains(output, "request_id=req-456") {
+		if !strings.Contains(output, "request_id=calque-req-test-log-info") {
 			t.Errorf("expected request_id, got: %s", output)
 		}
 	})
@@ -207,16 +207,16 @@ func TestLogError(t *testing.T) {
 	t.Run("with context fields", func(t *testing.T) {
 		handler.Reset()
 		ctx := WithLogger(context.Background(), logger)
-		ctx = WithTraceID(ctx, "trace-err")
-		ctx = WithRequestID(ctx, "req-err")
+		ctx = WithTraceID(ctx, "calque-trace-test-log-error")
+		ctx = WithRequestID(ctx, "calque-req-test-log-error")
 
 		err := &testError{msg: "test error"}
 		LogError(ctx, "failed", err)
 		output := handler.String()
-		if !strings.Contains(output, "trace_id=trace-err") {
+		if !strings.Contains(output, "trace_id=calque-trace-test-log-error") {
 			t.Errorf("expected trace_id, got: %s", output)
 		}
-		if !strings.Contains(output, "request_id=req-err") {
+		if !strings.Contains(output, "request_id=calque-req-test-log-error") {
 			t.Errorf("expected request_id, got: %s", output)
 		}
 	})
@@ -234,7 +234,7 @@ func TestLogWith(t *testing.T) {
 	handler := newTestLogHandler(slog.LevelDebug)
 	logger := slog.New(handler)
 	ctx := WithLogger(context.Background(), logger)
-	ctx = WithTraceID(ctx, "trace-with")
+	ctx = WithTraceID(ctx, "calque-trace-test-log-with")
 
 	childLogger := LogWith(ctx, "component", "test")
 
@@ -245,7 +245,7 @@ func TestLogWith(t *testing.T) {
 	if !strings.Contains(output, "component=test") {
 		t.Errorf("expected component=test, got: %s", output)
 	}
-	if !strings.Contains(output, "trace_id=trace-with") {
+	if !strings.Contains(output, "trace_id=calque-trace-test-log-with") {
 		t.Errorf("expected trace_id from context, got: %s", output)
 	}
 }
@@ -254,7 +254,7 @@ func TestLogAttr(t *testing.T) {
 	handler := newTestLogHandler(slog.LevelDebug)
 	logger := slog.New(handler)
 	ctx := WithLogger(context.Background(), logger)
-	ctx = WithTraceID(ctx, "trace-attr")
+	ctx = WithTraceID(ctx, "calque-trace-test-log-attr")
 
 	t.Run("with attributes", func(t *testing.T) {
 		handler.Reset()
@@ -269,7 +269,7 @@ func TestLogAttr(t *testing.T) {
 		if !strings.Contains(output, "count=42") {
 			t.Errorf("expected count=42, got: %s", output)
 		}
-		if !strings.Contains(output, "trace_id=trace-attr") {
+		if !strings.Contains(output, "trace_id=calque-trace-test-log-attr") {
 			t.Errorf("expected trace_id, got: %s", output)
 		}
 	})
@@ -364,8 +364,8 @@ func TestLogLevelFiltering(t *testing.T) {
 func TestAppendContextFields(t *testing.T) {
 	t.Run("appends both trace and request ID", func(t *testing.T) {
 		ctx := context.Background()
-		ctx = WithTraceID(ctx, "t123")
-		ctx = WithRequestID(ctx, "r456")
+		ctx = WithTraceID(ctx, "calque-trace-test-context-fields")
+		ctx = WithRequestID(ctx, "calque-req-test-context-fields")
 
 		args := appendContextFields(ctx, []any{"key", "value"})
 
@@ -377,7 +377,7 @@ func TestAppendContextFields(t *testing.T) {
 
 	t.Run("appends only trace ID when no request ID", func(t *testing.T) {
 		ctx := context.Background()
-		ctx = WithTraceID(ctx, "t123")
+		ctx = WithTraceID(ctx, "calque-trace-test-context-fields-partial")
 
 		args := appendContextFields(ctx, []any{"key", "value"})
 

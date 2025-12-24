@@ -2,6 +2,7 @@
 package grpc
 
 import (
+	"context"
 	"time"
 
 	"google.golang.org/grpc"
@@ -51,13 +52,13 @@ func DefaultConfig(endpoint string) *Config {
 }
 
 // NewClient creates a new gRPC client connection with the given configuration.
-func NewClient(config *Config) (*grpc.ClientConn, error) {
+func NewClient(ctx context.Context, config *Config) (*grpc.ClientConn, error) {
 	if config == nil {
-		return nil, NewInvalidArgumentError("grpc config cannot be nil", nil)
+		return nil, NewInvalidArgumentError(ctx, "grpc config cannot be nil", nil)
 	}
 
 	if config.Endpoint == "" {
-		return nil, NewInvalidArgumentError("grpc endpoint cannot be empty", nil)
+		return nil, NewInvalidArgumentError(ctx, "grpc endpoint cannot be empty", nil)
 	}
 
 	opts := []grpc.DialOption{
@@ -71,27 +72,27 @@ func NewClient(config *Config) (*grpc.ClientConn, error) {
 
 	conn, err := grpc.NewClient(config.Endpoint, opts...)
 	if err != nil {
-		return nil, WrapError(err, "failed to connect to gRPC service", config.Endpoint)
+		return nil, WrapError(ctx, err, "failed to connect to gRPC service", config.Endpoint)
 	}
 
 	return conn, nil
 }
 
 // NewClientWithTLS creates a new gRPC client with TLS credentials.
-func NewClientWithTLS(endpoint string, _, _, caFile string) (*grpc.ClientConn, error) {
+func NewClientWithTLS(ctx context.Context, endpoint string, _, _, caFile string) (*grpc.ClientConn, error) {
 	creds, err := credentials.NewClientTLSFromFile(caFile, "")
 	if err != nil {
-		return nil, WrapError(err, "failed to load TLS credentials", caFile)
+		return nil, WrapError(ctx, err, "failed to load TLS credentials", caFile)
 	}
 
 	config := DefaultConfig(endpoint)
 	config.Credentials = creds
 
-	return NewClient(config)
+	return NewClient(ctx, config)
 }
 
 // CloseConnection safely closes a gRPC connection with timeout.
-func CloseConnection(conn *grpc.ClientConn, timeout time.Duration) error {
+func CloseConnection(ctx context.Context, conn *grpc.ClientConn, timeout time.Duration) error {
 	if conn == nil {
 		return nil
 	}
@@ -104,10 +105,10 @@ func CloseConnection(conn *grpc.ClientConn, timeout time.Duration) error {
 	select {
 	case err := <-done:
 		if err != nil {
-			return WrapError(err, "failed to close gRPC connection")
+			return WrapError(ctx, err, "failed to close gRPC connection")
 		}
 		return err
 	case <-time.After(timeout):
-		return NewDeadlineExceededError("connection close timeout", nil)
+		return NewDeadlineExceededError(ctx, "connection close timeout", nil)
 	}
 }

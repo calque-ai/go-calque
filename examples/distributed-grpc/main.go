@@ -191,7 +191,7 @@ func (s *AIServiceImpl) StreamChat(req *calquepb.AIRequest, stream calquepb.AISe
 			Response: chunk,
 		}
 		if err := stream.Send(resp); err != nil {
-			return grpcerrors.WrapError(err, "failed to send AI response")
+			return grpcerrors.WrapError(stream.Context(), err, "failed to send AI response")
 		}
 
 		// Wait for ticker on all chunks except the last one

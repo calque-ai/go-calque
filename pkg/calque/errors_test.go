@@ -11,8 +11,8 @@ import (
 
 func TestWrapErr(t *testing.T) {
 	ctx := context.Background()
-	ctx = WithTraceID(ctx, "trace-123")
-	ctx = WithRequestID(ctx, "req-456")
+	ctx = WithTraceID(ctx, "calque-trace-test-wrap-err")
+	ctx = WithRequestID(ctx, "calque-req-test-wrap-err")
 	originalErr := errors.New("original error")
 
 	err := WrapErr(ctx, originalErr, "operation failed")
@@ -23,11 +23,11 @@ func TestWrapErr(t *testing.T) {
 	if err.Cause() != originalErr {
 		t.Error("Cause() did not return original error")
 	}
-	if err.TraceID() != "trace-123" {
-		t.Errorf("TraceID() = %q, want %q", err.TraceID(), "trace-123")
+	if err.TraceID() != "calque-trace-test-wrap-err" {
+		t.Errorf("TraceID() = %q, want %q", err.TraceID(), "calque-trace-test-wrap-err")
 	}
-	if err.RequestID() != "req-456" {
-		t.Errorf("RequestID() = %q, want %q", err.RequestID(), "req-456")
+	if err.RequestID() != "calque-req-test-wrap-err" {
+		t.Errorf("RequestID() = %q, want %q", err.RequestID(), "calque-req-test-wrap-err")
 	}
 }
 
@@ -81,8 +81,8 @@ func TestWrapErr_WithoutContextIDs(t *testing.T) {
 
 func TestNewErr(t *testing.T) {
 	ctx := context.Background()
-	ctx = WithTraceID(ctx, "trace-new")
-	ctx = WithRequestID(ctx, "req-new")
+	ctx = WithTraceID(ctx, "calque-trace-test-new-err")
+	ctx = WithRequestID(ctx, "calque-req-test-new-err")
 
 	err := NewErr(ctx, "validation failed")
 
@@ -92,8 +92,8 @@ func TestNewErr(t *testing.T) {
 	if err.Cause() != nil {
 		t.Error("Cause() = non-nil, want nil")
 	}
-	if err.TraceID() != "trace-new" {
-		t.Errorf("TraceID() = %q, want %q", err.TraceID(), "trace-new")
+	if err.TraceID() != "calque-trace-test-new-err" {
+		t.Errorf("TraceID() = %q, want %q", err.TraceID(), "calque-trace-test-new-err")
 	}
 }
 
@@ -189,8 +189,8 @@ func TestError_Tags(t *testing.T) {
 
 func TestError_LogAttrs(t *testing.T) {
 	ctx := context.Background()
-	ctx = WithTraceID(ctx, "trace-log")
-	ctx = WithRequestID(ctx, "req-log")
+	ctx = WithTraceID(ctx, "calque-trace-test-error-log")
+	ctx = WithRequestID(ctx, "calque-req-test-error-log")
 	originalErr := errors.New("base error")
 
 	err := WrapErr(ctx, originalErr, "failed").
@@ -224,7 +224,7 @@ func TestError_LogAttrs(t *testing.T) {
 
 func TestError_LogAttrs_NoCause(t *testing.T) {
 	ctx := context.Background()
-	ctx = WithTraceID(ctx, "trace-log")
+	ctx = WithTraceID(ctx, "calque-trace-test-error-log-no-cause")
 	err := NewErr(ctx, "no cause").
 		Tag(slog.String("key", "value"))
 
@@ -257,7 +257,7 @@ func TestError_Log(t *testing.T) {
 	handler := newTestLogHandler(slog.LevelDebug)
 	logger := slog.New(handler)
 	ctx := WithLogger(context.Background(), logger)
-	ctx = WithTraceID(ctx, "trace-log-test")
+	ctx = WithTraceID(ctx, "calque-trace-test-error-log-with-level")
 
 	originalErr := errors.New("underlying error")
 	err := WrapErr(ctx, originalErr, "operation failed").
@@ -290,7 +290,7 @@ func TestError_LogWithLevel(t *testing.T) {
 
 func TestError_WithMessage(t *testing.T) {
 	ctx := context.Background()
-	ctx = WithTraceID(ctx, "trace-with")
+	ctx = WithTraceID(ctx, "calque-trace-test-error-with-message")
 
 	originalErr := errors.New("base")
 	err1 := WrapErr(ctx, originalErr, "first wrapper").
@@ -304,8 +304,8 @@ func TestError_WithMessage(t *testing.T) {
 	if err2.Cause() != err1 {
 		t.Error("Cause() should be the first error")
 	}
-	if err2.TraceID() != "trace-with" {
-		t.Errorf("TraceID() = %q, want %q", err2.TraceID(), "trace-with")
+	if err2.TraceID() != "calque-trace-test-error-with-message" {
+		t.Errorf("TraceID() = %q, want %q", err2.TraceID(), "calque-trace-test-error-with-message")
 	}
 	if len(err2.Attrs()) != 1 {
 		t.Errorf("Attrs() len = %d, want 1", len(err2.Attrs()))
@@ -340,7 +340,7 @@ func TestError_Is(t *testing.T) {
 
 func TestError_ErrorsAs(t *testing.T) {
 	ctx := context.Background()
-	ctx = WithTraceID(ctx, "trace-as")
+	ctx = WithTraceID(ctx, "calque-trace-test-error-is")
 
 	originalErr := NewErr(ctx, "calque error").
 		Tag(slog.String("key", "value"))

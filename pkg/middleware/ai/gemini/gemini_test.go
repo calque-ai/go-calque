@@ -395,7 +395,8 @@ func TestInputToParts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parts, err := client.inputToParts(tt.input)
+			ctx := context.Background()
+			parts, err := client.inputToParts(ctx, tt.input)
 
 			if tt.expectError {
 				if err == nil {
@@ -612,8 +613,9 @@ func TestBuildRequestConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Mock genai.Client - we can't easily create one without real API key
 			// So we'll test the parts that don't require the actual client
+			ctx := context.Background()
 			if tt.expectError {
-				_, err := client.inputToParts(tt.input)
+				_, err := client.inputToParts(ctx, tt.input)
 				if err == nil {
 					t.Errorf("%s: expected error but got none", tt.description)
 				}
@@ -621,7 +623,7 @@ func TestBuildRequestConfig(t *testing.T) {
 			}
 
 			// Test parts conversion
-			parts, err := client.inputToParts(tt.input)
+			parts, err := client.inputToParts(ctx, tt.input)
 			if err != nil {
 				t.Errorf("%s: inputToParts() error = %v", tt.description, err)
 				return
@@ -795,7 +797,8 @@ func TestChat_Integration(t *testing.T) {
 			}
 
 			// Test parts conversion
-			parts, err := client.inputToParts(input)
+			ctx := context.Background()
+			parts, err := client.inputToParts(ctx, input)
 			if err != nil {
 				t.Errorf("%s: inputToParts() error = %v", tt.description, err)
 				return
@@ -839,7 +842,8 @@ func TestEdgeCases(t *testing.T) {
 			Multimodal: nil,
 		}
 
-		_, err := client.inputToParts(input)
+		ctx := context.Background()
+		_, err := client.inputToParts(ctx, input)
 		if err == nil {
 			t.Error("inputToParts() with nil multimodal should return error")
 		}
@@ -851,7 +855,8 @@ func TestEdgeCases(t *testing.T) {
 			Type: ai.InputType(999), // Invalid type
 		}
 
-		_, err := client.inputToParts(input)
+		ctx := context.Background()
+		_, err := client.inputToParts(ctx, input)
 		if err == nil {
 			t.Error("inputToParts() with unsupported type should return error")
 		}

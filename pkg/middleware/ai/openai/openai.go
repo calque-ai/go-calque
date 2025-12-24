@@ -24,6 +24,7 @@
 package openai
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -182,7 +183,7 @@ func DefaultConfig() *Config {
 //	if err != nil { log.Fatal(err) }
 func New(model string, opts ...Option) (*Client, error) {
 	if model == "" {
-		return nil, fmt.Errorf("model name is required")
+		return nil, calque.NewErr(context.Background(), "model name is required")
 	}
 
 	// Build config from options
@@ -193,7 +194,7 @@ func New(model string, opts ...Option) (*Client, error) {
 
 	// Validate API key
 	if config.APIKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set or provided in config")
+		return nil, calque.NewErr(context.Background(), "OPENAI_API_KEY environment variable not set or provided in config")
 	}
 
 	// Create client options
@@ -233,7 +234,7 @@ func (c *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Build request parameters
-	params, err := c.buildChatParams(input, ai.GetSchema(opts), ai.GetTools(opts))
+	params, err := c.buildChatParams(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts))
 	if err != nil {
 		return err
 	}
@@ -243,9 +244,9 @@ func (c *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 }
 
 // buildChatParams creates OpenAI chat completion parameters
-func (c *Client) buildChatParams(input *ai.ClassifiedInput, schema *ai.ResponseFormat, toolList []tools.Tool) (openai.ChatCompletionNewParams, error) {
+func (c *Client) buildChatParams(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, toolList []tools.Tool) (openai.ChatCompletionNewParams, error) {
 	// Convert input to messages
-	messages, err := c.inputToMessages(input)
+	messages, err := c.inputToMessages(ctx, input)
 	if err != nil {
 		return openai.ChatCompletionNewParams{}, err
 	}
@@ -261,7 +262,7 @@ func (c *Client) buildChatParams(input *ai.ClassifiedInput, schema *ai.ResponseF
 
 	// Add tools if provided
 	if len(toolList) > 0 {
-		tools, err := c.convertToOpenAITools(toolList)
+		tools, err := c.convertToOpenAITools(ctx, toolList)
 		if err != nil {
 			return openai.ChatCompletionNewParams{}, err
 		}
@@ -303,7 +304,7 @@ func (c *Client) executeStreamingRequest(params openai.ChatCompletionNewParams, 
 	defer func() {
 		if closeErr := stream.Close(); closeErr != nil && err == nil {
 			// Only set the error if no other error occurred
-			err = fmt.Errorf("failed to close stream: %w", closeErr)
+			err = calque.WrapErr(r.Context, closeErr, "failed to close stream")
 		}
 	}()
 
@@ -339,7 +340,7 @@ func (c *Client) executeStreamingRequest(params openai.ChatCompletionNewParams, 
 	}
 
 	if err := stream.Err(); err != nil {
-		return fmt.Errorf("failed to receive stream response: %w", err)
+		return calque.WrapErr(r.Context, err, "failed to receive stream response")
 	}
 
 	// Report usage before finalizing
@@ -412,11 +413,11 @@ func (c *Client) executeNonStreamingRequest(params openai.ChatCompletionNewParam
 	// Create request
 	response, err := c.client.Chat.Completions.New(r.Context, params)
 	if err != nil {
-		return fmt.Errorf("failed to create chat completion: %w", err)
+		return calque.WrapErr(r.Context, err, "failed to create chat completion")
 	}
 
 	if len(response.Choices) == 0 {
-		return fmt.Errorf("no response choices returned")
+		return calque.NewErr(r.Context, "no response choices returned")
 	}
 
 	// Capture usage metadata
@@ -474,7 +475,7 @@ func (c *Client) convertToFunctionToolCalls(toolCalls []openai.ChatCompletionMes
 }
 
 // inputToMessages converts classified input to OpenAI message format
-func (c *Client) inputToMessages(input *ai.ClassifiedInput) ([]openai.ChatCompletionMessageParamUnion, error) {
+func (c *Client) inputToMessages(ctx context.Context, input *ai.ClassifiedInput) ([]openai.ChatCompletionMessageParamUnion, error) {
 	switch input.Type {
 	case ai.TextInput:
 		return []openai.ChatCompletionMessageParamUnion{
@@ -482,17 +483,17 @@ func (c *Client) inputToMessages(input *ai.ClassifiedInput) ([]openai.ChatComple
 		}, nil
 
 	case ai.MultimodalJSONInput, ai.MultimodalStreamingInput:
-		return c.multimodalToMessages(input.Multimodal)
+		return c.multimodalToMessages(ctx, input.Multimodal)
 
 	default:
-		return nil, fmt.Errorf("unsupported input type: %d", input.Type)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported input type: %d", input.Type))
 	}
 }
 
 // multimodalToMessages converts multimodal input to OpenAI message format
-func (c *Client) multimodalToMessages(multimodal *ai.MultimodalInput) ([]openai.ChatCompletionMessageParamUnion, error) {
+func (c *Client) multimodalToMessages(ctx context.Context, multimodal *ai.MultimodalInput) ([]openai.ChatCompletionMessageParamUnion, error) {
 	if multimodal == nil {
-		return nil, fmt.Errorf("multimodal input cannot be nil")
+		return nil, calque.NewErr(ctx, "multimodal input cannot be nil")
 	}
 
 	messageParts := make([]openai.ChatCompletionContentPartUnionParam, 0, len(multimodal.Parts))
@@ -520,11 +521,11 @@ func (c *Client) multimodalToMessages(multimodal *ai.MultimodalInput) ([]openai.
 				encoder := base64.NewEncoder(base64.StdEncoding, &buf)
 				_, err = io.Copy(encoder, part.Reader)
 				if err != nil {
-					return nil, fmt.Errorf("failed to encode image data: %w", err)
+					return nil, calque.WrapErr(ctx, err, "failed to encode image data")
 				}
 
 				if closeErr := encoder.Close(); closeErr != nil {
-					return nil, fmt.Errorf("failed to finalize image encoding: %w", closeErr)
+					return nil, calque.WrapErr(ctx, closeErr, "failed to finalize image encoding")
 				}
 
 				dataURL = buf.String()
@@ -545,14 +546,14 @@ func (c *Client) multimodalToMessages(multimodal *ai.MultimodalInput) ([]openai.
 			}
 		case "audio", "video":
 			// OpenAI doesn't support audio/video in chat completions yet
-			return nil, fmt.Errorf("audio and video content not yet supported by OpenAI Chat Completions API")
+			return nil, calque.NewErr(ctx, "audio and video content not yet supported by OpenAI Chat Completions API")
 		default:
-			return nil, fmt.Errorf("unsupported content part type: %s", part.Type)
+			return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported content part type: %s", part.Type))
 		}
 	}
 
 	if len(messageParts) == 0 {
-		return nil, fmt.Errorf("no valid content parts found in multimodal input")
+		return nil, calque.NewErr(ctx, "no valid content parts found in multimodal input")
 	}
 
 	return []openai.ChatCompletionMessageParamUnion{
@@ -644,7 +645,7 @@ func (c *Client) setJSONSchemaFormat(schema any, params *openai.ChatCompletionNe
 }
 
 // convertToOpenAITools converts our tool interface to OpenAI's tool format
-func (c *Client) convertToOpenAITools(toolList []tools.Tool) ([]openai.ChatCompletionToolUnionParam, error) {
+func (c *Client) convertToOpenAITools(ctx context.Context, toolList []tools.Tool) ([]openai.ChatCompletionToolUnionParam, error) {
 	openaiTools := make([]openai.ChatCompletionToolUnionParam, len(toolList))
 
 	for i, tool := range toolList {
@@ -654,11 +655,11 @@ func (c *Client) convertToOpenAITools(toolList []tools.Tool) ([]openai.ChatCompl
 			// Marshal and unmarshal to convert to generic map
 			schemaBytes, err := json.Marshal(schema)
 			if err != nil {
-				return nil, fmt.Errorf("failed to marshal tool parameters schema: %w", err)
+				return nil, calque.WrapErr(ctx, err, "failed to marshal tool parameters schema")
 			}
 			err = json.Unmarshal(schemaBytes, &parameters)
 			if err != nil {
-				return nil, fmt.Errorf("failed to convert tool parameters schema: %w", err)
+				return nil, calque.WrapErr(ctx, err, "failed to convert tool parameters schema")
 			}
 
 		}

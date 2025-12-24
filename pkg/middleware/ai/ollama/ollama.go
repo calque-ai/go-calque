@@ -4,6 +4,7 @@
 package ollama
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -146,6 +147,7 @@ func DefaultConfig() *Config {
 //	client, err := ollama.New("llama3.2:latest")
 //	if err != nil { log.Fatal(err) }
 func New(model string, opts ...Option) (*Client, error) {
+	ctx := context.Background()
 	if model == "" {
 		model = "llama3.2" // Default model
 	}
@@ -164,13 +166,13 @@ func New(model string, opts ...Option) (*Client, error) {
 		// Use environment-based client (checks OLLAMA_HOST env var)
 		client, err = api.ClientFromEnvironment()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create client from environment: %w", err)
+			return nil, calque.WrapErr(ctx, err, "failed to create client from environment")
 		}
 	} else {
 		// Parse the host URL
 		u, err := url.Parse(config.Host)
 		if err != nil {
-			return nil, fmt.Errorf("invalid host URL: %w", err)
+			return nil, calque.WrapErr(ctx, err, "invalid host URL")
 		}
 		// Create client with custom host
 		client = api.NewClient(u, http.DefaultClient)
@@ -208,7 +210,7 @@ func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Build request configuration based on input type
-	config, err := o.buildRequestConfig(input, ai.GetSchema(opts), ai.GetTools(opts))
+	config, err := o.buildRequestConfig(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts))
 	if err != nil {
 		return err
 	}
@@ -218,9 +220,9 @@ func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 }
 
 // buildRequestConfig creates configuration for the request
-func (o *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool) (*RequestConfig, error) {
+func (o *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool) (*RequestConfig, error) {
 	// Create chat request based on input type
-	chatRequest, err := o.inputToChatRequest(input)
+	chatRequest, err := o.inputToChatRequest(ctx, input)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +232,7 @@ func (o *Client) buildRequestConfig(input *ai.ClassifiedInput, schema *ai.Respon
 
 	// Add tools if provided
 	if len(tools) > 0 {
-		chatRequest.Tools = o.convertToOllamaTools(tools)
+		chatRequest.Tools = o.convertToOllamaTools(ctx, tools)
 	}
 
 	return &RequestConfig{
@@ -282,7 +284,7 @@ func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 	// Send chat request
 	err := o.client.Chat(r.Context, config.ChatRequest, responseFunc)
 	if err != nil {
-		return fmt.Errorf("failed to chat with ollama: %w", err)
+		return calque.WrapErr(r.Context, err, "failed to chat with ollama")
 	}
 
 	// Capture usage metadata
@@ -328,7 +330,7 @@ func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 }
 
 // inputToChatRequest converts classified input to Ollama ChatRequest
-func (o *Client) inputToChatRequest(input *ai.ClassifiedInput) (*api.ChatRequest, error) {
+func (o *Client) inputToChatRequest(ctx context.Context, input *ai.ClassifiedInput) (*api.ChatRequest, error) {
 	req := &api.ChatRequest{
 		Model:   o.model,
 		Options: make(map[string]any),
@@ -344,21 +346,25 @@ func (o *Client) inputToChatRequest(input *ai.ClassifiedInput) (*api.ChatRequest
 		}
 
 	case ai.MultimodalJSONInput, ai.MultimodalStreamingInput:
-		message, err := o.multimodalToMessage(input.Multimodal)
+		message, err := o.multimodalToMessage(ctx, input.Multimodal)
 		if err != nil {
 			return nil, err
 		}
 		req.Messages = []api.Message{*message}
 
 	default:
-		return nil, fmt.Errorf("unsupported input type: %d", input.Type)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported input type: %d", input.Type))
 	}
 
 	return req, nil
 }
 
 // multimodalToMessage converts multimodal input to Ollama Message with images
-func (o *Client) multimodalToMessage(multimodal *ai.MultimodalInput) (*api.Message, error) {
+func (o *Client) multimodalToMessage(ctx context.Context, multimodal *ai.MultimodalInput) (*api.Message, error) {
+	if multimodal == nil {
+		return nil, calque.NewErr(ctx, "multimodal input cannot be nil")
+	}
+
 	message := &api.Message{Role: "user"}
 	var textParts []string
 	var images []api.ImageData
@@ -377,7 +383,7 @@ func (o *Client) multimodalToMessage(multimodal *ai.MultimodalInput) (*api.Messa
 				// Read stream data (streaming approach)
 				data, err = io.ReadAll(part.Reader)
 				if err != nil {
-					return nil, fmt.Errorf("failed to read image data: %w", err)
+					return nil, calque.WrapErr(ctx, err, "failed to read image data")
 				}
 			} else if part.Data != nil {
 				// Use embedded data (simple approach)
@@ -389,9 +395,9 @@ func (o *Client) multimodalToMessage(multimodal *ai.MultimodalInput) (*api.Messa
 			}
 		case "audio", "video":
 			// Ollama doesn't support audio/video yet, but we can prepare for it
-			return nil, fmt.Errorf("audio and video content not yet supported by Ollama")
+			return nil, calque.NewErr(ctx, "audio and video content not yet supported by Ollama")
 		default:
-			return nil, fmt.Errorf("unsupported content part type: %s", part.Type)
+			return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported content part type: %s", part.Type))
 		}
 	}
 
@@ -440,12 +446,12 @@ func (o *Client) applyChatConfig(req *api.ChatRequest, schema *ai.ResponseFormat
 	}
 
 	if responseFormat != nil {
-		req.Format = o.determineResponseFormat(responseFormat)
+		req.Format = o.determineResponseFormat(context.Background(), responseFormat)
 	}
 }
 
 // determineResponseFormat determines the appropriate response format for Ollama
-func (o *Client) determineResponseFormat(responseFormat *ai.ResponseFormat) json.RawMessage {
+func (o *Client) determineResponseFormat(ctx context.Context, responseFormat *ai.ResponseFormat) json.RawMessage {
 	switch responseFormat.Type {
 	case "json_object":
 		// Ollama supports JSON format via format parameter
@@ -454,7 +460,7 @@ func (o *Client) determineResponseFormat(responseFormat *ai.ResponseFormat) json
 		// For JSON schema, pass the actual schema object to Ollama's format field
 		if responseFormat.Schema != nil {
 			// Convert jsonschema.Schema to the format Ollama expects
-			schemaBytes, err := convertJSONSchemaToOllamaFormat(responseFormat.Schema)
+			schemaBytes, err := convertJSONSchemaToOllamaFormat(ctx, responseFormat.Schema)
 			if err == nil {
 				return schemaBytes
 			}
@@ -466,7 +472,7 @@ func (o *Client) determineResponseFormat(responseFormat *ai.ResponseFormat) json
 }
 
 // convertToOllamaTools converts our tool interface to Ollama's tool format using internal schema
-func (o *Client) convertToOllamaTools(toolList []tools.Tool) []api.Tool {
+func (o *Client) convertToOllamaTools(ctx context.Context, toolList []tools.Tool) []api.Tool {
 	internalTools := tools.FormatToolsAsInternal(toolList)
 	ollamaTools := make([]api.Tool, len(internalTools))
 
@@ -555,7 +561,7 @@ func (o *Client) convertTextToToolCalls(responseText string, w *calque.Response)
 }
 
 // convertJSONSchemaToOllamaFormat converts a JSON schema to Ollama's format field format
-func convertJSONSchemaToOllamaFormat(schema *jsonschema.Schema) (json.RawMessage, error) {
+func convertJSONSchemaToOllamaFormat(ctx context.Context, schema *jsonschema.Schema) (json.RawMessage, error) {
 	if schema == nil {
 		return json.RawMessage(`"json"`), nil
 	}
@@ -564,7 +570,7 @@ func convertJSONSchemaToOllamaFormat(schema *jsonschema.Schema) (json.RawMessage
 	// Ollama expects the actual schema object, not a string
 	schemaBytes, err := json.Marshal(schema)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal JSON schema: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to marshal JSON schema")
 	}
 
 	return json.RawMessage(schemaBytes), nil

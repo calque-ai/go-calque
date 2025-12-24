@@ -3,7 +3,6 @@ package ai
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -35,7 +34,7 @@ func ClassifyInput(r *calque.Request, opts *AgentOptions) (*ClassifiedInput, err
 	// Read input once
 	inputBytes, err := io.ReadAll(r.Data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read input: %w", err)
+		return nil, calque.WrapErr(r.Context, err, "failed to read input")
 	}
 
 	// Check streaming multimodal first (most specific)

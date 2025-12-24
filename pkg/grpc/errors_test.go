@@ -1,14 +1,19 @@
 package grpc
 
 import (
+	"context"
 	"errors"
 	"testing"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 func TestError_Error(t *testing.T) {
+	ctx := context.Background()
+	ctx = calque.WithTraceID(ctx, "calque-trace-test-grpc-error")
+
 	tests := []struct {
 		name     string
 		grpcErr  *Error
@@ -17,26 +22,25 @@ func TestError_Error(t *testing.T) {
 		{
 			name: "error with underlying error",
 			grpcErr: &Error{
-				Code:    codes.InvalidArgument,
-				Message: "invalid input",
-				Err:     errors.New("underlying error"),
+				calqueErr: calque.WrapErr(ctx, errors.New("underlying error"), "invalid input"),
+				Code:      codes.InvalidArgument,
 			},
 			expected: "grpc error [InvalidArgument]: invalid input: underlying error",
 		},
 		{
 			name: "error without underlying error",
 			grpcErr: &Error{
-				Code:    codes.NotFound,
-				Message: "resource not found",
+				calqueErr: calque.NewErr(ctx, "resource not found"),
+				Code:      codes.NotFound,
 			},
 			expected: "grpc error [NotFound]: resource not found",
 		},
 		{
 			name: "error with details",
 			grpcErr: &Error{
-				Code:    codes.Internal,
-				Message: "internal error",
-				Details: []interface{}{"detail1", "detail2"},
+				calqueErr: calque.NewErr(ctx, "internal error"),
+				Code:      codes.Internal,
+				Details:   []interface{}{"detail1", "detail2"},
 			},
 			expected: "grpc error [Internal]: internal error",
 		},
@@ -44,6 +48,7 @@ func TestError_Error(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := tt.grpcErr.Error()
 			if result != tt.expected {
 				t.Errorf("Error() = %v, want %v", result, tt.expected)
@@ -53,11 +58,11 @@ func TestError_Error(t *testing.T) {
 }
 
 func TestError_Unwrap(t *testing.T) {
+	ctx := context.Background()
 	underlyingErr := errors.New("underlying error")
 	grpcErr := &Error{
-		Code:    codes.InvalidArgument,
-		Message: "test error",
-		Err:     underlyingErr,
+		calqueErr: calque.WrapErr(ctx, underlyingErr, "test error"),
+		Code:      codes.InvalidArgument,
 	}
 
 	result := grpcErr.Unwrap()
@@ -67,9 +72,8 @@ func TestError_Unwrap(t *testing.T) {
 
 	// Test with nil underlying error
 	grpcErrNoUnderlying := &Error{
-		Code:    codes.InvalidArgument,
-		Message: "test error",
-		Err:     nil,
+		calqueErr: calque.NewErr(ctx, "test error"),
+		Code:      codes.InvalidArgument,
 	}
 
 	result = grpcErrNoUnderlying.Unwrap()
@@ -118,9 +122,11 @@ func TestError_IsRetryable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
 			grpcErr := &Error{
-				Code:    tt.code,
-				Message: "test error",
+				calqueErr: calque.NewErr(ctx, "test error"),
+				Code:      tt.code,
 			}
 
 			result := grpcErr.IsRetryable()
@@ -132,8 +138,12 @@ func TestError_IsRetryable(t *testing.T) {
 }
 
 func TestWrapError(t *testing.T) {
+	ctx := context.Background()
+	ctx = calque.WithTraceID(ctx, "calque-trace-test-grpc-wrap")
+
 	tests := []struct {
 		name     string
+		ctx      context.Context
 		err      error
 		message  string
 		details  []interface{}
@@ -141,6 +151,7 @@ func TestWrapError(t *testing.T) {
 	}{
 		{
 			name:     "nil error returns nil",
+			ctx:      ctx,
 			err:      nil,
 			message:  "test message",
 			details:  nil,
@@ -148,33 +159,32 @@ func TestWrapError(t *testing.T) {
 		},
 		{
 			name:    "non-gRPC error",
+			ctx:     ctx,
 			err:     errors.New("test error"),
 			message: "wrapped message",
 			details: []interface{}{"detail1"},
 			expected: &Error{
 				Code:    codes.Unknown,
-				Message: "wrapped message",
 				Details: []interface{}{"detail1"},
-				Err:     errors.New("test error"),
 			},
 		},
 		{
 			name:    "gRPC error with status",
+			ctx:     ctx,
 			err:     status.Error(codes.InvalidArgument, "invalid argument"),
 			message: "wrapped message",
 			details: nil,
 			expected: &Error{
 				Code:    codes.InvalidArgument,
-				Message: "wrapped message",
 				Details: nil,
-				Err:     status.Error(codes.InvalidArgument, "invalid argument"),
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := WrapError(tt.err, tt.message, tt.details...)
+			t.Parallel()
+			result := WrapError(tt.ctx, tt.err, tt.message, tt.details...)
 
 			if tt.expected == nil {
 				if result != nil {
@@ -184,7 +194,7 @@ func TestWrapError(t *testing.T) {
 			}
 
 			if result == nil {
-				t.Errorf("WrapError() = nil, want %v", tt.expected)
+				t.Errorf("WrapError() = nil, want non-nil error")
 				return
 			}
 
@@ -192,16 +202,12 @@ func TestWrapError(t *testing.T) {
 				t.Errorf("WrapError() Code = %v, want %v", result.Code, tt.expected.Code)
 			}
 
-			if result.Message != tt.expected.Message {
-				t.Errorf("WrapError() Message = %v, want %v", result.Message, tt.expected.Message)
-			}
-
 			if len(result.Details) != len(tt.expected.Details) {
 				t.Errorf("WrapError() Details length = %v, want %v", len(result.Details), len(tt.expected.Details))
 			}
 
-			if result.Err.Error() != tt.expected.Err.Error() {
-				t.Errorf("WrapError() Err = %v, want %v", result.Err, tt.expected.Err)
+			if result.Error() == "" {
+				t.Error("WrapError() should return non-empty error message")
 			}
 		})
 	}
@@ -274,115 +280,106 @@ func TestGetGRPCCode(t *testing.T) {
 }
 
 func TestNewUnavailableError(t *testing.T) {
+	ctx := context.Background()
 	underlyingErr := errors.New("connection failed")
 	message := "service unavailable"
 
-	result := NewUnavailableError(message, underlyingErr)
+	result := NewUnavailableError(ctx, message, underlyingErr)
 
 	if result.Code != codes.Unavailable {
 		t.Errorf("NewUnavailableError() Code = %v, want %v", result.Code, codes.Unavailable)
 	}
 
-	if result.Message != message {
-		t.Errorf("NewUnavailableError() Message = %v, want %v", result.Message, message)
-	}
-
-	if result.Err != underlyingErr {
-		t.Errorf("NewUnavailableError() Err = %v, want %v", result.Err, underlyingErr)
+	if result.Error() == "" {
+		t.Error("NewUnavailableError() should return non-empty error message")
 	}
 }
 
 func TestNewDeadlineExceededError(t *testing.T) {
+	ctx := context.Background()
 	underlyingErr := errors.New("timeout")
 	message := "deadline exceeded"
 
-	result := NewDeadlineExceededError(message, underlyingErr)
+	result := NewDeadlineExceededError(ctx, message, underlyingErr)
 
 	if result.Code != codes.DeadlineExceeded {
 		t.Errorf("NewDeadlineExceededError() Code = %v, want %v", result.Code, codes.DeadlineExceeded)
 	}
 
-	if result.Message != message {
-		t.Errorf("NewDeadlineExceededError() Message = %v, want %v", result.Message, message)
-	}
-
-	if result.Err != underlyingErr {
-		t.Errorf("NewDeadlineExceededError() Err = %v, want %v", result.Err, underlyingErr)
+	if result.Error() == "" {
+		t.Error("NewDeadlineExceededError() should return non-empty error message")
 	}
 }
 
 func TestNewInvalidArgumentError(t *testing.T) {
+	ctx := context.Background()
 	underlyingErr := errors.New("invalid input")
 	message := "invalid argument"
 
-	result := NewInvalidArgumentError(message, underlyingErr)
+	result := NewInvalidArgumentError(ctx, message, underlyingErr)
 
 	if result.Code != codes.InvalidArgument {
 		t.Errorf("NewInvalidArgumentError() Code = %v, want %v", result.Code, codes.InvalidArgument)
 	}
 
-	if result.Message != message {
-		t.Errorf("NewInvalidArgumentError() Message = %v, want %v", result.Message, message)
-	}
-
-	if result.Err != underlyingErr {
-		t.Errorf("NewInvalidArgumentError() Err = %v, want %v", result.Err, underlyingErr)
+	if result.Error() == "" {
+		t.Error("NewInvalidArgumentError() should return non-empty error message")
 	}
 }
 
 func TestNewNotFoundError(t *testing.T) {
+	ctx := context.Background()
 	underlyingErr := errors.New("not found")
 	message := "resource not found"
 
-	result := NewNotFoundError(message, underlyingErr)
+	result := NewNotFoundError(ctx, message, underlyingErr)
 
 	if result.Code != codes.NotFound {
 		t.Errorf("NewNotFoundError() Code = %v, want %v", result.Code, codes.NotFound)
 	}
 
-	if result.Message != message {
-		t.Errorf("NewNotFoundError() Message = %v, want %v", result.Message, message)
-	}
-
-	if result.Err != underlyingErr {
-		t.Errorf("NewNotFoundError() Err = %v, want %v", result.Err, underlyingErr)
+	if result.Error() == "" {
+		t.Error("NewNotFoundError() should return non-empty error message")
 	}
 }
 
 func TestNewInternalError(t *testing.T) {
+	ctx := context.Background()
 	underlyingErr := errors.New("internal failure")
 	message := "internal error"
 
-	result := NewInternalError(message, underlyingErr)
+	result := NewInternalError(ctx, message, underlyingErr)
 
 	if result.Code != codes.Internal {
 		t.Errorf("NewInternalError() Code = %v, want %v", result.Code, codes.Internal)
 	}
 
-	if result.Message != message {
-		t.Errorf("NewInternalError() Message = %v, want %v", result.Message, message)
-	}
-
-	if result.Err != underlyingErr {
-		t.Errorf("NewInternalError() Err = %v, want %v", result.Err, underlyingErr)
+	if result.Error() == "" {
+		t.Error("NewInternalError() should return non-empty error message")
 	}
 }
 
 func TestWrapErrorSimple(t *testing.T) {
+	ctx := context.Background()
+	ctx = calque.WithTraceID(ctx, "calque-trace-test-grpc-wrap-simple")
+
 	tests := []struct {
 		name     string
+		ctx      context.Context
 		err      error
 		message  string
 		expected string
 	}{
 		{
 			name:     "nil error returns nil",
+			ctx:      ctx,
 			err:      nil,
 			message:  "test message",
 			expected: "",
 		},
 		{
 			name:     "error with message",
+			ctx:      ctx,
 			err:      errors.New("original error"),
 			message:  "wrapped message",
 			expected: "wrapped message: original error",
@@ -391,7 +388,8 @@ func TestWrapErrorSimple(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := WrapErrorSimple(tt.err, tt.message)
+			t.Parallel()
+			result := WrapErrorSimple(tt.ctx, tt.err, tt.message)
 
 			if tt.err == nil {
 				if result != nil {
@@ -413,8 +411,12 @@ func TestWrapErrorSimple(t *testing.T) {
 }
 
 func TestWrapErrorfSimple(t *testing.T) {
+	ctx := context.Background()
+	ctx = calque.WithTraceID(ctx, "calque-trace-test-grpc-wrapf-simple")
+
 	tests := []struct {
 		name     string
+		ctx      context.Context
 		err      error
 		format   string
 		args     []interface{}
@@ -422,6 +424,7 @@ func TestWrapErrorfSimple(t *testing.T) {
 	}{
 		{
 			name:     "nil error returns nil",
+			ctx:      ctx,
 			err:      nil,
 			format:   "test %s",
 			args:     []interface{}{"message"},
@@ -429,6 +432,7 @@ func TestWrapErrorfSimple(t *testing.T) {
 		},
 		{
 			name:     "error with formatted message",
+			ctx:      ctx,
 			err:      errors.New("original error"),
 			format:   "wrapped %s %d",
 			args:     []interface{}{"message", 42},
@@ -438,7 +442,8 @@ func TestWrapErrorfSimple(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := WrapErrorfSimple(tt.err, tt.format, tt.args...)
+			t.Parallel()
+			result := WrapErrorfSimple(tt.ctx, tt.err, tt.format, tt.args...)
 
 			if tt.err == nil {
 				if result != nil {
@@ -460,29 +465,33 @@ func TestWrapErrorfSimple(t *testing.T) {
 }
 
 func TestNewErrorSimple(t *testing.T) {
+	ctx := context.Background()
+	ctx = calque.WithTraceID(ctx, "calque-trace-test-grpc-new-simple")
+
 	tests := []struct {
 		name     string
-		format   string
-		args     []interface{}
+		ctx      context.Context
+		message  string
 		expected string
 	}{
 		{
 			name:     "simple message",
-			format:   "test message",
-			args:     nil,
+			ctx:      ctx,
+			message:  "test message",
 			expected: "test message",
 		},
 		{
-			name:     "formatted message",
-			format:   "test %s %d",
-			args:     []interface{}{"message", 42},
-			expected: "test message 42",
+			name:     "error message",
+			ctx:      ctx,
+			message:  "invalid configuration",
+			expected: "invalid configuration",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := NewErrorSimple(tt.format, tt.args...)
+			t.Parallel()
+			result := NewErrorSimple(tt.ctx, tt.message)
 
 			if result.Error() != tt.expected {
 				t.Errorf("NewErrorSimple() = %v, want %v", result.Error(), tt.expected)

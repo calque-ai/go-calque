@@ -534,8 +534,8 @@ func TestContextHelpers_Chaining(t *testing.T) {
 
 	ctx = WithMetadataBus(ctx, mb)
 	ctx = WithLogger(ctx, logger)
-	ctx = WithTraceID(ctx, "trace-1")
-	ctx = WithRequestID(ctx, "req-1")
+	ctx = WithTraceID(ctx, "calque-trace-test-context-chaining")
+	ctx = WithRequestID(ctx, "calque-req-test-context-chaining")
 
 	if GetMetadataBus(ctx) != mb {
 		t.Error("GetMetadataBus() did not return expected MetadataBus after chaining")
@@ -543,10 +543,10 @@ func TestContextHelpers_Chaining(t *testing.T) {
 	if Logger(ctx) != logger {
 		t.Error("Logger() did not return expected logger after chaining")
 	}
-	if TraceID(ctx) != "trace-1" {
-		t.Errorf("TraceID() = %q, want %q", TraceID(ctx), "trace-1")
+	if TraceID(ctx) != "calque-trace-test-context-chaining" {
+		t.Errorf("TraceID() = %q, want %q", TraceID(ctx), "calque-trace-test-context-chaining")
 	}
-	if RequestID(ctx) != "req-1" {
-		t.Errorf("RequestID() = %q, want %q", RequestID(ctx), "req-1")
+	if RequestID(ctx) != "calque-req-test-context-chaining" {
+		t.Errorf("RequestID() = %q, want %q", RequestID(ctx), "calque-req-test-context-chaining")
 	}
 }

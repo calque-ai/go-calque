@@ -87,7 +87,7 @@ func ExecuteWithOptions(config Config) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		tools := GetTools(r.Context)
 		if len(tools) == 0 {
-			return fmt.Errorf("no tools available in context")
+			return calque.NewErr(r.Context, "no tools available in context")
 		}
 
 		// Read all input - we assume tools are present so no streaming needed
@@ -110,7 +110,7 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 
 	// Error if no tools found since Execute assumes tools are present
 	if len(toolCalls) == 0 {
-		return fmt.Errorf("no tool calls found in input - use tools.Detect() to handle inputs without tools")
+		return calque.NewErr(ctx, "no tool calls found in input - use tools.Detect() to handle inputs without tools")
 	}
 
 	// Execute tool calls with configuration
@@ -130,7 +130,7 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 
 	// Handle errors always fail on tool execution errors
 	if hasErrors {
-		return fmt.Errorf("tool execution failed: %s", firstError)
+		return calque.NewErr(ctx, fmt.Sprintf("tool execution failed: %s", firstError))
 	}
 
 	// Format results based on configuration
@@ -139,9 +139,9 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 	// Handle raw JSON output
 	if config.RawOutput {
 		var marshalErr error
-		output, marshalErr = formatRawOutput(results, inputBytes, config.IncludeOriginalOutput)
+		output, marshalErr = formatRawOutput(ctx, results, inputBytes, config.IncludeOriginalOutput)
 		if marshalErr != nil {
-			return fmt.Errorf("failed to marshal tool results: %w", marshalErr)
+			return calque.WrapErr(ctx, marshalErr, "failed to marshal tool results")
 		}
 		_, writeErr := w.Write(output)
 		return writeErr
@@ -285,7 +285,7 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				err = fmt.Errorf("tool panicked: %v", r)
+				err = calque.NewErr(ctx, fmt.Sprintf("tool panicked: %v", r))
 			}
 		}()
 		err = tool.ServeFlow(req, res)
@@ -305,11 +305,11 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 }
 
 // formatRawOutput returns JSON-marshaled tool results with proper JSON result formatting
-func formatRawOutput(results []ToolResult, inputBytes []byte, includeOriginal bool) ([]byte, error) {
+func formatRawOutput(ctx context.Context, results []ToolResult, inputBytes []byte, includeOriginal bool) ([]byte, error) {
 	// Convert ToolResult to ToolResultJSON with proper JSON handling
 	jsonResults := make([]ToolResultJSON, len(results))
 	for i, result := range results {
-		resultJSON, err := convertResultToJSON(result.Result)
+		resultJSON, err := convertResultToJSON(ctx, result.Result)
 		if err != nil {
 			return nil, err
 		}
@@ -332,7 +332,7 @@ func formatRawOutput(results []ToolResult, inputBytes []byte, includeOriginal bo
 }
 
 // convertResultToJSON converts a tool result to JSON, preserving JSON structure or converting to string
-func convertResultToJSON(result []byte) (json.RawMessage, error) {
+func convertResultToJSON(ctx context.Context, result []byte) (json.RawMessage, error) {
 	if len(result) == 0 {
 		return []byte("null"), nil
 	}
@@ -347,7 +347,7 @@ func convertResultToJSON(result []byte) (json.RawMessage, error) {
 	// Not valid JSON - marshal as string
 	resultJSON, err := json.Marshal(string(result))
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal result as string: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to marshal result as string")
 	}
 	return resultJSON, nil
 }

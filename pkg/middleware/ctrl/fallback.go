@@ -2,7 +2,7 @@ package ctrl
 
 import (
 	"bytes"
-	"fmt"
+	"context"
 	"sync"
 	"time"
 
@@ -39,8 +39,12 @@ type circuitBreaker struct {
 //	fallback := ctrl.Fallback(primaryLLM, fallbackLLM, localLLM)
 func Fallback(handlers ...calque.Handler) calque.Handler {
 	if len(handlers) == 0 {
-		return calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
-			return fmt.Errorf("no handlers provided to fallback")
+		return calque.HandlerFunc(func(req *calque.Request, _ *calque.Response) error {
+			ctx := req.Context
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			return calque.NewErr(ctx, "no handlers provided to fallback")
 		})
 	}
 
@@ -79,7 +83,7 @@ func Fallback(handlers ...calque.Handler) calque.Handler {
 			lastErr = err
 		}
 
-		return fmt.Errorf("all handlers failed, last error: %w", lastErr)
+		return calque.WrapErr(req.Context, lastErr, "all handlers failed")
 	})
 }
 
