@@ -72,7 +72,8 @@ func conversationExample(client ai.Client) {
 	}
 
 	fmt.Println("\n--- Conversation Summary ---")
-	msgCount, exists, err := convMem.Info("user123")
+	ctx := context.Background()
+	msgCount, exists, err := convMem.Info(ctx, "user123")
 	if err == nil {
 		fmt.Printf("Total messages: %d, exists: %v\n", msgCount, exists)
 	}
@@ -126,7 +127,8 @@ func badgerConversationExample(client ai.Client) {
 	}
 
 	fmt.Println("\n--- Conversation Summary ---")
-	msgCount, exists, err := convMem.Info("user123")
+	ctx2 := context.Background()
+	msgCount, exists, err := convMem.Info(ctx2, "user123")
 	if err == nil {
 		fmt.Printf("Total messages: %d, exists: %v\n", msgCount, exists)
 	}
@@ -219,7 +221,8 @@ func contextExample(client ai.Client) {
 		fmt.Printf("\n--- Interaction %d ---\n", i+1)
 
 		// Show context info before processing
-		tokenCount, maxTokens, exists, err := contextMem.Info("session456")
+		ctx3 := context.Background()
+		tokenCount, maxTokens, exists, err := contextMem.Info(ctx3, "session456")
 		if err != nil {
 			fmt.Printf("Context: %d/%d tokens\n exists: %v", tokenCount, maxTokens, exists)
 		}
@@ -237,7 +240,8 @@ func contextExample(client ai.Client) {
 
 	// Show final context info
 	fmt.Println("\n--- Context Summary ---")
-	tokenCount, maxTokens, exists, err := contextMem.Info("session456")
+	ctx4 := context.Background()
+	tokenCount, maxTokens, exists, err := contextMem.Info(ctx4, "session456")
 	if err != nil {
 		fmt.Printf("Context: %d/%d tokens\n exists: %v", tokenCount, maxTokens, exists)
 	}

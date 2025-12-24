@@ -98,7 +98,7 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 	// Execute the flow
 	var output []byte
 	if err := flow.Run(r.Context, input, &output); err != nil {
-		return fmt.Errorf("agent failed: %w", err)
+		return calque.WrapErr(r.Context, err, "agent failed")
 	}
 
 	// Write final result

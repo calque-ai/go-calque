@@ -38,7 +38,7 @@ func ExecuteResource(client *Client) calque.Handler {
 		}
 
 		if err := client.connect(ctx); err != nil {
-			return client.handleError(fmt.Errorf("failed to connect for resource execution: %w", err))
+			return client.handleError(calque.WrapErr(ctx, err, "failed to connect for resource execution"))
 		}
 
 		var result *mcp.ReadResourceResult
@@ -54,7 +54,7 @@ func ExecuteResource(client *Client) calque.Handler {
 		var err error
 		result, err = client.session.ReadResource(ctx, params)
 		if err != nil {
-			return client.handleError(fmt.Errorf("failed to read resource %s: %w", selectedResourceURI, err))
+			return client.handleError(calque.WrapErr(ctx, err, fmt.Sprintf("failed to read resource %s", selectedResourceURI)))
 		}
 
 		// Store in cache
@@ -94,7 +94,7 @@ func ExecutePrompt(client *Client) calque.Handler {
 		}
 
 		if err := client.connect(ctx); err != nil {
-			return client.handleError(fmt.Errorf("failed to connect for prompt execution: %w", err))
+			return client.handleError(calque.WrapErr(ctx, err, "failed to connect for prompt execution"))
 		}
 
 		// Read input to extract any prompt arguments
@@ -127,7 +127,7 @@ func ExecutePrompt(client *Client) calque.Handler {
 		var err error
 		result, err = client.session.GetPrompt(ctx, params)
 		if err != nil {
-			return client.handleError(fmt.Errorf("failed to get prompt %s: %w", selectedPromptName, err))
+			return client.handleError(calque.WrapErr(ctx, err, fmt.Sprintf("failed to get prompt %s", selectedPromptName)))
 		}
 
 		// Store in cache

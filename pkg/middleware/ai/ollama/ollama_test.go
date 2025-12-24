@@ -213,7 +213,8 @@ func TestInputToChatRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := client.inputToChatRequest(tt.input)
+			ctx := context.Background()
+			req, err := client.inputToChatRequest(ctx, tt.input)
 
 			if tt.expectError {
 				if err == nil {
@@ -345,7 +346,8 @@ func TestConvertToOllamaTools(t *testing.T) {
 	})
 
 	client := &Client{}
-	ollamaTools := client.convertToOllamaTools([]tools.Tool{tool})
+	ctx := context.Background()
+	ollamaTools := client.convertToOllamaTools(ctx, []tools.Tool{tool})
 
 	if len(ollamaTools) != 1 {
 		t.Fatalf("convertToOllamaTools() returned %d tools, want 1", len(ollamaTools))

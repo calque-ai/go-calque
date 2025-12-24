@@ -30,6 +30,7 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -69,8 +70,9 @@ func NewRegistry() *Registry {
 
 // Register adds a service to the registry.
 func (r *Registry) Register(service *Service) error {
+	ctx := context.Background()
 	if service == nil {
-		return grpcerrors.NewErrorSimple("service cannot be nil")
+		return grpcerrors.NewErrorSimple(ctx, "service cannot be nil")
 	}
 
 	r.mu.Lock()
@@ -80,7 +82,7 @@ func (r *Registry) Register(service *Service) error {
 	if service.Conn == nil {
 		conn, err := grpcclient.NewClient(service.Endpoint, grpcclient.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			return grpcerrors.WrapErrorfSimple(err, "failed to connect to service %s at %s", service.Name, service.Endpoint)
+			return grpcerrors.WrapErrorfSimple(ctx, err, "failed to connect to service %s at %s", service.Name, service.Endpoint)
 		}
 		service.Conn = conn
 	}
@@ -91,18 +93,20 @@ func (r *Registry) Register(service *Service) error {
 
 // Get retrieves a service by name.
 func (r *Registry) Get(name string) (*Service, error) {
+	ctx := context.Background()
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	service, exists := r.services[name]
 	if !exists {
-		return nil, grpcerrors.NewErrorSimple("service %s not found in registry", name)
+		return nil, grpcerrors.NewErrorSimple(ctx, fmt.Sprintf("service %s not found in registry", name))
 	}
 	return service, nil
 }
 
 // Close closes all service connections.
 func (r *Registry) Close() error {
+	ctx := context.Background()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -110,13 +114,13 @@ func (r *Registry) Close() error {
 	for _, service := range r.services {
 		if service.Conn != nil {
 			if err := service.Conn.Close(); err != nil {
-				errs = append(errs, grpcerrors.WrapErrorfSimple(err, "failed to close connection for service %s", service.Name))
+				errs = append(errs, grpcerrors.WrapErrorfSimple(ctx, err, "failed to close connection for service %s", service.Name))
 			}
 		}
 	}
 
 	if len(errs) > 0 {
-		return grpcerrors.NewErrorSimple("errors closing services: %v", errs)
+		return grpcerrors.NewErrorSimple(ctx, fmt.Sprintf("errors closing services: %v", errs))
 	}
 	return nil
 }
@@ -187,7 +191,7 @@ func (rh *registryHandler) ServeFlow(req *calque.Request, res *calque.Response) 
 	registry := NewRegistry()
 	for _, service := range rh.services {
 		if err := registry.Register(service); err != nil {
-			return grpcerrors.WrapErrorfSimple(err, "failed to register service %s", service.Name)
+			return grpcerrors.WrapErrorfSimple(req.Context, err, "failed to register service %s", service.Name)
 		}
 	}
 

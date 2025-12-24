@@ -57,7 +57,8 @@ func TestConversationMemory(t *testing.T) {
 	}
 
 	// Verify conversation memory
-	msgCount, exists, err := convMem.Info("user123")
+	ctx := context.Background()
+	msgCount, exists, err := convMem.Info(ctx, "user123")
 	if err != nil {
 		t.Fatalf("Failed to get conversation info: %v", err)
 	}
@@ -121,7 +122,8 @@ func TestContextMemory(t *testing.T) {
 	}
 
 	// Verify context memory
-	tokenCount, maxTokens, exists, err := ctxMem.Info("session456")
+	ctx2 := context.Background()
+	tokenCount, maxTokens, exists, err := ctxMem.Info(ctx2, "session456")
 	if err != nil {
 		t.Fatalf("Failed to get context info: %v", err)
 	}
@@ -244,7 +246,8 @@ func TestMemoryPipeline(t *testing.T) {
 	}
 
 	// Verify conversation history
-	msgCount, exists, err := convMem.Info("user789")
+	ctx3 := context.Background()
+	msgCount, exists, err := convMem.Info(ctx3, "user789")
 	if err != nil {
 		t.Fatalf("Failed to get conversation info: %v", err)
 	}
@@ -301,9 +304,10 @@ func TestMemoryConcurrency(t *testing.T) {
 	}
 
 	// Verify all conversations were created
+	ctx4 := context.Background()
 	for userID := 0; userID < numUsers; userID++ {
 		userKey := fmt.Sprintf("user%d", userID)
-		msgCount, exists, err := convMem.Info(userKey)
+		msgCount, exists, err := convMem.Info(ctx4, userKey)
 		if err != nil {
 			t.Errorf("Failed to get info for %s: %v", userKey, err)
 		}

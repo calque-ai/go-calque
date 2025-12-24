@@ -1219,6 +1219,116 @@ func BenchmarkIOReaderVsRunWithStreaming(b *testing.B) {
 	})
 }
 
+func TestFlow_AutoCreateMetadataBus(t *testing.T) {
+	t.Run("auto-creates MetadataBus when not present", func(t *testing.T) {
+		var capturedMB *MetadataBus
+
+		handler := HandlerFunc(func(req *Request, res *Response) error {
+			capturedMB = GetMetadataBus(req.Context)
+			return Write(res, "done")
+		})
+
+		flow := NewFlow().Use(handler)
+
+		ctx := context.Background()
+		var output string
+		err := flow.Run(ctx, "input", &output)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if capturedMB == nil {
+			t.Error("expected MetadataBus to be auto-created")
+		}
+	})
+
+	t.Run("uses existing MetadataBus from context", func(t *testing.T) {
+		existingMB := NewMetadataBus(50)
+		var capturedMB *MetadataBus
+
+		handler := HandlerFunc(func(req *Request, res *Response) error {
+			capturedMB = GetMetadataBus(req.Context)
+			return Write(res, "done")
+		})
+
+		flow := NewFlow().Use(handler)
+
+		ctx := WithMetadataBus(context.Background(), existingMB)
+		var output string
+		err := flow.Run(ctx, "input", &output)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if capturedMB != existingMB {
+			t.Error("expected to use existing MetadataBus from context")
+		}
+	})
+
+	t.Run("custom buffer size in config", func(t *testing.T) {
+		var capturedMB *MetadataBus
+
+		handler := HandlerFunc(func(req *Request, res *Response) error {
+			capturedMB = GetMetadataBus(req.Context)
+			return Write(res, "done")
+		})
+
+		flow := NewFlow(FlowConfig{MetadataBusBuffer: 200}).Use(handler)
+
+		ctx := context.Background()
+		var output string
+		err := flow.Run(ctx, "input", &output)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if capturedMB == nil {
+			t.Fatal("expected MetadataBus to be auto-created")
+		}
+		if capturedMB.BufferSize() != 200 {
+			t.Errorf("expected buffer size 200, got %d", capturedMB.BufferSize())
+		}
+	})
+
+	t.Run("handlers can communicate via MetadataBus", func(t *testing.T) {
+		var receivedValue any
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		handler1 := HandlerFunc(func(req *Request, res *Response) error {
+			mb := GetMetadataBus(req.Context)
+			mb.Set("shared_key", "shared_value")
+			return Write(res, "from handler1")
+		})
+
+		handler2 := HandlerFunc(func(req *Request, res *Response) error {
+			defer wg.Done()
+			mb := GetMetadataBus(req.Context)
+			// Small delay to ensure handler1 has time to set the value
+			time.Sleep(10 * time.Millisecond)
+			receivedValue, _ = mb.Get("shared_key")
+
+			var input string
+			Read(req, &input)
+			return Write(res, input+" -> handler2")
+		})
+
+		flow := NewFlow().Use(handler1).Use(handler2)
+
+		ctx := context.Background()
+		var output string
+		err := flow.Run(ctx, "input", &output)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		wg.Wait()
+		if receivedValue != "shared_value" {
+			t.Errorf("expected 'shared_value', got %v", receivedValue)
+		}
+	})
+}
+
 func BenchmarkByteOutput(b *testing.B) {
 	handler := HandlerFunc(func(req *Request, res *Response) error {
 		_, err := io.Copy(res.Data, req.Data)

@@ -3,6 +3,7 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"reflect"
 	"strings"
@@ -69,19 +70,19 @@ func (ch *callHandler) ServeFlow(req *calque.Request, res *calque.Response) erro
 	// Get registry from context
 	registry := GetRegistry(req.Context)
 	if registry == nil {
-		return grpcerrors.NewErrorSimple("gRPC registry not found in context, ensure grpcmw.NewRegistryHandler() is used before grpcmw.Call()")
+		return grpcerrors.NewErrorSimple(req.Context, "gRPC registry not found in context, ensure grpcmw.NewRegistryHandler() is used before grpcmw.Call()")
 	}
 
 	// Get service from registry
 	service, err := registry.Get(ch.serviceName)
 	if err != nil {
-		return grpcerrors.WrapErrorfSimple(err, "failed to get service %s", ch.serviceName)
+		return grpcerrors.WrapErrorfSimple(req.Context, err, "failed to get service %s", ch.serviceName)
 	}
 
 	// Read input data
 	var inputData []byte
 	if err := calque.Read(req, &inputData); err != nil {
-		return grpcerrors.WrapErrorSimple(err, "failed to read input data")
+		return grpcerrors.WrapErrorSimple(req.Context, err, "failed to read input data")
 	}
 
 	// Create a flow request
@@ -99,7 +100,7 @@ func (ch *callHandler) ServeFlow(req *calque.Request, res *calque.Response) erro
 	// Marshal the request
 	reqData, err := proto.Marshal(flowReq)
 	if err != nil {
-		return grpcerrors.WrapErrorSimple(err, "failed to marshal request")
+		return grpcerrors.WrapErrorSimple(req.Context, err, "failed to marshal request")
 	}
 
 	// Create context with timeout
@@ -116,7 +117,7 @@ func (ch *callHandler) ServeFlow(req *calque.Request, res *calque.Response) erro
 
 		// Check if error is retryable
 		if !isRetryableError(err) || attempt == service.MaxRetries {
-			return grpcerrors.WrapErrorSimple(err, "gRPC call failed")
+			return grpcerrors.WrapErrorSimple(ctx, err, "gRPC call failed")
 		}
 
 		// Wait before retry
@@ -126,7 +127,7 @@ func (ch *callHandler) ServeFlow(req *calque.Request, res *calque.Response) erro
 	// Marshal the response
 	respData, err := proto.Marshal(flowResp)
 	if err != nil {
-		return grpcerrors.WrapErrorSimple(err, "failed to marshal response")
+		return grpcerrors.WrapErrorSimple(ctx, err, "failed to marshal response")
 	}
 
 	// Write response
@@ -142,13 +143,13 @@ func (ch *callHandler) makeGRPCCall(ctx context.Context, service *Service, reqDa
 	// Unmarshal the request data back to FlowRequest
 	var flowReq calquepb.FlowRequest
 	if err := proto.Unmarshal(reqData, &flowReq); err != nil {
-		return nil, grpcerrors.WrapErrorSimple(err, "failed to unmarshal request")
+		return nil, grpcerrors.WrapErrorSimple(ctx, err, "failed to unmarshal request")
 	}
 
 	// Make the unary gRPC call
 	flowResp, err := client.ExecuteFlow(ctx, &flowReq)
 	if err != nil {
-		return nil, grpcerrors.WrapError(err, "gRPC ExecuteFlow failed")
+		return nil, grpcerrors.WrapError(ctx, err, "gRPC ExecuteFlow failed")
 	}
 
 	return flowResp, nil
@@ -194,19 +195,19 @@ func (tch *typedCallHandler[TReq, TResp]) ServeFlow(req *calque.Request, res *ca
 	// Get registry from context
 	registry := GetRegistry(req.Context)
 	if registry == nil {
-		return grpcerrors.NewErrorSimple("gRPC registry not found in context, ensure grpcmw.NewRegistryHandler() is used before grpcmw.CallWithTypes()")
+		return grpcerrors.NewErrorSimple(req.Context, "gRPC registry not found in context, ensure grpcmw.NewRegistryHandler() is used before grpcmw.CallWithTypes()")
 	}
 
 	// Get service from registry
 	service, err := registry.Get(tch.serviceName)
 	if err != nil {
-		return grpcerrors.WrapErrorfSimple(err, "failed to get service %s", tch.serviceName)
+		return grpcerrors.WrapErrorfSimple(req.Context, err, "failed to get service %s", tch.serviceName)
 	}
 
 	// Read input data as string first, then convert to bytes if needed
 	var inputStr string
 	if err := calque.Read(req, &inputStr); err != nil {
-		return grpcerrors.WrapErrorSimple(err, "failed to read input data")
+		return grpcerrors.WrapErrorSimple(req.Context, err, "failed to read input data")
 	}
 	inputData := []byte(inputStr)
 
@@ -225,7 +226,7 @@ func (tch *typedCallHandler[TReq, TResp]) ServeFlow(req *calque.Request, res *ca
 	} else {
 		// For other types, try to unmarshal as protobuf
 		if err := proto.Unmarshal(inputData, reqMsg); err != nil {
-			return grpcerrors.WrapErrorSimple(err, "failed to unmarshal request")
+			return grpcerrors.WrapErrorSimple(req.Context, err, "failed to unmarshal request")
 		}
 	}
 
@@ -243,7 +244,7 @@ func (tch *typedCallHandler[TReq, TResp]) ServeFlow(req *calque.Request, res *ca
 
 		// Check if error is retryable
 		if !isRetryableError(err) || attempt == service.MaxRetries {
-			return grpcerrors.WrapErrorSimple(err, "typed gRPC call failed")
+			return grpcerrors.WrapErrorSimple(ctx, err, "typed gRPC call failed")
 		}
 
 		// Wait before retry
@@ -262,7 +263,7 @@ func (tch *typedCallHandler[TReq, TResp]) ServeFlow(req *calque.Request, res *ca
 		// For other types, marshal to JSON for readability
 		respData, err := proto.Marshal(respMsg)
 		if err != nil {
-			return grpcerrors.WrapErrorSimple(err, "failed to marshal response")
+			return grpcerrors.WrapErrorSimple(ctx, err, "failed to marshal response")
 		}
 		responseStr = string(respData)
 	}
@@ -294,25 +295,25 @@ func (tch *typedCallHandler[TReq, TResp]) callAIService(ctx context.Context, ser
 	// Convert to AIRequest
 	aiReq, ok := any(reqMsg).(*calquepb.AIRequest)
 	if !ok {
-		return *new(TResp), grpcerrors.NewErrorSimple("invalid request type for AI service")
+		return *new(TResp), grpcerrors.NewErrorSimple(ctx, "invalid request type for AI service")
 	}
 
 	// Call StreamChat and get the streaming client
 	stream, err := client.StreamChat(ctx, aiReq)
 	if err != nil {
-		return *new(TResp), grpcerrors.WrapError(err, "AI service StreamChat failed", tch.serviceName)
+		return *new(TResp), grpcerrors.WrapError(ctx, err, "AI service StreamChat failed", tch.serviceName)
 	}
 
 	// Read the first response from the stream
 	resp, err := stream.Recv()
 	if err != nil {
-		return *new(TResp), grpcerrors.WrapError(err, "failed to receive AI response", tch.serviceName)
+		return *new(TResp), grpcerrors.WrapError(ctx, err, "failed to receive AI response", tch.serviceName)
 	}
 
 	// Convert response
 	respMsg, ok := any(resp).(TResp)
 	if !ok {
-		return *new(TResp), grpcerrors.NewErrorSimple("invalid response type for AI service")
+		return *new(TResp), grpcerrors.NewErrorSimple(ctx, "invalid response type for AI service")
 	}
 
 	return respMsg, nil
@@ -325,19 +326,19 @@ func (tch *typedCallHandler[TReq, TResp]) callMemoryService(ctx context.Context,
 	// Convert to MemoryRequest
 	memReq, ok := any(reqMsg).(*calquepb.MemoryRequest)
 	if !ok {
-		return *new(TResp), grpcerrors.NewErrorSimple("invalid request type for Memory service")
+		return *new(TResp), grpcerrors.NewErrorSimple(ctx, "invalid request type for Memory service")
 	}
 
 	// Make the unary gRPC call
 	memResp, err := client.ProcessMemory(ctx, memReq)
 	if err != nil {
-		return *new(TResp), grpcerrors.WrapError(err, "Memory service ProcessMemory failed", tch.serviceName)
+		return *new(TResp), grpcerrors.WrapError(ctx, err, "Memory service ProcessMemory failed", tch.serviceName)
 	}
 
 	// Convert response
 	respMsg, ok := any(memResp).(TResp)
 	if !ok {
-		return *new(TResp), grpcerrors.NewErrorSimple("invalid response type for Memory service")
+		return *new(TResp), grpcerrors.NewErrorSimple(ctx, "invalid response type for Memory service")
 	}
 
 	return respMsg, nil
@@ -350,19 +351,19 @@ func (tch *typedCallHandler[TReq, TResp]) callToolsService(ctx context.Context, 
 	// Convert to ToolRequest
 	toolReq, ok := any(reqMsg).(*calquepb.ToolRequest)
 	if !ok {
-		return *new(TResp), grpcerrors.NewErrorSimple("invalid request type for Tools service")
+		return *new(TResp), grpcerrors.NewErrorSimple(ctx, "invalid request type for Tools service")
 	}
 
 	// Make the unary gRPC call
 	toolResp, err := client.ExecuteTool(ctx, toolReq)
 	if err != nil {
-		return *new(TResp), grpcerrors.WrapError(err, "Tools service ExecuteTool failed", tch.serviceName)
+		return *new(TResp), grpcerrors.WrapError(ctx, err, "Tools service ExecuteTool failed", tch.serviceName)
 	}
 
 	// Convert response
 	respMsg, ok := any(toolResp).(TResp)
 	if !ok {
-		return *new(TResp), grpcerrors.NewErrorSimple("invalid response type for Tools service")
+		return *new(TResp), grpcerrors.NewErrorSimple(ctx, "invalid response type for Tools service")
 	}
 
 	return respMsg, nil
@@ -375,7 +376,7 @@ func (tch *typedCallHandler[TReq, TResp]) callFlowService(ctx context.Context, s
 	// Convert typed request to FlowRequest
 	reqData, err := proto.Marshal(reqMsg)
 	if err != nil {
-		return *new(TResp), grpcerrors.WrapErrorSimple(err, "failed to marshal typed request")
+		return *new(TResp), grpcerrors.WrapErrorSimple(ctx, err, "failed to marshal typed request")
 	}
 
 	flowReq := &calquepb.FlowRequest{
@@ -388,14 +389,14 @@ func (tch *typedCallHandler[TReq, TResp]) callFlowService(ctx context.Context, s
 	// Make the unary gRPC call
 	flowResp, err := client.ExecuteFlow(ctx, flowReq)
 	if err != nil {
-		return *new(TResp), grpcerrors.WrapError(err, "gRPC ExecuteFlow failed", tch.serviceName)
+		return *new(TResp), grpcerrors.WrapError(ctx, err, "gRPC ExecuteFlow failed", tch.serviceName)
 	}
 
 	// Convert FlowResponse to typed response
 	var respMsg TResp
 	respMsg = reflect.New(reflect.TypeOf(respMsg).Elem()).Interface().(TResp)
 	if err := proto.Unmarshal([]byte(flowResp.Output), respMsg); err != nil {
-		return *new(TResp), grpcerrors.WrapErrorSimple(err, "failed to unmarshal typed response")
+		return *new(TResp), grpcerrors.WrapErrorSimple(ctx, err, "failed to unmarshal typed response")
 	}
 
 	return respMsg, nil
@@ -427,17 +428,17 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 	// Get registry from context
 	registry := GetRegistry(req.Context)
 	if registry == nil {
-		return grpcerrors.NewErrorSimple("gRPC registry not found in context, ensure grpcmw.NewRegistryHandler() is used before grpcmw.Stream()")
+		return grpcerrors.NewErrorSimple(req.Context, "gRPC registry not found in context, ensure grpcmw.NewRegistryHandler() is used before grpcmw.Stream()")
 	}
 
 	// Get service from registry
 	service, err := registry.Get(sh.serviceName)
 	if err != nil {
-		return grpcerrors.WrapErrorfSimple(err, "failed to get service %s", sh.serviceName)
+		return grpcerrors.WrapErrorfSimple(req.Context, err, "failed to get service %s", sh.serviceName)
 	}
 
 	if !service.Streaming {
-		return grpcerrors.NewErrorSimple("service %s is not configured for streaming", sh.serviceName)
+		return grpcerrors.NewErrorSimple(req.Context, fmt.Sprintf("service %s is not configured for streaming", sh.serviceName))
 	}
 
 	// Create context with timeout
@@ -447,7 +448,7 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 	// Read input data as string
 	var inputStr string
 	if err := calque.Read(req, &inputStr); err != nil {
-		return grpcerrors.WrapErrorSimple(err, "failed to read input data")
+		return grpcerrors.WrapErrorSimple(req.Context, err, "failed to read input data")
 	}
 
 	// Call the appropriate streaming service method based on service name
@@ -459,7 +460,7 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 	case "tools-service":
 		return sh.streamToolsService(ctx, service, inputStr, res)
 	default:
-		return grpcerrors.NewErrorSimple("streaming not supported for service %s", sh.serviceName)
+		return grpcerrors.NewErrorSimple(ctx, fmt.Sprintf("streaming not supported for service %s", sh.serviceName))
 	}
 }
 
@@ -475,7 +476,7 @@ func (sh *streamHandler) streamAIService(ctx context.Context, service *Service, 
 	// Call StreamChat and get the streaming client
 	stream, err := client.StreamChat(ctx, aiReq)
 	if err != nil {
-		return grpcerrors.WrapError(err, "failed to create AI streaming client", sh.serviceName)
+		return grpcerrors.WrapError(ctx, err, "failed to create AI streaming client", sh.serviceName)
 	}
 
 	// Read responses from the stream
@@ -485,12 +486,12 @@ func (sh *streamHandler) streamAIService(ctx context.Context, service *Service, 
 			if err == io.EOF {
 				break
 			}
-			return grpcerrors.WrapError(err, "failed to receive AI streaming response", sh.serviceName)
+			return grpcerrors.WrapError(ctx, err, "failed to receive AI streaming response", sh.serviceName)
 		}
 
 		// Write response data as string
 		if err := calque.Write(res, resp.Response); err != nil {
-			return grpcerrors.WrapErrorSimple(err, "failed to write AI response")
+			return grpcerrors.WrapErrorSimple(ctx, err, "failed to write AI response")
 		}
 	}
 
@@ -511,12 +512,12 @@ func (sh *streamHandler) streamMemoryService(ctx context.Context, service *Servi
 	// Call ProcessMemory (unary call, but we'll simulate streaming)
 	memResp, err := client.ProcessMemory(ctx, memReq)
 	if err != nil {
-		return grpcerrors.WrapError(err, "failed to process memory", sh.serviceName)
+		return grpcerrors.WrapError(ctx, err, "failed to process memory", sh.serviceName)
 	}
 
 	// Write response as string (simulated streaming)
 	if err := calque.Write(res, memResp.Value); err != nil {
-		return grpcerrors.WrapErrorSimple(err, "failed to write memory response")
+		return grpcerrors.WrapErrorSimple(ctx, err, "failed to write memory response")
 	}
 
 	return nil
@@ -535,12 +536,12 @@ func (sh *streamHandler) streamToolsService(ctx context.Context, service *Servic
 	// Call ExecuteTool (unary call, but we'll simulate streaming)
 	toolResp, err := client.ExecuteTool(ctx, toolReq)
 	if err != nil {
-		return grpcerrors.WrapError(err, "failed to execute tool", sh.serviceName)
+		return grpcerrors.WrapError(ctx, err, "failed to execute tool", sh.serviceName)
 	}
 
 	// Write response as string (simulated streaming)
 	if err := calque.Write(res, toolResp.Result); err != nil {
-		return grpcerrors.WrapErrorSimple(err, "failed to write tool response")
+		return grpcerrors.WrapErrorSimple(ctx, err, "failed to write tool response")
 	}
 
 	return nil

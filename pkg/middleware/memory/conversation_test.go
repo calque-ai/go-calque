@@ -112,7 +112,7 @@ func TestConversationMemoryGetConversation(t *testing.T) {
 					{Role: "user", Content: []byte("Hello")},
 					{Role: "assistant", Content: []byte("Hi there!")},
 				}
-				cm.saveConversation("existing", messages)
+				cm.saveConversation(context.Background(), "existing", messages)
 			},
 			key: "existing",
 			expected: []Message{
@@ -131,7 +131,8 @@ func TestConversationMemoryGetConversation(t *testing.T) {
 				tt.setup(conv)
 			}
 
-			got, err := conv.getConversation(tt.key)
+			ctx := context.Background()
+			got, err := conv.getConversation(ctx, tt.key)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getConversation() error = %v, wantErr %v", err, tt.wantErr)
@@ -163,13 +164,14 @@ func TestConversationMemorySaveConversation(t *testing.T) {
 		{Role: "assistant", Content: []byte("Hi!")},
 	}
 
-	err := conv.saveConversation("test", messages)
+	ctx := context.Background()
+	err := conv.saveConversation(ctx, "test", messages)
 	if err != nil {
 		t.Errorf("saveConversation() error = %v", err)
 	}
 
 	// Verify it was saved
-	retrieved, err := conv.getConversation("test")
+	retrieved, err := conv.getConversation(ctx, "test")
 	if err != nil {
 		t.Errorf("getConversation() after save error = %v", err)
 	}
@@ -203,7 +205,7 @@ func TestConversationMemoryInput(t *testing.T) {
 					{Role: "user", Content: []byte("Previous message")},
 					{Role: "assistant", Content: []byte("Previous response")},
 				}
-				cm.saveConversation("history", messages)
+				cm.saveConversation(context.Background(), "history", messages)
 			},
 			key:            "history",
 			input:          "New message",
@@ -267,7 +269,8 @@ func TestConversationMemoryInput(t *testing.T) {
 
 			// Verify message was stored
 			if !tt.wantErr {
-				history, _ := conv.getConversation(tt.key)
+				ctx := context.Background()
+				history, _ := conv.getConversation(ctx, tt.key)
 				lastMessage := history[len(history)-1]
 				if lastMessage.Role != "user" {
 					t.Errorf("Last stored message role = %q, want %q", lastMessage.Role, "user")
@@ -303,7 +306,7 @@ func TestConversationMemoryOutput(t *testing.T) {
 				messages := []Message{
 					{Role: "user", Content: []byte("Question")},
 				}
-				cm.saveConversation("existing", messages)
+				cm.saveConversation(context.Background(), "existing", messages)
 			},
 			key:            "existing",
 			input:          "Answer to question",
@@ -353,7 +356,8 @@ func TestConversationMemoryOutput(t *testing.T) {
 
 			// Verify response was stored (only if non-empty)
 			if !tt.wantErr && tt.input != "" {
-				history, _ := conv.getConversation(tt.key)
+				ctx := context.Background()
+				history, _ := conv.getConversation(ctx, tt.key)
 				if len(history) == 0 {
 					t.Error("Expected assistant message to be stored, but history is empty")
 					return
@@ -378,10 +382,11 @@ func TestConversationMemoryClear(t *testing.T) {
 		{Role: "user", Content: []byte("Hello")},
 		{Role: "assistant", Content: []byte("Hi!")},
 	}
-	conv.saveConversation("test", messages)
+	ctx := context.Background()
+	conv.saveConversation(ctx, "test", messages)
 
 	// Verify it exists
-	history, _ := conv.getConversation("test")
+	history, _ := conv.getConversation(ctx, "test")
 	if len(history) != 2 {
 		t.Errorf("Expected 2 messages before clear, got %d", len(history))
 	}
@@ -393,7 +398,7 @@ func TestConversationMemoryClear(t *testing.T) {
 	}
 
 	// Verify it's gone
-	history, _ = conv.getConversation("test")
+	history, _ = conv.getConversation(ctx, "test")
 	if len(history) != 0 {
 		t.Errorf("Expected 0 messages after clear, got %d", len(history))
 	}
@@ -423,7 +428,7 @@ func TestConversationMemoryInfo(t *testing.T) {
 					{Role: "assistant", Content: []byte("Hi!")},
 					{Role: "user", Content: []byte("How are you?")},
 				}
-				cm.saveConversation("existing", messages)
+				cm.saveConversation(context.Background(), "existing", messages)
 			},
 			key:            "existing",
 			expectedCount:  3,
@@ -433,7 +438,7 @@ func TestConversationMemoryInfo(t *testing.T) {
 		{
 			name: "empty conversation",
 			setup: func(cm *ConversationMemory) {
-				cm.saveConversation("empty", []Message{})
+				cm.saveConversation(context.Background(), "empty", []Message{})
 			},
 			key:            "empty",
 			expectedCount:  0,
@@ -450,7 +455,8 @@ func TestConversationMemoryInfo(t *testing.T) {
 				tt.setup(conv)
 			}
 
-			count, exists, err := conv.Info(tt.key)
+			ctx := context.Background()
+			count, exists, err := conv.Info(ctx, tt.key)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Info() error = %v, wantErr %v", err, tt.wantErr)
@@ -478,9 +484,10 @@ func TestConversationMemoryListKeys(t *testing.T) {
 	}
 
 	// Add some conversations
-	conv.saveConversation("conv1", []Message{{Role: "user", Content: []byte("Hello")}})
-	conv.saveConversation("conv2", []Message{{Role: "user", Content: []byte("Hi")}})
-	conv.saveConversation("conv3", []Message{{Role: "user", Content: []byte("Hey")}})
+	ctx := context.Background()
+	conv.saveConversation(ctx, "conv1", []Message{{Role: "user", Content: []byte("Hello")}})
+	conv.saveConversation(ctx, "conv2", []Message{{Role: "user", Content: []byte("Hi")}})
+	conv.saveConversation(ctx, "conv3", []Message{{Role: "user", Content: []byte("Hey")}})
 
 	keys = conv.ListKeys()
 	if len(keys) != 3 {
@@ -556,7 +563,8 @@ func TestConversationMemoryFullWorkflow(t *testing.T) {
 	}
 
 	// Verify conversation state
-	count, exists, err := conv.Info(key)
+	ctx := context.Background()
+	count, exists, err := conv.Info(ctx, key)
 	if err != nil {
 		t.Errorf("Info error = %v", err)
 	}
@@ -655,7 +663,8 @@ func TestConversationMemoryErrorHandling(t *testing.T) {
 		store.Set("bad-json", []byte("invalid json"))
 
 		conv := NewConversationWithStore(store)
-		_, err := conv.getConversation("bad-json")
+		ctx := context.Background()
+		_, err := conv.getConversation(ctx, "bad-json")
 
 		if err == nil {
 			t.Error("Expected error from malformed JSON")

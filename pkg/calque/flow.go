@@ -43,6 +43,9 @@ const DefaultCPUMultiplier = 50
 // actual limit: runtime.GOMAXPROCS(0) * CPUMultiplier. Higher values allow more
 // concurrency for I/O-bound workloads.
 //
+// MetadataBusBuffer sets the buffer size for the MetadataBus channel used for
+// metadata communication between concurrent handlers. If 0, uses DefaultMetadataBusBuffer.
+//
 // Example configurations:
 //
 //	// Default: unlimited concurrency (best for development)
@@ -56,15 +59,20 @@ const DefaultCPUMultiplier = 50
 //
 //	// Fixed limit (precise resource control)
 //	flow := calque.NewFlow(calque.FlowConfig{MaxConcurrent: 100})
+//
+//	// With custom MetadataBus buffer
+//	flow := calque.NewFlow(calque.FlowConfig{MetadataBusBuffer: 200})
 type FlowConfig struct {
-	MaxConcurrent int // ConcurrencyUnlimited, ConcurrencyAuto, or positive integer
-	CPUMultiplier int // multiplier for GOMAXPROCS (used when MaxConcurrent = ConcurrencyAuto)
+	MaxConcurrent     int // ConcurrencyUnlimited, ConcurrencyAuto, or positive integer
+	CPUMultiplier     int // multiplier for GOMAXPROCS (used when MaxConcurrent = ConcurrencyAuto)
+	MetadataBusBuffer int // buffer size for MetadataBus channel (0 = DefaultMetadataBusBuffer)
 }
 
 // Flow is the core flow orchestration primitive
 type Flow struct {
-	handlers []Handler
-	sem      chan struct{} // nil = unlimited concurrency
+	handlers          []Handler
+	sem               chan struct{} // nil = unlimited concurrency
+	metadataBusBuffer int           // buffer size for auto-created MetadataBus
 }
 
 // NewFlow creates a new flow with optional concurrency configuration.
@@ -125,7 +133,13 @@ func NewFlow(configs ...FlowConfig) *Flow {
 		}
 	}
 
-	return &Flow{sem: sem}
+	// MetadataBus buffer size
+	mbBuffer := config.MetadataBusBuffer
+	if mbBuffer <= 0 {
+		mbBuffer = DefaultMetadataBusBuffer
+	}
+
+	return &Flow{sem: sem, metadataBusBuffer: mbBuffer}
 }
 
 // Use adds a handler to the flow chain.
@@ -198,6 +212,10 @@ func (f *Flow) ServeFlow(req *Request, res *Response) error {
 // memory usage regardless of input size. If concurrency limiting is configured,
 // handler goroutines acquire semaphore slots before execution.
 //
+// A MetadataBus is automatically created and added to context if not already present.
+// This enables handlers to communicate metadata even though they run concurrently.
+// The MetadataBus is closed when the flow completes.
+//
 // Input is automatically converted to io.Reader, output is parsed from final io.Writer.
 // Context cancellation propagates through all handlers for clean shutdown.
 // Flow execution fails if any handler returns an error.
@@ -211,6 +229,14 @@ func (f *Flow) ServeFlow(req *Request, res *Response) error {
 //	}
 //	fmt.Println("Output:", result)
 func (f *Flow) Run(ctx context.Context, input any, output any) error {
+	// Auto-create MetadataBus if not present in context
+	var mb *MetadataBus
+	if GetMetadataBus(ctx) == nil {
+		mb = NewMetadataBus(f.metadataBusBuffer)
+		ctx = WithMetadataBus(ctx, mb)
+		defer mb.Close()
+	}
+
 	if len(f.handlers) == 0 {
 		// No handlers, just copy input to output with conversion
 		return f.copyInputToOutput(input, output)
