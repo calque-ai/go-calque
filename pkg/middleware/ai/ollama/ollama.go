@@ -472,7 +472,7 @@ func (o *Client) determineResponseFormat(ctx context.Context, responseFormat *ai
 }
 
 // convertToOllamaTools converts our tool interface to Ollama's tool format using internal schema
-func (o *Client) convertToOllamaTools(ctx context.Context, toolList []tools.Tool) []api.Tool {
+func (o *Client) convertToOllamaTools(_ context.Context, toolList []tools.Tool) []api.Tool {
 	internalTools := tools.FormatToolsAsInternal(toolList)
 	ollamaTools := make([]api.Tool, len(internalTools))
 
