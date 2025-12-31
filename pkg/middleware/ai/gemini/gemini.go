@@ -158,8 +158,9 @@ func DefaultConfig() *Config {
 //	client, err := gemini.New("gemini-1.5-pro")
 //	if err != nil { log.Fatal(err) }
 func New(model string, opts ...Option) (*Client, error) {
+	ctx := context.Background()
 	if model == "" {
-		return nil, fmt.Errorf("model name is required")
+		return nil, calque.NewErr(ctx, "model name is required")
 	}
 
 	// Build config from options
@@ -170,7 +171,7 @@ func New(model string, opts ...Option) (*Client, error) {
 
 	// Validate API key
 	if config.APIKey == "" {
-		return nil, fmt.Errorf("GOOGLE_API_KEY environment variable not set or provided in config")
+		return nil, calque.NewErr(ctx, "GOOGLE_API_KEY environment variable not set or provided in config")
 	}
 
 	// Configure the GenAI client
@@ -178,9 +179,9 @@ func New(model string, opts ...Option) (*Client, error) {
 		APIKey: config.APIKey,
 	}
 
-	client, err := genai.NewClient(context.Background(), clientConfig)
+	client, err := genai.NewClient(ctx, clientConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create genai client: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to create genai client")
 	}
 
 	return &Client{
@@ -333,11 +334,11 @@ func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInp
 	// Create chat once
 	chat, err := g.client.Chats.Create(ctx, g.model, genaiConfig, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create chat: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to create chat")
 	}
 
 	// Convert to parts once
-	parts, err := g.inputToParts(input)
+	parts, err := g.inputToParts(ctx, input)
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +376,7 @@ func (g *Client) executeNonStreamingRequest(config *RequestConfig, r *calque.Req
 	// Use SendMessage for buffered response
 	result, err := config.Chat.SendMessage(r.Context, config.Parts...)
 	if err != nil {
-		return fmt.Errorf("failed to get response: %w", err)
+		return calque.WrapErr(r.Context, err, "failed to get response")
 	}
 
 	// Capture usage metadata
@@ -411,7 +412,7 @@ func (g *Client) executeStreamingRequest(config *RequestConfig, r *calque.Reques
 	// Stream response chunks directly
 	for result, err := range config.Chat.SendMessageStream(r.Context, config.Parts...) {
 		if err != nil {
-			return fmt.Errorf("failed to get response: %w", err)
+			return calque.WrapErr(r.Context, err, "failed to get response")
 		}
 
 		// Capture usage metadata from stream chunks
@@ -483,23 +484,23 @@ func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calq
 }
 
 // inputToParts converts classified input to genai.Part array
-func (g *Client) inputToParts(input *ai.ClassifiedInput) ([]genai.Part, error) {
+func (g *Client) inputToParts(ctx context.Context, input *ai.ClassifiedInput) ([]genai.Part, error) {
 	switch input.Type {
 	case ai.TextInput:
 		return []genai.Part{{Text: input.Text}}, nil
 
 	case ai.MultimodalJSONInput, ai.MultimodalStreamingInput:
-		return g.multimodalToParts(input.Multimodal)
+		return g.multimodalToParts(ctx, input.Multimodal)
 
 	default:
-		return nil, fmt.Errorf("unsupported input type: %d", input.Type)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported input type: %d", input.Type))
 	}
 }
 
 // multimodalToParts converts multimodal input to genai.Part array
-func (g *Client) multimodalToParts(multimodal *ai.MultimodalInput) ([]genai.Part, error) {
+func (g *Client) multimodalToParts(ctx context.Context, multimodal *ai.MultimodalInput) ([]genai.Part, error) {
 	if multimodal == nil {
-		return nil, fmt.Errorf("multimodal input cannot be nil")
+		return nil, calque.NewErr(ctx, "multimodal input cannot be nil")
 	}
 
 	var parts []genai.Part
@@ -518,7 +519,7 @@ func (g *Client) multimodalToParts(multimodal *ai.MultimodalInput) ([]genai.Part
 				// Read stream data (streaming approach)
 				data, err = io.ReadAll(part.Reader)
 				if err != nil {
-					return nil, fmt.Errorf("failed to read %s data: %w", part.Type, err)
+					return nil, calque.WrapErr(ctx, err, fmt.Sprintf("failed to read %s data", part.Type))
 				}
 			} else if part.Data != nil {
 				// Use embedded data (simple approach)
@@ -534,12 +535,12 @@ func (g *Client) multimodalToParts(multimodal *ai.MultimodalInput) ([]genai.Part
 				})
 			}
 		default:
-			return nil, fmt.Errorf("unsupported content part type: %s", part.Type)
+			return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported content part type: %s", part.Type))
 		}
 	}
 
 	if len(parts) == 0 {
-		return nil, fmt.Errorf("no valid content parts found in multimodal input")
+		return nil, calque.NewErr(ctx, "no valid content parts found in multimodal input")
 	}
 
 	return parts, nil

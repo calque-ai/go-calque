@@ -82,7 +82,7 @@ func loadDocuments(ctx context.Context, sources []string) ([]Document, error) {
 
 			docs, err := loadFromSource(ctx, src)
 			if err != nil {
-				errors <- fmt.Errorf("failed to load from source %s: %w", src, err)
+				errors <- calque.WrapErr(ctx, err, fmt.Sprintf("failed to load from source %s", src))
 				return
 			}
 
@@ -120,9 +120,10 @@ func resolveInputSources(r *calque.Request, paramSources []string) ([]string, er
 
 // parseSourceString parses a string input into a list of sources
 func parseSourceString(input string) ([]string, error) {
+	ctx := context.Background()
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return nil, fmt.Errorf("no input sources provided")
+		return nil, calque.NewErr(ctx, "no input sources provided")
 	}
 
 	// Try to parse as JSON array first
@@ -169,12 +170,12 @@ func loadFromURL(ctx context.Context, url string) ([]Document, error) {
 	defer func() {
 		err := resp.Body.Close()
 		if err != nil {
-			fmt.Printf("warning: failed to close response body: %v\n", err)
+			calque.LogWarn(ctx, "failed to close response body", err)
 		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, resp.Status)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("HTTP error %d: %s", resp.StatusCode, resp.Status))
 	}
 
 	content, err := io.ReadAll(resp.Body)
@@ -202,7 +203,7 @@ func loadFromFilePattern(ctx context.Context, pattern string) ([]Document, error
 	// Path sanitization - prevent directory traversal attacks
 	cleanPattern := filepath.Clean(pattern)
 	if strings.Contains(cleanPattern, "..") {
-		return nil, fmt.Errorf("invalid path pattern: %s (contains directory traversal)", pattern)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("invalid path pattern: %s (contains directory traversal)", pattern))
 	}
 
 	// Handle glob patterns

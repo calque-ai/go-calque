@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -34,10 +35,11 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
+	ctx := context.Background()
 	config := DefaultConfig("localhost:8080")
 
 	// This will fail to connect, but we can test the configuration
-	_, err := NewClient(config)
+	_, err := NewClient(ctx, config)
 	// Note: In some environments, this might succeed due to localhost resolution
 	// So we just test that the function doesn't panic
 	if err != nil {
@@ -46,15 +48,16 @@ func TestNewClient(t *testing.T) {
 	}
 
 	// Test with nil config
-	_, err = NewClient(nil)
+	_, err = NewClient(ctx, nil)
 	if err == nil {
 		t.Error("Expected error for nil config")
 	}
 }
 
 func TestNewClientWithTLS(t *testing.T) {
+	ctx := context.Background()
 	// This will fail due to missing cert files, but tests the function signature
-	_, err := NewClientWithTLS("localhost:8080", "cert.pem", "key.pem", "ca.pem")
+	_, err := NewClientWithTLS(ctx, "localhost:8080", "cert.pem", "key.pem", "ca.pem")
 	if err == nil {
 		t.Error("Expected error for missing cert files")
 	}
@@ -72,7 +75,8 @@ func TestConfigValidation(t *testing.T) {
 		},
 	}
 
-	_, err := NewClient(config)
+	ctx := context.Background()
+	_, err := NewClient(ctx, config)
 	// The error might be about empty endpoint or connection failure
 	// Both are acceptable for this test
 	if err == nil {
@@ -81,16 +85,17 @@ func TestConfigValidation(t *testing.T) {
 }
 
 func TestCloseConnection(t *testing.T) {
+	ctx := context.Background()
 	// Test CloseConnection with nil connection
 	var conn *grpc.ClientConn
-	err := CloseConnection(conn, 5*time.Second)
+	err := CloseConnection(ctx, conn, 5*time.Second)
 	if err != nil {
 		t.Errorf("CloseConnection with nil connection should not error, got: %v", err)
 	}
 
 	// Test CloseConnection with valid connection (will fail to connect but tests the function)
 	config := DefaultConfig("localhost:8080")
-	conn, err = NewClient(config)
+	conn, err = NewClient(ctx, config)
 	if err != nil {
 		// Connection failed as expected, but we can still test CloseConnection
 		t.Logf("Connection failed as expected: %v", err)
@@ -98,7 +103,7 @@ func TestCloseConnection(t *testing.T) {
 	}
 
 	// If we got here, the connection succeeded (unlikely but possible)
-	err = CloseConnection(conn, 5*time.Second)
+	err = CloseConnection(ctx, conn, 5*time.Second)
 	if err != nil {
 		t.Errorf("CloseConnection failed: %v", err)
 	}

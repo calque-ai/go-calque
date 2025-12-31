@@ -37,11 +37,11 @@ type VoteFunc func(responses []string) (string, error)
 func SimpleConsensus(agents []calque.Handler, voteFunc VoteFunc, minResponses int) calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		if len(agents) == 0 {
-			return fmt.Errorf("no agents provided for consensus")
+			return calque.NewErr(req.Context, "no agents provided for consensus")
 		}
 
 		if voteFunc == nil {
-			return fmt.Errorf("vote function cannot be nil")
+			return calque.NewErr(req.Context, "vote function cannot be nil")
 		}
 
 		// Execute all agents in parallel
@@ -51,7 +51,7 @@ func SimpleConsensus(agents []calque.Handler, voteFunc VoteFunc, minResponses in
 		parallelRes := &calque.Response{Data: &combinedOutput}
 
 		if err := parallel.ServeFlow(req, parallelRes); err != nil {
-			return fmt.Errorf("agent execution failed: %w", err)
+			return calque.WrapErr(req.Context, err, "agent execution failed")
 		}
 
 		// Split responses (parallel uses "\n---\n" separator)
@@ -66,14 +66,14 @@ func SimpleConsensus(agents []calque.Handler, voteFunc VoteFunc, minResponses in
 		}
 
 		if len(validResponses) < minResponses {
-			return fmt.Errorf("insufficient responses: got %d, need %d",
-				len(validResponses), minResponses)
+			return calque.NewErr(req.Context, fmt.Sprintf("insufficient responses: got %d, need %d",
+				len(validResponses), minResponses))
 		}
 
 		// Apply voting function
 		result, err := voteFunc(validResponses)
 		if err != nil {
-			return fmt.Errorf("voting failed: %w", err)
+			return calque.WrapErr(req.Context, err, "voting failed")
 		}
 
 		return calque.Write(res, []byte(result))

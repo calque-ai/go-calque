@@ -100,7 +100,7 @@ func EmbedTopics(ctx context.Context, topics []string, provider EmbeddingProvide
 	for _, topic := range topics {
 		embedding, err := provider.Embed(ctx, topic)
 		if err != nil {
-			return nil, fmt.Errorf("failed to embed topic '%s': %w", topic, err)
+			return nil, calque.WrapErr(ctx, err, fmt.Sprintf("failed to embed topic '%s'", topic))
 		}
 		embeddings = append(embeddings, embedding)
 	}
@@ -112,7 +112,7 @@ func EmbedTopics(ctx context.Context, topics []string, provider EmbeddingProvide
 func filterDocuments(ctx context.Context, documents []Document, opts *SemanticFilterOptions) ([]Document, error) {
 	// validate inputs
 	if opts == nil {
-		return nil, fmt.Errorf("options cannot be nil")
+		return nil, calque.NewErr(ctx, "options cannot be nil")
 	}
 	if len(documents) == 0 {
 		return documents, nil
@@ -122,7 +122,7 @@ func filterDocuments(ctx context.Context, documents []Document, opts *SemanticFi
 		return documents, nil
 	}
 	if opts.EmbeddingProvider == nil {
-		return nil, fmt.Errorf("embedding provider is required when target embeddings are specified")
+		return nil, calque.NewErr(ctx, "embedding provider is required when target embeddings are specified")
 	}
 
 	// pre-allocate with estimated capacity
@@ -144,7 +144,7 @@ func filterDocuments(ctx context.Context, documents []Document, opts *SemanticFi
 		// Get embedding for document content
 		docEmbedding, err := opts.EmbeddingProvider.Embed(ctx, doc.Content)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate embedding for document %d: %w", i, err)
+			return nil, calque.WrapErr(ctx, err, fmt.Sprintf("failed to generate embedding for document %d", i))
 		}
 
 		// validate embedding

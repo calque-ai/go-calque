@@ -137,7 +137,7 @@ func TestClientManager_RegisterClient(t *testing.T) {
 	manager.RegisterClient("test-client", client, config)
 
 	// Verify client was registered
-	retrievedClient, err := manager.GetClient("test-client")
+	retrievedClient, err := manager.GetClient(context.Background(), "test-client")
 	if err != nil {
 		t.Errorf("Unexpected error retrieving client: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestClientManager_GetClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			retrievedClient, err := manager.GetClient(tt.clientName)
+			retrievedClient, err := manager.GetClient(context.Background(), tt.clientName)
 
 			if tt.expectError {
 				if err == nil {

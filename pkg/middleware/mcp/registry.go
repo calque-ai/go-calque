@@ -38,13 +38,13 @@ func Tools(ctx context.Context, client *Client) ([]tools.Tool, error) {
 	}
 
 	if err := client.connect(ctx); err != nil {
-		return nil, client.handleError(fmt.Errorf("failed to connect for tool registry: %w", err))
+		return nil, client.handleError(calque.WrapErr(ctx, err, "failed to connect for tool registry"))
 	}
 
 	// Fetch MCP tools
 	listResult, err := client.session.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list tools: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to list tools")
 	}
 
 	// Convert to tools.Tool slice
@@ -81,7 +81,7 @@ func createMCPToolHandler(client *Client, toolName string) calque.Handler {
 		var params map[string]any
 		if len(paramBytes) > 0 {
 			if err := json.Unmarshal(paramBytes, &params); err != nil {
-				return fmt.Errorf("failed to unmarshal tool parameters for %s: %w", toolName, err)
+				return calque.WrapErr(r.Context, err, fmt.Sprintf("failed to unmarshal tool parameters for %s", toolName))
 			}
 		} else {
 			params = make(map[string]any) // Empty params
@@ -108,7 +108,7 @@ func createMCPToolHandler(client *Client, toolName string) calque.Handler {
 			if errorMessage == "" {
 				errorMessage = "unknown error (no text content in error response)"
 			}
-			return client.handleError(fmt.Errorf("tool %s returned error: %s", toolName, errorMessage))
+			return client.handleError(calque.NewErr(r.Context, fmt.Sprintf("tool %s returned error: %s", toolName, errorMessage)))
 		}
 
 		// Collect all content and write in one operation for efficiency
@@ -118,7 +118,7 @@ func createMCPToolHandler(client *Client, toolName string) calque.Handler {
 		if result.StructuredContent != nil {
 			structuredJSON, err := json.Marshal(result.StructuredContent)
 			if err != nil {
-				return client.handleError(fmt.Errorf("failed to marshal structured content: %w", err))
+				return client.handleError(calque.WrapErr(r.Context, err, "failed to marshal structured content"))
 			}
 			output.Write(structuredJSON)
 		} else {
@@ -163,7 +163,7 @@ func ResourceRegistry(client *Client) calque.Handler {
 		}
 
 		if err := client.connect(ctx); err != nil {
-			return client.handleError(fmt.Errorf("failed to connect for resource registry: %w", err))
+			return client.handleError(calque.WrapErr(ctx, err, "failed to connect for resource registry"))
 		}
 
 		var resources []*mcp.Resource
@@ -179,7 +179,7 @@ func ResourceRegistry(client *Client) calque.Handler {
 		// Cache miss - fetch from MCP server
 		listResult, err := client.session.ListResources(ctx, &mcp.ListResourcesParams{})
 		if err != nil {
-			return client.handleError(fmt.Errorf("failed to list MCP resources: %w", err))
+			return client.handleError(calque.WrapErr(ctx, err, "failed to list MCP resources"))
 		}
 
 		resources = listResult.Resources
@@ -217,7 +217,7 @@ func PromptRegistry(client *Client) calque.Handler {
 		}
 
 		if err := client.connect(ctx); err != nil {
-			return client.handleError(fmt.Errorf("failed to connect for prompt registry: %w", err))
+			return client.handleError(calque.WrapErr(ctx, err, "failed to connect for prompt registry"))
 		}
 
 		var prompts []*mcp.Prompt
@@ -233,7 +233,7 @@ func PromptRegistry(client *Client) calque.Handler {
 		// Cache miss - fetch from MCP server
 		listResult, err := client.session.ListPrompts(ctx, &mcp.ListPromptsParams{})
 		if err != nil {
-			return client.handleError(fmt.Errorf("failed to list MCP prompts: %w", err))
+			return client.handleError(calque.WrapErr(ctx, err, "failed to list MCP prompts"))
 		}
 
 		prompts = listResult.Prompts

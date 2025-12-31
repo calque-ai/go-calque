@@ -35,8 +35,8 @@ type rateLimiter struct {
 func RateLimit(rate int, per time.Duration) calque.Handler {
 	// <= 0 requests per n makes no sense.
 	if rate <= 0 {
-		return calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
-			return fmt.Errorf("invalid rate limit: rate must be greater than 0, got %d", rate)
+		return calque.HandlerFunc(func(r *calque.Request, _ *calque.Response) error {
+			return calque.NewErr(r.Context, fmt.Sprintf("invalid rate limit: rate must be greater than 0, got %d", rate))
 		})
 	}
 
@@ -47,12 +47,12 @@ func RateLimit(rate int, per time.Duration) calque.Handler {
 		lastRefill: time.Now(),
 	}
 
-	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		if err := limiter.Wait(req.Context); err != nil {
-			return fmt.Errorf("rate limit exceeded: %w", err)
+	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
+		if err := limiter.Wait(r.Context); err != nil {
+			return calque.WrapErr(r.Context, err, "rate limit wait failed")
 		}
 
-		_, err := io.Copy(res.Data, req.Data)
+		_, err := io.Copy(w.Data, r.Data)
 		return err
 	})
 }

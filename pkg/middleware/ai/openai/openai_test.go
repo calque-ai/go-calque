@@ -182,7 +182,8 @@ func TestConvertToOpenAITools(t *testing.T) {
 		config: DefaultConfig(),
 	}
 
-	openaiTools, err := client.convertToOpenAITools([]tools.Tool{mockTool})
+	ctx := context.Background()
+	openaiTools, err := client.convertToOpenAITools(ctx, []tools.Tool{mockTool})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -275,7 +276,8 @@ func TestInputToMessages(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			messages, err := client.inputToMessages(tt.input)
+			ctx := context.Background()
+			messages, err := client.inputToMessages(ctx, tt.input)
 
 			if tt.expectError {
 				if err == nil {
@@ -437,7 +439,8 @@ func TestBuildChatParams(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			params, err := client.buildChatParams(tt.input, tt.schema, tt.tools)
+			ctx := context.Background()
+			params, err := client.buildChatParams(ctx, tt.input, tt.schema, tt.tools)
 
 			if tt.expectError {
 				if err == nil {
@@ -549,7 +552,8 @@ func TestMultimodalToMessages(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			messages, err := client.multimodalToMessages(tt.multimodal)
+			ctx := context.Background()
+			messages, err := client.multimodalToMessages(ctx, tt.multimodal)
 
 			if tt.expectError {
 				if err == nil {
@@ -649,7 +653,8 @@ func TestEnhancedConvertToOpenAITools(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			openaiTools, err := client.convertToOpenAITools(tt.tools)
+			ctx := context.Background()
+			openaiTools, err := client.convertToOpenAITools(ctx, tt.tools)
 			if err != nil {
 				t.Errorf("convertToOpenAITools() error = %v", err)
 				return
@@ -825,7 +830,8 @@ func TestChat_Method(t *testing.T) {
 			}
 
 			// Test message conversion
-			messages, err := client.inputToMessages(input)
+			ctx := context.Background()
+			messages, err := client.inputToMessages(ctx, input)
 			if err != nil {
 				t.Errorf("%s: inputToMessages() error = %v", tt.description, err)
 				return
@@ -836,7 +842,7 @@ func TestChat_Method(t *testing.T) {
 			}
 
 			// Test params building
-			params, err := client.buildChatParams(input, ai.GetSchema(opts), ai.GetTools(opts))
+			params, err := client.buildChatParams(ctx, input, ai.GetSchema(opts), ai.GetTools(opts))
 			if err != nil {
 				t.Errorf("%s: buildChatParams() error = %v", tt.description, err)
 				return
@@ -1071,7 +1077,8 @@ func TestErrorHandling(t *testing.T) {
 			client := tt.setupClient()
 
 			if tt.name == "nil multimodal input" {
-				_, err := client.multimodalToMessages(nil)
+				ctx := context.Background()
+				_, err := client.multimodalToMessages(ctx, nil)
 				if !tt.expectError {
 					t.Errorf("Expected no error, got: %v", err)
 					return

@@ -3,6 +3,7 @@ package calque
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -40,7 +41,7 @@ func (f *Flow) inputToReader(input any) (io.Reader, error) {
 	case io.Reader:
 		return v, nil
 	default:
-		return nil, fmt.Errorf("unsupported input type: %T", input)
+		return nil, NewErr(context.Background(), fmt.Sprintf("unsupported input type: %T", input))
 	}
 }
 
@@ -77,7 +78,7 @@ func (f *Flow) readerToOutput(reader io.Reader, output any) error {
 		return nil
 
 	default:
-		return fmt.Errorf("unsupported output type: %T (use a converter for complex types)", output)
+		return NewErr(context.Background(), fmt.Sprintf("unsupported output type: %T (use a converter for complex types)", output))
 	}
 }
 

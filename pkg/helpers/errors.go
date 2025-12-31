@@ -1,59 +1,57 @@
 // Package helpers provides common utility functions used across the project.
+// All error functions use calque errors for context-aware error handling with
+// automatic trace_id and request_id propagation.
 package helpers
 
 import (
+	"context"
 	"fmt"
+
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
-// WrapError wraps an error with additional context message.
-// This is a common pattern used throughout the project for error handling.
+// WrapError wraps an error with context metadata using calque errors.
 //
-// Input: error to wrap and context message
-// Output: wrapped error with context, or nil if input error is nil
-// Behavior: Uses fmt.Errorf with %w verb for proper error wrapping
+// Input: context, error to wrap, and context message
+// Output: calque.Error with trace_id and request_id, or nil if input error is nil
 //
 // Example:
 //
-//	err := helpers.WrapError(originalErr, "failed to connect to service")
-//	err := helpers.WrapError(dbErr, "failed to save user data")
-func WrapError(err error, message string) error {
+//	err := helpers.WrapError(ctx, originalErr, "failed to connect to service")
+//	err := helpers.WrapError(ctx, dbErr, "failed to save user data")
+func WrapError(ctx context.Context, err error, message string) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("%s: %w", message, err)
+	return calque.WrapErr(ctx, err, message)
 }
 
-// WrapErrorf wraps an error with a formatted context message.
-// Similar to WrapError but allows formatted message with arguments.
+// WrapErrorf wraps an error with formatted message and context metadata.
 //
-// Input: error to wrap, format string, and format arguments
-// Output: wrapped error with formatted context, or nil if input error is nil
-// Behavior: Uses fmt.Errorf with %w verb for proper error wrapping
+// Input: context, error to wrap, format string, and format arguments
+// Output: calque.Error with trace_id and request_id, or nil if input error is nil
 //
 // Example:
 //
-//	err := helpers.WrapErrorf(originalErr, "failed to connect to %s service", serviceName)
-//	err := helpers.WrapErrorf(dbErr, "failed to save user %d data", userID)
-func WrapErrorf(err error, format string, args ...interface{}) error {
+//	err := helpers.WrapErrorf(ctx, originalErr, "failed to connect to %s service", serviceName)
+//	err := helpers.WrapErrorf(ctx, dbErr, "failed to save user %d data", userID)
+func WrapErrorf(ctx context.Context, err error, format string, args ...interface{}) error {
 	if err == nil {
 		return nil
 	}
-	// Append the error to the args for the %w verb
-	args = append(args, err)
-	return fmt.Errorf(format+": %w", args...)
+	message := fmt.Sprintf(format, args...)
+	return calque.WrapErr(ctx, err, message)
 }
 
-// NewError creates a new error with the given message.
-// This is a simple wrapper around fmt.Errorf for consistency.
+// NewError creates a new error with context metadata using calque errors.
 //
-// Input: error message format string and arguments
-// Output: new error with formatted message
-// Behavior: Uses fmt.Errorf to create formatted error
+// Input: context and error message
+// Output: calque.Error with trace_id and request_id
 //
 // Example:
 //
-//	err := helpers.NewError("invalid configuration: %s", configName)
-//	err := helpers.NewError("user %d not found", userID)
-func NewError(format string, args ...interface{}) error {
-	return fmt.Errorf(format, args...)
+//	err := helpers.NewError(ctx, "invalid configuration")
+//	err := helpers.NewError(ctx, "user not found")
+func NewError(ctx context.Context, message string) error {
+	return calque.NewErr(ctx, message)
 }

@@ -2,6 +2,7 @@ package convert
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -92,7 +93,7 @@ func (j *SchemaInputConverter) ToReader() (io.Reader, error) {
 	// Handle pointers
 	if typ.Kind() == reflect.Pointer {
 		if val.IsNil() {
-			return nil, fmt.Errorf("input is nil pointer")
+			return nil, calque.NewErr(context.Background(), "input is nil pointer")
 		}
 		typ = typ.Elem()
 	}
@@ -103,7 +104,7 @@ func (j *SchemaInputConverter) ToReader() (io.Reader, error) {
 	}
 
 	if typ.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("unsupported jsonschema input type: %T", j.data)
+		return nil, calque.NewErr(context.Background(), fmt.Sprintf("unsupported jsonschema input type: %T", j.data))
 	}
 
 	// Generate JSON Schema
@@ -119,7 +120,7 @@ func (j *SchemaInputConverter) ToReader() (io.Reader, error) {
 
 	jsonBytes, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal JSON with schema: %w", err)
+		return nil, calque.WrapErr(context.Background(), err, "failed to marshal JSON with schema")
 	}
 
 	return bytes.NewReader(jsonBytes), nil
@@ -141,7 +142,7 @@ func (j *SchemaOutputConverter[T]) FromReader(reader io.Reader) error {
 	// Direct streaming failed, use buffered data for wrapper logic
 	var wrapper map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &wrapper); err != nil {
-		return fmt.Errorf("failed to parse JSON: %w", err)
+		return calque.WrapErr(context.Background(), err, "failed to parse JSON")
 	}
 
 	// Get the struct type name to find the correct wrapper key
@@ -151,18 +152,18 @@ func (j *SchemaOutputConverter[T]) FromReader(reader io.Reader) error {
 	// Extract the actual data from under the struct name key
 	actualData, exists := wrapper[structName]
 	if !exists {
-		return fmt.Errorf("expected wrapper key '%s' not found in JSON", structName)
+		return calque.NewErr(context.Background(), fmt.Sprintf("expected wrapper key '%s' not found in JSON", structName))
 	}
 
 	// Marshal the actual data back to bytes and unmarshal to the target struct
 	actualBytes, err := json.Marshal(actualData)
 	if err != nil {
-		return fmt.Errorf("failed to re-marshal actual data: %w", err)
+		return calque.WrapErr(context.Background(), err, "failed to re-marshal actual data")
 	}
 
 	// Unmarshal directly into the target
 	if err := json.Unmarshal(actualBytes, j.target); err != nil {
-		return fmt.Errorf("failed to unmarshal JSON: %w", err)
+		return calque.WrapErr(context.Background(), err, "failed to unmarshal JSON")
 	}
 
 	return nil

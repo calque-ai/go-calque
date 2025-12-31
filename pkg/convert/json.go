@@ -5,6 +5,7 @@ package convert
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -88,7 +89,7 @@ func (j *JSONInputConverter) ToReader() (io.Reader, error) {
 			}()
 			encoder := json.NewEncoder(pw)
 			if err := encoder.Encode(v); err != nil {
-				pw.CloseWithError(fmt.Errorf("failed to encode JSON: %w", err))
+				pw.CloseWithError(calque.WrapErr(context.Background(), err, "failed to encode JSON"))
 			}
 		}()
 		return pr, nil
@@ -96,14 +97,14 @@ func (j *JSONInputConverter) ToReader() (io.Reader, error) {
 		// Validate first, then stream if valid
 		var temp any
 		if err := json.Unmarshal([]byte(v), &temp); err != nil {
-			return nil, fmt.Errorf("invalid JSON string: %w", err)
+			return nil, calque.WrapErr(context.Background(), err, "invalid JSON string")
 		}
 		return strings.NewReader(v), nil
 	case []byte:
 		// Validate first, then stream if valid
 		var temp any
 		if err := json.Unmarshal(v, &temp); err != nil {
-			return nil, fmt.Errorf("invalid JSON bytes: %w", err)
+			return nil, calque.WrapErr(context.Background(), err, "invalid JSON bytes")
 		}
 		return bytes.NewReader(v), nil
 	case io.Reader:
@@ -122,7 +123,7 @@ func (j *JSONInputConverter) ToReader() (io.Reader, error) {
 			}()
 			encoder := json.NewEncoder(pw)
 			if err := encoder.Encode(j.data); err != nil {
-				pw.CloseWithError(fmt.Errorf("failed to encode JSON for type %T: %w", j.data, err))
+				pw.CloseWithError(calque.WrapErr(context.Background(), err, fmt.Sprintf("failed to encode JSON for type %T", j.data)))
 			}
 		}()
 		return pr, nil
@@ -194,7 +195,7 @@ func (j *JSONInputConverter) processStreamingValidation(reader io.Reader, pw *io
 			return
 		}
 		if err := bufWriter.Flush(); err != nil {
-			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			pw.CloseWithError(calque.WrapErr(context.Background(), err, "failed to flush buffer"))
 			return
 		}
 	}
@@ -216,13 +217,13 @@ func (j *JSONInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes
 		// Note: We can't continue streaming from the original reader here
 		// as it's already been consumed by the teeReader
 		if err := bufWriter.Flush(); err != nil {
-			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			pw.CloseWithError(calque.WrapErr(context.Background(), err, "failed to flush buffer"))
 			return true
 		}
 		return true
 	} else if validateErr != io.EOF && validateErr != io.ErrUnexpectedEOF {
 		// Definite validation error (not incomplete JSON)
-		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
+		pw.CloseWithError(calque.WrapErr(context.Background(), validateErr, errorPrefix))
 		return true
 	}
 	// Otherwise continue reading (JSON might be incomplete)
@@ -234,7 +235,7 @@ func (j *JSONInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes
 	decoder := json.NewDecoder(validationBuf)
 	var temp any
 	if finalErr := decoder.Decode(&temp); finalErr != nil {
-		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, finalErr))
+		pw.CloseWithError(calque.WrapErr(context.Background(), finalErr, errorPrefix))
 		return true
 	}
 
@@ -249,7 +250,7 @@ func (j *JSONInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter 
 		return true
 	}
 	if err := bufWriter.Flush(); err != nil {
-		pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+		pw.CloseWithError(calque.WrapErr(context.Background(), err, "failed to flush buffer"))
 		return true
 	}
 	return false
@@ -260,7 +261,7 @@ func (j *JSONOutputConverter) FromReader(reader io.Reader) error {
 	// Use json.Decoder for streaming decode
 	decoder := json.NewDecoder(reader)
 	if err := decoder.Decode(j.target); err != nil {
-		return fmt.Errorf("failed to decode JSON: %w", err)
+		return calque.WrapErr(context.Background(), err, "failed to decode JSON")
 	}
 	return nil
 }

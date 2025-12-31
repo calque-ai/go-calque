@@ -3,6 +3,7 @@ package convert
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -90,7 +91,7 @@ func (y *YAMLInputConverter) ToReader() (io.Reader, error) {
 			}()
 			encoder := yaml.NewEncoder(pw)
 			if err := encoder.Encode(v); err != nil {
-				pw.CloseWithError(fmt.Errorf("failed to encode YAML: %w", err))
+				pw.CloseWithError(calque.WrapErr(context.Background(), err, "failed to encode YAML"))
 			}
 		}()
 		return pr, nil
@@ -98,14 +99,14 @@ func (y *YAMLInputConverter) ToReader() (io.Reader, error) {
 		// Validate first, then stream if valid
 		var temp any
 		if err := yaml.Unmarshal([]byte(v), &temp); err != nil {
-			return nil, fmt.Errorf("invalid YAML string: %w", err)
+			return nil, calque.WrapErr(context.Background(), err, "invalid YAML string")
 		}
 		return strings.NewReader(v), nil
 	case []byte:
 		// Validate first, then stream if valid
 		var temp any
 		if err := yaml.Unmarshal(v, &temp); err != nil {
-			return nil, fmt.Errorf("invalid YAML bytes: %w", err)
+			return nil, calque.WrapErr(context.Background(), err, "invalid YAML bytes")
 		}
 		return bytes.NewReader(v), nil
 	case io.Reader:
@@ -124,7 +125,7 @@ func (y *YAMLInputConverter) ToReader() (io.Reader, error) {
 			}()
 			encoder := yaml.NewEncoder(pw)
 			if err := encoder.Encode(y.data); err != nil {
-				pw.CloseWithError(fmt.Errorf("failed to encode YAML for type %T: %w", y.data, err))
+				pw.CloseWithError(calque.WrapErr(context.Background(), err, fmt.Sprintf("failed to encode YAML for type %T", y.data)))
 			}
 		}()
 		return pr, nil
@@ -195,7 +196,7 @@ func (y *YAMLInputConverter) processStreamingValidation(reader io.Reader, pw *io
 			return
 		}
 		if err := bufWriter.Flush(); err != nil {
-			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			pw.CloseWithError(calque.WrapErr(context.Background(), err, "failed to flush buffer"))
 			return
 		}
 	}
@@ -216,13 +217,13 @@ func (y *YAMLInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes
 		// Note: We can't continue streaming from the original reader here
 		// as it's already been consumed by the teeReader
 		if err := bufWriter.Flush(); err != nil {
-			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			pw.CloseWithError(calque.WrapErr(context.Background(), err, "failed to flush buffer"))
 			return true
 		}
 		return true
 	} else if !isIncompleteYAMLError(validateErr) {
 		// Definite validation error (not incomplete YAML)
-		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, validateErr))
+		pw.CloseWithError(calque.WrapErr(context.Background(), validateErr, errorPrefix))
 		return true
 	}
 	// Otherwise continue reading (YAML might be incomplete)
@@ -233,7 +234,7 @@ func (y *YAMLInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes
 func (y *YAMLInputConverter) handleFinalValidation(validationBuf, tempBuf *bytes.Buffer, bufWriter *bufio.Writer, pw *io.PipeWriter, errorPrefix string) bool {
 	var temp any
 	if finalErr := yaml.Unmarshal(validationBuf.Bytes(), &temp); finalErr != nil {
-		pw.CloseWithError(fmt.Errorf("%s: %w", errorPrefix, finalErr))
+		pw.CloseWithError(calque.WrapErr(context.Background(), finalErr, errorPrefix))
 		return true
 	}
 
@@ -248,7 +249,7 @@ func (y *YAMLInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter 
 		return true
 	}
 	if err := bufWriter.Flush(); err != nil {
-		pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+		pw.CloseWithError(calque.WrapErr(context.Background(), err, "failed to flush buffer"))
 		return true
 	}
 	return false
@@ -277,7 +278,7 @@ func (y *YAMLOutputConverter) FromReader(reader io.Reader) error {
 		if err == io.EOF {
 			return nil
 		}
-		return fmt.Errorf("failed to decode YAML: %w", err)
+		return calque.WrapErr(context.Background(), err, "failed to decode YAML")
 	}
 	return nil
 }

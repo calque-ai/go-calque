@@ -43,19 +43,20 @@ func (s *Server) RegisterFlow(name string, flow *calque.Flow) {
 }
 
 // GetFlow retrieves a registered flow by name.
-func (s *Server) GetFlow(name string) (*calque.Flow, error) {
+func (s *Server) GetFlow(ctx context.Context, name string) (*calque.Flow, error) {
 	flow, exists := s.flows[name]
 	if !exists {
-		return nil, fmt.Errorf("flow %s not found", name)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("flow %s not found", name))
 	}
 	return flow, nil
 }
 
 // Start starts the gRPC server.
 func (s *Server) Start() error {
+	ctx := context.Background()
 	lis, err := net.Listen("tcp", s.addr)
 	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", s.addr, err)
+		return calque.WrapErr(ctx, err, fmt.Sprintf("failed to listen on %s", s.addr))
 	}
 
 	// Register health service
@@ -113,7 +114,7 @@ func NewFlowService(server *Server) *FlowService {
 // ExecuteFlow executes a registered flow with the given input.
 func (fs *FlowService) ExecuteFlow(ctx context.Context, req *calquepb.FlowRequest) (*calquepb.FlowResponse, error) {
 	// Get the flow
-	flow, err := fs.server.GetFlow(req.FlowName)
+	flow, err := fs.server.GetFlow(ctx, req.FlowName)
 	if err != nil {
 		return &calquepb.FlowResponse{
 			Success:      false,
@@ -153,7 +154,7 @@ func (fs *FlowService) StreamFlow(stream calquepb.FlowService_StreamFlowServer) 
 		}
 
 		// Get the flow
-		flow, err := fs.server.GetFlow(req.FlowName)
+		flow, err := fs.server.GetFlow(stream.Context(), req.FlowName)
 		if err != nil {
 			resp := &calquepb.StreamingFlowResponse{
 				Success:      false,

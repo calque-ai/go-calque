@@ -3,10 +3,11 @@ package grpc
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"google.golang.org/protobuf/proto"
+
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Stream represents a bidirectional gRPC stream.
@@ -30,7 +31,7 @@ func NewStreamHandler(stream Stream) *StreamHandler {
 // SendMessage sends a protobuf message through the stream.
 func (sh *StreamHandler) SendMessage(msg proto.Message) error {
 	if err := sh.stream.Send(msg); err != nil {
-		return WrapError(err, "failed to send message")
+		return WrapError(sh.stream.Context(), err, "failed to send message")
 	}
 	return nil
 }
@@ -42,7 +43,7 @@ func (sh *StreamHandler) ReceiveMessage(_ proto.Message) error {
 		if err == io.EOF {
 			return io.EOF
 		}
-		return WrapError(err, "failed to receive message")
+		return WrapError(sh.stream.Context(), err, "failed to receive message")
 	}
 	return nil
 }
@@ -50,7 +51,7 @@ func (sh *StreamHandler) ReceiveMessage(_ proto.Message) error {
 // Close closes the send side of the stream.
 func (sh *StreamHandler) Close() error {
 	if err := sh.stream.CloseSend(); err != nil {
-		return WrapError(err, "failed to close stream")
+		return WrapError(sh.stream.Context(), err, "failed to close stream")
 	}
 	return nil
 }
@@ -104,7 +105,7 @@ func (sr *StreamReader) readFromStream() error {
 	// Create a new message instance
 	msg := proto.Clone(sr.msgType)
 	if msg == nil {
-		return fmt.Errorf("failed to clone message type")
+		return calque.NewErr(sr.stream.Context(), "failed to clone message type")
 	}
 
 	// Receive message from stream
@@ -113,13 +114,13 @@ func (sr *StreamReader) readFromStream() error {
 		if err == io.EOF {
 			return io.EOF
 		}
-		return WrapError(err, "failed to receive from stream")
+		return WrapError(sr.stream.Context(), err, "failed to receive from stream")
 	}
 
 	// Marshal message to bytes
 	data, err := proto.Marshal(msg)
 	if err != nil {
-		return WrapError(err, "failed to marshal message")
+		return WrapError(sr.stream.Context(), err, "failed to marshal message")
 	}
 
 	sr.buffer = data
@@ -146,17 +147,17 @@ func (sw *StreamWriter) Write(p []byte) (n int, err error) {
 	// Create a new message instance
 	msg := proto.Clone(sw.msgType)
 	if msg == nil {
-		return 0, fmt.Errorf("failed to clone message type")
+		return 0, calque.NewErr(sw.stream.Context(), "failed to clone message type")
 	}
 
 	// Unmarshal bytes to message
 	if err := proto.Unmarshal(p, msg); err != nil {
-		return 0, WrapError(err, "failed to unmarshal message")
+		return 0, WrapError(sw.stream.Context(), err, "failed to unmarshal message")
 	}
 
 	// Send message through stream
 	if err := sw.stream.Send(msg); err != nil {
-		return 0, WrapError(err, "failed to send message")
+		return 0, WrapError(sw.stream.Context(), err, "failed to send message")
 	}
 
 	return len(p), nil

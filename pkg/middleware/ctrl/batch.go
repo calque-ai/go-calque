@@ -6,7 +6,6 @@ package ctrl
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -215,7 +214,7 @@ func (rb *requestBatcher) processBatch(batch []*batchRequest) {
 			if i == 0 {
 				resp = batchResponse{output.Bytes(), nil}
 			} else {
-				resp = batchResponse{nil, fmt.Errorf("batch response splitting failed")}
+				resp = batchResponse{nil, calque.NewErr(req.ctx, "batch response splitting failed")}
 			}
 
 			select {

@@ -206,7 +206,7 @@ func Timeout(handler calque.Handler, timeout time.Duration) calque.Handler {
 		case err := <-done:
 			return err
 		case <-timeoutCtx.Done():
-			return fmt.Errorf("handler timeout after %v: %w", timeout, timeoutCtx.Err())
+			return calque.WrapErr(req.Context, timeoutCtx.Err(), fmt.Sprintf("handler timeout after %v", timeout))
 		}
 	})
 }
@@ -253,6 +253,6 @@ func Retry(handler calque.Handler, maxAttempts int) calque.Handler {
 			}
 		}
 
-		return fmt.Errorf("retry exhausted: %w", lastErr)
+		return calque.WrapErr(req.Context, lastErr, "retry exhausted")
 	})
 }

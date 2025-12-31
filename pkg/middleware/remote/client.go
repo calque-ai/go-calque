@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/proto"
+
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Client represents a remote service client interface.
@@ -98,25 +100,26 @@ func (cm *ClientManager) RegisterClient(name string, client Client, config *Conf
 }
 
 // GetClient retrieves a client by name.
-func (cm *ClientManager) GetClient(name string) (Client, error) {
+func (cm *ClientManager) GetClient(ctx context.Context, name string) (Client, error) {
 	client, exists := cm.clients[name]
 	if !exists {
-		return nil, fmt.Errorf("client %s not found", name)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("client %s not found", name))
 	}
 	return client, nil
 }
 
 // CloseAll closes all managed clients.
 func (cm *ClientManager) CloseAll() error {
+	ctx := context.Background()
 	var errs []error
 	for name, client := range cm.clients {
 		if err := client.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to close client %s: %w", name, err))
+			errs = append(errs, calque.WrapErr(ctx, err, fmt.Sprintf("failed to close client %s", name)))
 		}
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("errors closing clients: %v", errs)
+		return calque.NewErr(ctx, fmt.Sprintf("errors closing clients: %v", errs))
 	}
 	return nil
 }

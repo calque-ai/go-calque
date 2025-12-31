@@ -53,6 +53,7 @@ const (
 //	flow := calque.NewFlow().Use(retrieval.VectorSearch(store, opts))
 func VectorSearch(store VectorStore, opts *SearchOptions) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
+		ctx := r.Context
 		var queryText string
 		err := calque.Read(r, &queryText)
 		if err != nil {
@@ -88,7 +89,7 @@ func VectorSearch(store VectorStore, opts *SearchOptions) calque.Handler {
 		}
 
 		// Strategy specified - build formatted context
-		context, err := buildContext(result.Documents, opts, store, isNative)
+		context, err := buildContext(ctx, result.Documents, opts, store, isNative)
 		if err != nil {
 			return err
 		}
@@ -111,7 +112,7 @@ func handleEmbeddingForQuery(ctx context.Context, store VectorStore, query *Sear
 		// Use store's embedding capability
 		vector, err := embedder.GetEmbedding(ctx, query.Text)
 		if err != nil {
-			return fmt.Errorf("failed to generate embedding using store capability: %w", err)
+			return calque.WrapErr(ctx, err, "failed to generate embedding using store capability")
 		}
 		query.Vector = vector
 		return nil
@@ -122,7 +123,7 @@ func handleEmbeddingForQuery(ctx context.Context, store VectorStore, query *Sear
 		// Use custom embedding provider
 		vector, err := opts.EmbeddingProvider.Embed(ctx, query.Text)
 		if err != nil {
-			return fmt.Errorf("failed to generate embedding using custom provider: %w", err)
+			return calque.WrapErr(ctx, err, "failed to generate embedding using custom provider")
 		}
 		query.Vector = vector
 		return nil
@@ -154,12 +155,12 @@ func strategySearch(ctx context.Context, store VectorStore, query SearchQuery, o
 	if processingMode == StrategyNative {
 		nativeResult, err := tryNativeStrategy(ctx, store, query, opts)
 		if err != nil {
-			return nil, false, fmt.Errorf("native strategy processing failed: %w", err)
+			return nil, false, calque.WrapErr(ctx, err, "native strategy processing failed")
 		}
 		if nativeResult != nil {
 			return nativeResult, true, nil
 		}
-		return nil, false, fmt.Errorf("native strategy processing not available for %s", *opts.Strategy)
+		return nil, false, calque.NewErr(ctx, fmt.Sprintf("native strategy processing not available for %s", *opts.Strategy))
 	}
 
 	// Handle StrategyAuto and StrategyBoth - try native first
@@ -224,7 +225,7 @@ func tryNativeStrategy(ctx context.Context, store VectorStore, query SearchQuery
 }
 
 // buildContext assembles documents using native store capabilities when available
-func buildContext(documents []Document, opts *SearchOptions, store VectorStore, isNative bool) (string, error) {
+func buildContext(ctx context.Context, documents []Document, opts *SearchOptions, store VectorStore, isNative bool) (string, error) {
 	if len(documents) == 0 {
 		return "", nil
 	}
@@ -237,9 +238,9 @@ func buildContext(documents []Document, opts *SearchOptions, store VectorStore, 
 		selectedDocs = documents
 	} else {
 		// Apply strategy-based sorting/filtering post-search
-		selectedDocs, err = applyStrategy(documents, opts)
+		selectedDocs, err = applyStrategy(ctx, documents, opts)
 		if err != nil {
-			return "", err
+			return "", calque.WrapErr(ctx, err, "failed to apply sorting/filtering strategy")
 		}
 	}
 
@@ -274,7 +275,7 @@ func buildContext(documents []Document, opts *SearchOptions, store VectorStore, 
 }
 
 // applyStrategy applies the specified strategy post search to select and order documents
-func applyStrategy(documents []Document, opts *SearchOptions) ([]Document, error) {
+func applyStrategy(ctx context.Context, documents []Document, opts *SearchOptions) ([]Document, error) {
 	if opts.Strategy == nil {
 		return documents, nil
 	}
@@ -312,7 +313,7 @@ func applyStrategy(documents []Document, opts *SearchOptions) ([]Document, error
 		// For now, just truncate long documents (could integrate with summarization later)
 		docs = truncateDocuments(docs, opts.GetSummaryWordLimit())
 	default:
-		return nil, fmt.Errorf("unknown context strategy: %s", *opts.Strategy)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("unknown context strategy: %s", *opts.Strategy))
 	}
 
 	return docs, nil

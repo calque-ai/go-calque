@@ -91,7 +91,7 @@ type conversationData struct {
 }
 
 // getConversation retrieves conversation history from store
-func (cm *ConversationMemory) getConversation(key string) ([]Message, error) {
+func (cm *ConversationMemory) getConversation(ctx context.Context, key string) ([]Message, error) {
 	data, err := cm.store.Get(key)
 	if err != nil {
 		return nil, err
@@ -103,18 +103,18 @@ func (cm *ConversationMemory) getConversation(key string) ([]Message, error) {
 
 	var conv conversationData
 	if err := json.Unmarshal(data, &conv); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal conversation: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to unmarshal conversation")
 	}
 
 	return conv.Messages, nil
 }
 
 // saveConversation stores conversation history to store
-func (cm *ConversationMemory) saveConversation(key string, messages []Message) error {
+func (cm *ConversationMemory) saveConversation(ctx context.Context, key string, messages []Message) error {
 	conv := conversationData{Messages: messages}
 	data, err := json.Marshal(conv)
 	if err != nil {
-		return fmt.Errorf("failed to marshal conversation: %w", err)
+		return calque.WrapErr(ctx, err, "failed to marshal conversation")
 	}
 
 	return cm.store.Set(key, data)
@@ -137,18 +137,18 @@ func (cm *ConversationMemory) Input(key string) calque.Handler {
 		var input string
 		err := calque.Read(r, &input)
 		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
+			return calque.WrapErr(r.Context, err, "failed to read input")
 		}
 
 		currentInput := strings.TrimSpace(input)
 		if currentInput == "" {
-			return fmt.Errorf("empty input for conversation")
+			return calque.NewErr(r.Context, "empty input for conversation")
 		}
 
 		// Get conversation history
-		history, err := cm.getConversation(key)
+		history, err := cm.getConversation(r.Context, key)
 		if err != nil {
-			return fmt.Errorf("failed to get conversation: %w", err)
+			return calque.WrapErr(r.Context, err, "failed to get conversation")
 		}
 
 		// Build conversation context
@@ -171,8 +171,8 @@ func (cm *ConversationMemory) Input(key string) calque.Handler {
 		copy(updatedHistory, history)
 		updatedHistory = append(updatedHistory, newMessage)
 
-		if err := cm.saveConversation(key, updatedHistory); err != nil {
-			return fmt.Errorf("failed to save conversation: %w", err)
+		if err := cm.saveConversation(r.Context, key, updatedHistory); err != nil {
+			return calque.WrapErr(r.Context, err, "failed to save conversation")
 		}
 
 		// Write full context to output
@@ -204,16 +204,16 @@ func (cm *ConversationMemory) Output(key string) calque.Handler {
 		// Stream through to output
 		_, err := io.Copy(w.Data, teeReader)
 		if err != nil {
-			return fmt.Errorf("failed to stream response: %w", err)
+			return calque.WrapErr(r.Context, err, "failed to stream response")
 		}
 
 		// Store the captured response
 		responseBytes := responseBuffer.Bytes()
 		if len(responseBytes) > 0 {
 			// Get current conversation
-			history, err := cm.getConversation(key)
+			history, err := cm.getConversation(r.Context, key)
 			if err != nil {
-				return fmt.Errorf("failed to get conversation: %w", err)
+				return calque.WrapErr(r.Context, err, "failed to get conversation")
 			}
 
 			// Add assistant response
@@ -225,8 +225,8 @@ func (cm *ConversationMemory) Output(key string) calque.Handler {
 			copy(updatedHistory, history)
 			updatedHistory = append(updatedHistory, newMessage)
 
-			if err := cm.saveConversation(key, updatedHistory); err != nil {
-				return fmt.Errorf("failed to save conversation: %w", err)
+			if err := cm.saveConversation(r.Context, key, updatedHistory); err != nil {
+				return calque.WrapErr(r.Context, err, "failed to save conversation")
 			}
 		}
 
@@ -257,8 +257,8 @@ func (cm *ConversationMemory) Clear(key string) error {
 //
 //	count, exists, err := mem.Info("user123")
 //	if exists { fmt.Printf("%d messages", count) }
-func (cm *ConversationMemory) Info(key string) (messageCount int, exists bool, err error) {
-	history, err := cm.getConversation(key)
+func (cm *ConversationMemory) Info(ctx context.Context, key string) (messageCount int, exists bool, err error) {
+	history, err := cm.getConversation(ctx, key)
 	if err != nil {
 		return 0, false, err
 	}
@@ -336,7 +336,7 @@ func (cm *ConversationMemory) InputFromContext() calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		key := GetKey(req.Context)
 		if key == "" {
-			return fmt.Errorf("no memory key found in context for memory input")
+			return calque.NewErr(req.Context, "no memory key found in context for memory input")
 		}
 
 		return cm.Input(key).ServeFlow(req, res)
@@ -358,7 +358,7 @@ func (cm *ConversationMemory) OutputFromContext() calque.Handler {
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		key := GetKey(req.Context)
 		if key == "" {
-			return fmt.Errorf("no memory key found in context for memory output")
+			return calque.NewErr(req.Context, "no memory key found in context for memory output")
 		}
 
 		return cm.Output(key).ServeFlow(req, res)
@@ -381,7 +381,7 @@ func (cm *ConversationMemory) WrapFromContext(handler calque.Handler) calque.Han
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
 		key := GetKey(req.Context)
 		if key == "" {
-			return fmt.Errorf("no memory key found in context for memory")
+			return calque.NewErr(req.Context, "no memory key found in context for memory")
 		}
 
 		// Create a flow: Input → Handler → Output

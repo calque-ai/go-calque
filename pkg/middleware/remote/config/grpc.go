@@ -2,6 +2,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/helpers"
 )
 
@@ -157,27 +159,27 @@ func (c *GRPCConfig) LoadFromEnv() error {
 }
 
 // GetServiceConfig returns configuration for a specific service.
-func (c *GRPCConfig) GetServiceConfig(serviceName string) (*ServiceConfig, error) {
+func (c *GRPCConfig) GetServiceConfig(ctx context.Context, serviceName string) (*ServiceConfig, error) {
 	config, exists := c.Services[serviceName]
 	if !exists {
-		return nil, fmt.Errorf("service %s not found in configuration", serviceName)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("service %s not found in configuration", serviceName))
 	}
 	return &config, nil
 }
 
 // GetCredentials returns gRPC credentials based on configuration.
-func (sc *ServiceConfig) GetCredentials() (credentials.TransportCredentials, error) {
+func (sc *ServiceConfig) GetCredentials(ctx context.Context) (credentials.TransportCredentials, error) {
 	switch sc.Credentials.Type {
 	case "insecure":
 		return insecure.NewCredentials(), nil
 	case "tls":
 		if sc.Credentials.CAFile == "" {
-			return nil, fmt.Errorf("CA file required for TLS credentials")
+			return nil, calque.NewErr(ctx, "CA file required for TLS credentials")
 		}
 		return credentials.NewClientTLSFromFile(sc.Credentials.CAFile, sc.Credentials.CertFile)
 	case "mtls":
 		if sc.Credentials.CertFile == "" || sc.Credentials.KeyFile == "" || sc.Credentials.CAFile == "" {
-			return nil, fmt.Errorf("cert file, key file, and CA file required for mTLS credentials")
+			return nil, calque.NewErr(ctx, "cert file, key file, and CA file required for mTLS credentials")
 		}
 		return credentials.NewClientTLSFromFile(sc.Credentials.CAFile, sc.Credentials.CertFile)
 	default:

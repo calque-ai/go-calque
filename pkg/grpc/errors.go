@@ -2,31 +2,45 @@
 package grpc
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 // Error wraps gRPC errors with additional context and status codes.
+// It embeds calque.Error to provide trace_id and request_id automatically.
 type Error struct {
-	Code    codes.Code
-	Message string
-	Details []interface{}
-	Err     error
+	calqueErr *calque.Error // Embed calque.Error for context metadata
+	Code      codes.Code
+	Details   []interface{}
 }
 
-// Error implements the error interface.
+// Error implements the error interface (overrides calque.Error.Error()).
 func (e *Error) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("grpc error [%s]: %s: %v", e.Code, e.Message, e.Err)
+	msg := e.calqueErr.Message()
+	if e.calqueErr.Cause() != nil {
+		return fmt.Sprintf("grpc error [%s]: %s: %v", e.Code, msg, e.calqueErr.Cause())
 	}
-	return fmt.Sprintf("grpc error [%s]: %s", e.Code, e.Message)
+	return fmt.Sprintf("grpc error [%s]: %s", e.Code, msg)
 }
 
 // Unwrap returns the underlying error.
 func (e *Error) Unwrap() error {
-	return e.Err
+	return e.calqueErr.Unwrap()
+}
+
+// TraceID returns the trace ID from the embedded calque.Error.
+func (e *Error) TraceID() string {
+	return e.calqueErr.TraceID()
+}
+
+// RequestID returns the request ID from the embedded calque.Error.
+func (e *Error) RequestID() string {
+	return e.calqueErr.RequestID()
 }
 
 // IsRetryable returns true if the error is retryable.
@@ -39,26 +53,38 @@ func (e *Error) IsRetryable() bool {
 	}
 }
 
-// WrapError wraps a gRPC error with additional context.
-func WrapError(err error, message string, details ...interface{}) *Error {
+// LogAttrs returns all attributes including gRPC code, trace_id, and request_id.
+// This is useful for logging the error with all metadata.
+func (e *Error) LogAttrs() []slog.Attr {
+	attrs := e.calqueErr.LogAttrs()
+	attrs = append(attrs, slog.String("grpc_code", e.Code.String()))
+	if len(e.Details) > 0 {
+		attrs = append(attrs, slog.Any("grpc_details", e.Details))
+	}
+	return attrs
+}
+
+// WrapError wraps a gRPC error with context metadata using calque errors.
+// The error includes trace_id and request_id from context, plus gRPC status code.
+func WrapError(ctx context.Context, err error, message string, details ...interface{}) *Error {
 	if err == nil {
 		return nil
 	}
 
-	grpcErr := &Error{
-		Message: message,
-		Details: details,
-		Err:     err,
-	}
+	// Create calque error with context metadata
+	calqueErr := calque.WrapErr(ctx, err, message)
 
-	// Extract gRPC status if available
+	// Extract gRPC status code
+	code := codes.Unknown
 	if st, ok := status.FromError(err); ok {
-		grpcErr.Code = st.Code()
-	} else {
-		grpcErr.Code = codes.Unknown
+		code = st.Code()
 	}
 
-	return grpcErr
+	return &Error{
+		calqueErr: calqueErr,
+		Code:      code,
+		Details:   details,
+	}
 }
 
 // IsGRPCError checks if an error is a gRPC error.
@@ -75,71 +101,70 @@ func GetGRPCCode(err error) codes.Code {
 	return codes.Unknown
 }
 
-// NewUnavailableError creates a new gRPC unavailable error.
-func NewUnavailableError(message string, err error) *Error {
+// NewUnavailableError creates a new gRPC unavailable error with context metadata.
+func NewUnavailableError(ctx context.Context, message string, err error) *Error {
+	calqueErr := calque.WrapErr(ctx, err, message)
 	return &Error{
-		Code:    codes.Unavailable,
-		Message: message,
-		Err:     err,
+		calqueErr: calqueErr,
+		Code:      codes.Unavailable,
 	}
 }
 
-// NewDeadlineExceededError creates a new gRPC deadline exceeded error.
-func NewDeadlineExceededError(message string, err error) *Error {
+// NewDeadlineExceededError creates a new gRPC deadline exceeded error with context metadata.
+func NewDeadlineExceededError(ctx context.Context, message string, err error) *Error {
+	calqueErr := calque.WrapErr(ctx, err, message)
 	return &Error{
-		Code:    codes.DeadlineExceeded,
-		Message: message,
-		Err:     err,
+		calqueErr: calqueErr,
+		Code:      codes.DeadlineExceeded,
 	}
 }
 
-// NewInvalidArgumentError creates a new gRPC invalid argument error.
-func NewInvalidArgumentError(message string, err error) *Error {
+// NewInvalidArgumentError creates a new gRPC invalid argument error with context metadata.
+func NewInvalidArgumentError(ctx context.Context, message string, err error) *Error {
+	calqueErr := calque.WrapErr(ctx, err, message)
 	return &Error{
-		Code:    codes.InvalidArgument,
-		Message: message,
-		Err:     err,
+		calqueErr: calqueErr,
+		Code:      codes.InvalidArgument,
 	}
 }
 
-// NewNotFoundError creates a new gRPC not found error.
-func NewNotFoundError(message string, err error) *Error {
+// NewNotFoundError creates a new gRPC not found error with context metadata.
+func NewNotFoundError(ctx context.Context, message string, err error) *Error {
+	calqueErr := calque.WrapErr(ctx, err, message)
 	return &Error{
-		Code:    codes.NotFound,
-		Message: message,
-		Err:     err,
+		calqueErr: calqueErr,
+		Code:      codes.NotFound,
 	}
 }
 
-// NewInternalError creates a new gRPC internal error.
-func NewInternalError(message string, err error) *Error {
+// NewInternalError creates a new gRPC internal error with context metadata.
+func NewInternalError(ctx context.Context, message string, err error) *Error {
+	calqueErr := calque.WrapErr(ctx, err, message)
 	return &Error{
-		Code:    codes.Internal,
-		Message: message,
-		Err:     err,
+		calqueErr: calqueErr,
+		Code:      codes.Internal,
 	}
 }
 
-// WrapErrorSimple wraps an error with additional context message (non-gRPC specific).
-// This is a general error wrapping function for use within the gRPC package.
-func WrapErrorSimple(err error, message string) error {
+// WrapErrorSimple wraps an error with context metadata (non-gRPC specific).
+// This uses calque errors for consistent error handling.
+func WrapErrorSimple(ctx context.Context, err error, message string) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("%s: %w", message, err)
+	return calque.WrapErr(ctx, err, message)
 }
 
-// WrapErrorfSimple wraps an error with a formatted context message (non-gRPC specific).
-func WrapErrorfSimple(err error, format string, args ...interface{}) error {
+// WrapErrorfSimple wraps an error with formatted message and context metadata.
+func WrapErrorfSimple(ctx context.Context, err error, format string, args ...interface{}) error {
 	if err == nil {
 		return nil
 	}
-	// Append the error to the args for the %w verb
-	args = append(args, err)
-	return fmt.Errorf(format+": %w", args...)
+	message := fmt.Sprintf(format, args...)
+	return calque.WrapErr(ctx, err, message)
 }
 
-// NewErrorSimple creates a new error with the given message (non-gRPC specific).
-func NewErrorSimple(format string, args ...interface{}) error {
-	return fmt.Errorf(format, args...)
+// NewErrorSimple creates a new error with context metadata.
+func NewErrorSimple(ctx context.Context, message string) error {
+	return calque.NewErr(ctx, message)
 }

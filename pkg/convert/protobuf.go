@@ -4,7 +4,7 @@ package convert
 
 import (
 	"bytes"
-	"fmt"
+	"context"
 	"io"
 
 	"google.golang.org/protobuf/proto"
@@ -70,14 +70,15 @@ func FromProtobuf(target proto.Message) calque.OutputConverter {
 
 // ToReader converts the input data to an io.Reader for streaming protobuf processing.
 func (p *ProtobufInputConverter) ToReader() (io.Reader, error) {
+	ctx := context.Background()
 	if p.data == nil {
-		return nil, fmt.Errorf("protobuf data is nil")
+		return nil, calque.NewErr(ctx, "protobuf data is nil")
 	}
 
 	// Marshal the protobuf message to binary
 	data, err := proto.Marshal(p.data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal protobuf: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to marshal protobuf")
 	}
 
 	return bytes.NewReader(data), nil
@@ -85,19 +86,20 @@ func (p *ProtobufInputConverter) ToReader() (io.Reader, error) {
 
 // FromReader implements the OutputConverter interface for protobuf streams -> structured data.
 func (p *ProtobufOutputConverter) FromReader(reader io.Reader) error {
+	ctx := context.Background()
 	if p.target == nil {
-		return fmt.Errorf("protobuf target is nil")
+		return calque.NewErr(ctx, "protobuf target is nil")
 	}
 
 	// Read all data from the reader
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return fmt.Errorf("failed to read protobuf data: %w", err)
+		return calque.WrapErr(ctx, err, "failed to read protobuf data")
 	}
 
 	// Unmarshal the binary data to the target message
 	if err := proto.Unmarshal(data, p.target); err != nil {
-		return fmt.Errorf("failed to unmarshal protobuf: %w", err)
+		return calque.WrapErr(ctx, err, "failed to unmarshal protobuf")
 	}
 
 	return nil
@@ -127,14 +129,15 @@ type ProtobufStreamInputConverter struct {
 
 // ToReader converts the input data to an io.Reader for streaming protobuf processing.
 func (p *ProtobufStreamInputConverter) ToReader() (io.Reader, error) {
+	ctx := context.Background()
 	if p.data == nil {
-		return nil, fmt.Errorf("protobuf data is nil")
+		return nil, calque.NewErr(ctx, "protobuf data is nil")
 	}
 
 	// Marshal the protobuf message to binary
 	data, err := proto.Marshal(p.data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal protobuf: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to marshal protobuf")
 	}
 
 	// For large messages (>1MB), use chunked streaming to avoid memory issues
@@ -169,8 +172,9 @@ type ProtobufStreamOutputConverter struct {
 
 // FromReader implements the OutputConverter interface for streaming protobuf streams -> structured data.
 func (p *ProtobufStreamOutputConverter) FromReader(reader io.Reader) error {
+	ctx := context.Background()
 	if p.target == nil {
-		return fmt.Errorf("protobuf target is nil")
+		return calque.NewErr(ctx, "protobuf target is nil")
 	}
 
 	// Read data in chunks for large messages to avoid memory issues
@@ -186,13 +190,13 @@ func (p *ProtobufStreamOutputConverter) FromReader(reader io.Reader) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("failed to read protobuf data: %w", err)
+			return calque.WrapErr(ctx, err, "failed to read protobuf data")
 		}
 	}
 
 	// Unmarshal the complete data to the target message
 	if err := proto.Unmarshal(data, p.target); err != nil {
-		return fmt.Errorf("failed to unmarshal protobuf: %w", err)
+		return calque.WrapErr(ctx, err, "failed to unmarshal protobuf")
 	}
 
 	return nil

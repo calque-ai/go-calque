@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // SSEEvent represents a Server-Sent Event.
@@ -387,7 +389,7 @@ func (s *SSEConverter) streamByWord(reader io.Reader) error {
 		n, err := reader.Read(buffer)
 		if n > 0 {
 			if s.processWordChar(buffer[0], &currentWord) {
-				return s.sendError(fmt.Errorf("failed to process word character"))
+				return s.sendError(calque.NewErr(context.Background(), "failed to process word character"))
 			}
 		}
 
@@ -553,7 +555,7 @@ func (s *SSEConverter) WriteError(err error) error {
 func (s *SSEConverter) writeSSEEvent(event string, data any) error {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return fmt.Errorf("failed to marshal SSE data: %w", err)
+		return calque.WrapErr(context.Background(), err, "failed to marshal SSE data")
 	}
 
 	s.mu.Lock()
@@ -561,7 +563,7 @@ func (s *SSEConverter) writeSSEEvent(event string, data any) error {
 
 	_, err = fmt.Fprintf(s.writer, "event: %s\ndata: %s\n\n", event, jsonData)
 	if err != nil {
-		return fmt.Errorf("failed to write SSE event: %w", err)
+		return calque.WrapErr(context.Background(), err, "failed to write SSE event")
 	}
 
 	s.flusher.Flush()

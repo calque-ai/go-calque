@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/retrieval"
 	qd "github.com/qdrant/go-client/qdrant"
 )
@@ -60,8 +61,9 @@ type Config struct {
 //	    Distance:       "Cosine",
 //	})
 func New(config *Config) (*Client, error) {
+	ctx := context.Background()
 	if config.URL == "" {
-		return nil, fmt.Errorf("qdrant URL is required")
+		return nil, calque.NewErr(ctx, "qdrant URL is required")
 	}
 	if config.CollectionName == "" {
 		config.CollectionName = "documents" // Default collection name
@@ -73,14 +75,14 @@ func New(config *Config) (*Client, error) {
 	// Parse URL to extract host and port for Qdrant client
 	parsedURL, err := url.Parse(config.URL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid Weaviate URL: %w", err)
+		return nil, calque.WrapErr(ctx, err, "invalid Qdrant URL")
 	}
 
 	port := 6334 // Default Qdrant port is 6334
 	if parsedURL.Port() != "" {
 		p, err := strconv.ParseInt(parsedURL.Port(), 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("error converting string to int: %w", err)
+			return nil, calque.WrapErr(ctx, err, "error converting port string to int")
 		}
 		port = int(p)
 	}
@@ -95,7 +97,7 @@ func New(config *Config) (*Client, error) {
 	// Create Qdrant client
 	qdrantClient, err := qd.NewClient(qdrantConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Qdrant client: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to create Qdrant client")
 	}
 
 	client := &Client{
@@ -113,16 +115,16 @@ func New(config *Config) (*Client, error) {
 // Search performs similarity search against the Qdrant vector database.
 func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retrieval.SearchResult, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("qdrant client is not initialized")
+		return nil, calque.NewErr(ctx, "qdrant client is not initialized")
 	}
 	if len(query.Vector) == 0 {
-		return nil, fmt.Errorf("query vector is required for qdrant search")
+		return nil, calque.NewErr(ctx, "query vector is required for qdrant search")
 	}
 
 	// Determine collection name: use query override or client default
 	collection := c.getCollectionName(query.Collection)
 	if collection == "" {
-		return nil, fmt.Errorf("no collection specified in query or client config")
+		return nil, calque.NewErr(ctx, "no collection specified in query or client config")
 	}
 
 	// Build Qdrant search request
@@ -152,7 +154,7 @@ func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retr
 	// Execute search
 	searchResult, err := c.client.Query(ctx, searchRequest)
 	if err != nil {
-		return nil, fmt.Errorf("qdrant search failed: %w", err)
+		return nil, calque.WrapErr(ctx, err, "qdrant search failed")
 	}
 
 	// Convert Qdrant results to retrieval documents
@@ -190,16 +192,16 @@ func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retr
 //	result, err := client.SearchWithDiversification(ctx, query, opts)
 func (c *Client) SearchWithDiversification(ctx context.Context, query retrieval.SearchQuery, opts retrieval.DiversificationOptions) (*retrieval.SearchResult, error) {
 	if c.client == nil {
-		return nil, fmt.Errorf("qdrant client is not initialized")
+		return nil, calque.NewErr(ctx, "qdrant client is not initialized")
 	}
 	if len(query.Vector) == 0 {
-		return nil, fmt.Errorf("query vector is required for qdrant hybrid search")
+		return nil, calque.NewErr(ctx, "query vector is required for qdrant hybrid search")
 	}
 
 	// Determine collection name: use query override or client default
 	collection := c.getCollectionName(query.Collection)
 	if collection == "" {
-		return nil, fmt.Errorf("no collection specified in query or client config")
+		return nil, calque.NewErr(ctx, "no collection specified in query or client config")
 	}
 
 	// Hybrid search with multiple vector spaces for diversification
@@ -226,7 +228,7 @@ func (c *Client) SearchWithDiversification(ctx context.Context, query retrieval.
 	// Search 1: Primary dense vector search (using provided vector)
 	denseResults, err := c.executeVectorSearch(ctx, query, collection, prefetchLimit, "dense")
 	if err != nil {
-		searchErrors = append(searchErrors, fmt.Errorf("dense search failed: %w", err))
+		searchErrors = append(searchErrors, calque.WrapErr(ctx, err, "dense search failed"))
 	} else {
 		allResults = append(allResults, denseResults...)
 	}
@@ -234,7 +236,7 @@ func (c *Client) SearchWithDiversification(ctx context.Context, query retrieval.
 	// Search 2: Sparse vector search (BM25-like) for keyword-based diversity
 	sparseResults, err := c.executeSparseSearch(ctx, query, collection, prefetchLimit/3)
 	if err != nil {
-		searchErrors = append(searchErrors, fmt.Errorf("sparse search failed: %w", err))
+		searchErrors = append(searchErrors, calque.WrapErr(ctx, err, "sparse search failed"))
 	} else {
 		allResults = append(allResults, sparseResults...)
 	}
@@ -242,7 +244,7 @@ func (c *Client) SearchWithDiversification(ctx context.Context, query retrieval.
 	// Search 3: Late interaction search for contextual diversity
 	lateInteractionResults, err := c.executeLateInteractionSearch(ctx, query, collection, prefetchLimit/3)
 	if err != nil {
-		searchErrors = append(searchErrors, fmt.Errorf("late interaction search failed: %w", err))
+		searchErrors = append(searchErrors, calque.WrapErr(ctx, err, "late interaction search failed"))
 	} else {
 		allResults = append(allResults, lateInteractionResults...)
 	}
@@ -254,7 +256,7 @@ func (c *Client) SearchWithDiversification(ctx context.Context, query retrieval.
 		diverseQuery.Threshold = query.Threshold * 0.7 // Lower threshold for more diverse results
 		diverseResults, err := c.executeVectorSearch(ctx, diverseQuery, collection, prefetchLimit/4, "diverse")
 		if err != nil {
-			searchErrors = append(searchErrors, fmt.Errorf("diverse search failed: %w", err))
+			searchErrors = append(searchErrors, calque.WrapErr(ctx, err, "diverse search failed"))
 		} else {
 			allResults = append(allResults, diverseResults...)
 		}
@@ -262,7 +264,7 @@ func (c *Client) SearchWithDiversification(ctx context.Context, query retrieval.
 
 	// If all searches failed, return error
 	if len(allResults) == 0 {
-		return nil, fmt.Errorf("all hybrid searches failed: %v", searchErrors)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("all hybrid searches failed: %v", searchErrors))
 	}
 
 	// Apply Reciprocal Rank Fusion (RRF) to combine results from different searches
@@ -290,7 +292,7 @@ func (c *Client) SearchWithDiversification(ctx context.Context, query retrieval.
 // - Proper error handling and retries
 func (c *Client) Store(ctx context.Context, documents []retrieval.Document) error {
 	if c.client == nil {
-		return fmt.Errorf("qdrant client is not initialized")
+		return calque.NewErr(ctx, "qdrant client is not initialized")
 	}
 	if len(documents) == 0 {
 		return nil // No documents to store
@@ -298,7 +300,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 
 	// Ensure collection exists before storing documents
 	if err := c.ensureCollectionExists(ctx); err != nil {
-		return fmt.Errorf("failed to ensure collection exists: %w", err)
+		return calque.WrapErr(ctx, err, "failed to ensure collection exists")
 	}
 
 	// Process documents in batches for optimal performance
@@ -313,7 +315,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 
 		batch := documents[i:end]
 		if err := c.storeBatch(ctx, batch); err != nil {
-			return fmt.Errorf("failed to store batch %d-%d: %w", i, end-1, err)
+			return calque.WrapErr(ctx, err, fmt.Sprintf("failed to store batch %d-%d", i, end-1))
 		}
 	}
 
@@ -325,7 +327,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 // For large numbers of documents, deletion is processed in batches to optimize performance.
 func (c *Client) Delete(ctx context.Context, ids []string) error {
 	if c.client == nil {
-		return fmt.Errorf("qdrant client is not initialized")
+		return calque.NewErr(ctx, "qdrant client is not initialized")
 	}
 	if len(ids) == 0 {
 		return nil // Nothing to delete
@@ -342,7 +344,7 @@ func (c *Client) Delete(ctx context.Context, ids []string) error {
 
 		batch := ids[i:end]
 		if err := c.deleteBatch(ctx, batch); err != nil {
-			return fmt.Errorf("failed to delete batch %d-%d: %w", i, end-1, err)
+			return calque.WrapErr(ctx, err, fmt.Sprintf("failed to delete batch %d-%d", i, end-1))
 		}
 	}
 
@@ -378,7 +380,7 @@ func (c *Client) deleteBatch(ctx context.Context, ids []string) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to batch delete %d points from collection %s: %w", len(ids), c.collectionName, err)
+		return calque.WrapErr(ctx, err, fmt.Sprintf("failed to batch delete %d points from collection %s", len(ids), c.collectionName))
 	}
 
 	return nil
@@ -389,13 +391,13 @@ func (c *Client) deleteBatch(ctx context.Context, ids []string) error {
 // Note: Qdrant doesn't generate embeddings internally, so this delegates to the configured provider.
 func (c *Client) GetEmbedding(ctx context.Context, text string) (retrieval.EmbeddingVector, error) {
 	if c.embeddingProvider == nil {
-		return nil, fmt.Errorf("no embedding provider configured for Qdrant client - please set EmbeddingProvider in Config")
+		return nil, calque.NewErr(ctx, "no embedding provider configured for Qdrant client - please set EmbeddingProvider in Config")
 	}
 
 	// Delegate to the configured embedding provider
 	embedding, err := c.embeddingProvider.Embed(ctx, text)
 	if err != nil {
-		return nil, fmt.Errorf("embedding provider failed to generate embedding: %w", err)
+		return nil, calque.WrapErr(ctx, err, "embedding provider failed to generate embedding")
 	}
 
 	return embedding, nil
@@ -417,7 +419,7 @@ func (c *Client) GetEmbeddingProvider() retrieval.EmbeddingProvider {
 func (c *Client) Health(ctx context.Context) error {
 	_, err := c.client.HealthCheck(ctx)
 	if err != nil {
-		return fmt.Errorf("health check error %w", err)
+		return calque.WrapErr(ctx, err, "health check failed")
 	}
 
 	return nil
@@ -425,9 +427,10 @@ func (c *Client) Health(ctx context.Context) error {
 
 // Close releases any resources held by the Qdrant client.
 func (c *Client) Close() error {
+	ctx := context.Background()
 	err := c.client.Close()
 	if err != nil {
-		return fmt.Errorf("close qdrant error %w", err)
+		return calque.WrapErr(ctx, err, "failed to close qdrant client")
 	}
 
 	return nil
@@ -452,12 +455,12 @@ func (c *Client) storeBatch(ctx context.Context, documents []retrieval.Document)
 			// Use the configured embedding provider to generate vector
 			embedding, err := c.embeddingProvider.Embed(ctx, doc.Content)
 			if err != nil {
-				return fmt.Errorf("failed to generate embedding for document %s: %w", doc.ID, err)
+				return calque.WrapErr(ctx, err, fmt.Sprintf("failed to generate embedding for document %s", doc.ID))
 			}
 			vectorData = []float32(embedding)
 		} else {
 			// No embedding provider configured - return error
-			return fmt.Errorf("no embedding provider configured - cannot generate vectors for document storage")
+			return calque.NewErr(ctx, "no embedding provider configured - cannot generate vectors for document storage")
 		}
 
 		// Create vector data
@@ -493,7 +496,7 @@ func (c *Client) storeBatch(ctx context.Context, documents []retrieval.Document)
 		Wait:           &waitForResult,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to upsert points to collection %s: %w", c.collectionName, err)
+		return calque.WrapErr(ctx, err, fmt.Sprintf("failed to upsert points to collection %s", c.collectionName))
 	}
 
 	return nil
@@ -516,7 +519,7 @@ func (c *Client) ensureCollectionExists(ctx context.Context) error {
 	// Check if collection exists
 	exists, err := c.client.CollectionExists(ctx, c.collectionName)
 	if err != nil {
-		return fmt.Errorf("failed to check collection existence: %w", err)
+		return calque.WrapErr(ctx, err, "failed to check collection existence")
 	}
 	if exists {
 		return nil // Collection already exists
@@ -536,7 +539,7 @@ func (c *Client) ensureCollectionExists(ctx context.Context) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to create collection %s: %w", c.collectionName, err)
+		return calque.WrapErr(ctx, err, fmt.Sprintf("failed to create collection %s", c.collectionName))
 	}
 
 	return nil
@@ -745,7 +748,7 @@ func (c *Client) executeSearch(ctx context.Context, query retrieval.SearchQuery,
 	// Execute the search
 	results, err := c.client.Query(ctx, searchRequest)
 	if err != nil {
-		return nil, fmt.Errorf("%s search failed: %w", config.searchType, err)
+		return nil, calque.WrapErr(ctx, err, fmt.Sprintf("%s search failed", config.searchType))
 	}
 
 	return results, nil
