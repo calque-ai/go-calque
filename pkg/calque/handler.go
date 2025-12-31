@@ -220,7 +220,7 @@ func Read[T string | []byte](req *Request, outPtr *T) error {
 	case *[]byte:
 		*ptr = buf.Bytes()
 	default:
-		return fmt.Errorf("unsupported type %T", outPtr)
+		return NewErr(context.Background(), fmt.Sprintf("unsupported type %T", outPtr))
 	}
 	return nil
 }
@@ -255,7 +255,7 @@ func Write[T string | []byte](res *Response, data T) error {
 		_, err := res.Data.Write(v)
 		return err
 	default:
-		return fmt.Errorf("unsupported type %T", data)
+		return NewErr(context.Background(), fmt.Sprintf("unsupported type %T", data))
 	}
 }
 

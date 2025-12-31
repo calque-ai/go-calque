@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -86,13 +87,13 @@ func (m *MockClient) Chat(req *calque.Request, res *calque.Response, opts *Agent
 	}
 	// Check if we should return an error (for testing error handling)
 	if m.shouldError {
-		return fmt.Errorf("mock error: %s", m.errorMessage)
+		return calque.NewErr(req.Context, fmt.Sprintf("mock error: %s", m.errorMessage))
 	}
 
 	// Read input
 	var inputStr string
 	if err := calque.Read(req, &inputStr); err != nil {
-		return fmt.Errorf("failed to read input: %w", err)
+		return calque.WrapErr(req.Context, err, "failed to read input")
 	}
 
 	inputStr = strings.TrimSpace(inputStr)
@@ -224,7 +225,7 @@ func (m *MockClient) simulateStructuredOutput(schema *ResponseFormat, input stri
 	// Marshal and write the JSON response
 	jsonBytes, err := json.Marshal(mockJSON)
 	if err != nil {
-		return fmt.Errorf("failed to marshal mock JSON: %w", err)
+		return calque.WrapErr(context.Background(), err, "failed to marshal mock JSON")
 	}
 
 	_, err = res.Data.Write(jsonBytes)

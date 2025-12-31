@@ -217,7 +217,7 @@ func (j *JSONInputConverter) handleValidationCheck(validationBuf, tempBuf *bytes
 		// Note: We can't continue streaming from the original reader here
 		// as it's already been consumed by the teeReader
 		if err := bufWriter.Flush(); err != nil {
-			pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+			pw.CloseWithError(calque.WrapErr(context.Background(), err, "failed to flush buffer"))
 			return true
 		}
 		return true
@@ -250,7 +250,7 @@ func (j *JSONInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter 
 		return true
 	}
 	if err := bufWriter.Flush(); err != nil {
-		pw.CloseWithError(fmt.Errorf("failed to flush buffer: %w", err))
+		pw.CloseWithError(calque.WrapErr(context.Background(), err, "failed to flush buffer"))
 		return true
 	}
 	return false

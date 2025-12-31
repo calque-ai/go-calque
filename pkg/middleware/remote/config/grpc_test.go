@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -276,7 +277,7 @@ func TestGetServiceConfig(t *testing.T) {
 			config := DefaultGRPCConfig()
 			tt.setupConfig(config)
 
-			serviceConfig, err := config.GetServiceConfig(tt.serviceName)
+			serviceConfig, err := config.GetServiceConfig(context.Background(), tt.serviceName)
 
 			if tt.expectError && err == nil {
 				t.Error("Expected error but got none")
@@ -352,7 +353,7 @@ func TestGetCredentials(t *testing.T) {
 				Credentials: test.credentials,
 			}
 
-			_, err := serviceConfig.GetCredentials()
+			_, err := serviceConfig.GetCredentials(context.Background())
 			if test.expectError && err == nil {
 				t.Error("Expected error but got none")
 			}

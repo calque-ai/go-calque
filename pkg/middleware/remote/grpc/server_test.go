@@ -36,7 +36,7 @@ func TestServerRegisterFlow(t *testing.T) {
 
 	server.RegisterFlow("test-flow", flow)
 
-	retrieved, err := server.GetFlow("test-flow")
+	retrieved, err := server.GetFlow(context.Background(), "test-flow")
 	if err != nil {
 		t.Fatalf("Failed to get flow: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestServerGetFlow(t *testing.T) {
 				server.RegisterFlow(tt.flowName, flow)
 			}
 
-			retrieved, err := server.GetFlow(tt.flowName)
+			retrieved, err := server.GetFlow(context.Background(), tt.flowName)
 			if tt.expectError {
 				if err == nil {
 					t.Error("Expected error for non-existent flow")

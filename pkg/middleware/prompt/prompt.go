@@ -5,7 +5,6 @@ package prompt
 
 import (
 	"bytes"
-	"fmt"
 	"maps"
 	"text/template"
 
@@ -28,8 +27,8 @@ func Template(templateStr string, data ...map[string]any) calque.Handler {
 	tmpl, err := template.New("prompt").Parse(templateStr)
 	if err != nil {
 		// Return a handler that always returns the parsing error
-		return calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
-			return fmt.Errorf("template parse error: %w", err)
+		return calque.HandlerFunc(func(req *calque.Request, _ *calque.Response) error {
+			return calque.WrapErr(req.Context, err, "template parse error")
 		})
 	}
 
@@ -136,7 +135,7 @@ func FromTemplate(tmpl *template.Template, data ...map[string]any) calque.Handle
 		var inputBytes []byte
 		err := calque.Read(req, &inputBytes)
 		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
+			return calque.WrapErr(req.Context, err, "failed to read input")
 		}
 
 		// Prepare template data
@@ -152,7 +151,7 @@ func FromTemplate(tmpl *template.Template, data ...map[string]any) calque.Handle
 		// Execute template
 		var output bytes.Buffer
 		if err := tmpl.Execute(&output, templateData); err != nil {
-			return fmt.Errorf("template execution error: %w", err)
+			return calque.WrapErr(req.Context, err, "template execution error")
 		}
 
 		// Write result

@@ -3,10 +3,11 @@ package grpc
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"google.golang.org/protobuf/proto"
+
+	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
 // Stream represents a bidirectional gRPC stream.
@@ -104,7 +105,7 @@ func (sr *StreamReader) readFromStream() error {
 	// Create a new message instance
 	msg := proto.Clone(sr.msgType)
 	if msg == nil {
-		return fmt.Errorf("failed to clone message type")
+		return calque.NewErr(sr.stream.Context(), "failed to clone message type")
 	}
 
 	// Receive message from stream
@@ -146,7 +147,7 @@ func (sw *StreamWriter) Write(p []byte) (n int, err error) {
 	// Create a new message instance
 	msg := proto.Clone(sw.msgType)
 	if msg == nil {
-		return 0, fmt.Errorf("failed to clone message type")
+		return 0, calque.NewErr(sw.stream.Context(), "failed to clone message type")
 	}
 
 	// Unmarshal bytes to message

@@ -1,6 +1,7 @@
 package weaviate
 
 import (
+	"context"
 	"testing"
 
 	"github.com/calque-ai/go-calque/pkg/middleware/retrieval"
@@ -157,7 +158,7 @@ func TestValidatePropertyType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validatePropertyType(tt.key, tt.value, tt.expected)
+			err := validatePropertyType(context.Background(), tt.key, tt.value, tt.expected)
 
 			if tt.expectErr {
 				if err == nil {
@@ -288,7 +289,7 @@ func TestValidateDocument(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := client.ValidateDocument(tt.doc)
+			err := client.ValidateDocument(context.Background(), tt.doc)
 
 			if tt.expectErr {
 				if err == nil {
@@ -320,7 +321,7 @@ func TestValidateDocumentWithoutSchema(t *testing.T) {
 		},
 	}
 
-	err := client.ValidateDocument(doc)
+	err := client.ValidateDocument(context.Background(), doc)
 	if err != nil {
 		t.Errorf("Validation without schema should pass, got error: %v", err)
 	}

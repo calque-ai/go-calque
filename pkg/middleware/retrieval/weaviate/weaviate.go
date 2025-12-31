@@ -145,7 +145,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 
 	// Validate documents against schema if schema is configured
 	for i, doc := range documents {
-		if err := c.ValidateDocument(doc); err != nil {
+		if err := c.ValidateDocument(ctx, doc); err != nil {
 			return calque.WrapErr(ctx, err, fmt.Sprintf("document %d validation failed", i))
 		}
 	}
@@ -390,14 +390,14 @@ func (c *Client) GetSchema() *SchemaConfig {
 
 // ValidateDocument checks if a document conforms to the configured schema.
 // Returns an error if the document has invalid or missing fields.
-func (c *Client) ValidateDocument(doc retrieval.Document) error {
+func (c *Client) ValidateDocument(ctx context.Context, doc retrieval.Document) error {
 	if c.schema == nil {
 		// No schema configured - skip validation
 		return nil
 	}
 
 	if doc.Content == "" {
-		return fmt.Errorf("document content is required")
+		return calque.NewErr(ctx, "document content is required")
 	}
 
 	// Validate metadata fields against schema
@@ -420,11 +420,11 @@ func (c *Client) ValidateDocument(doc retrieval.Document) error {
 
 		expectedType, exists := validProps[key]
 		if !exists {
-			return fmt.Errorf("unknown property %q not in schema", key)
+			return calque.NewErr(ctx, fmt.Sprintf("unknown property %q not in schema", key))
 		}
 
 		// Validate type
-		if err := validatePropertyType(key, value, expectedType); err != nil {
+		if err := validatePropertyType(ctx, key, value, expectedType); err != nil {
 			return err
 		}
 	}
@@ -435,8 +435,9 @@ func (c *Client) ValidateDocument(doc retrieval.Document) error {
 // newClient creates a new Weaviate client with the specified configuration.
 // This is a private function - use New() instead which requires a schema.
 func newClient(config *Config) (*Client, error) {
+	ctx := context.Background()
 	if config.URL == "" {
-		return nil, fmt.Errorf("weaviate URL is required")
+		return nil, calque.NewErr(ctx, "weaviate URL is required")
 	}
 	if config.ClassName == "" {
 		config.ClassName = "Document" // Default class name
@@ -445,7 +446,7 @@ func newClient(config *Config) (*Client, error) {
 	// Parse the URL to extract scheme and host
 	parsedURL, err := url.Parse(config.URL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid Weaviate URL: %w", err)
+		return nil, calque.WrapErr(ctx, err, "invalid Weaviate URL")
 	}
 
 	// Configure Weaviate client
@@ -468,7 +469,7 @@ func newClient(config *Config) (*Client, error) {
 	// Create Weaviate client
 	weaviateClient, err := weav.NewClient(conf)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Weaviate client: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to create Weaviate client")
 	}
 
 	client := &Client{
@@ -541,7 +542,7 @@ func (c *Client) buildWeaviateClass(schema *SchemaConfig) *models.Class {
 }
 
 // validatePropertyType checks if a value matches the expected PropertyType
-func validatePropertyType(key string, value any, expected PropertyType) error {
+func validatePropertyType(ctx context.Context, key string, value any, expected PropertyType) error {
 	if value == nil {
 		return nil // Nil values are valid
 	}
@@ -549,7 +550,7 @@ func validatePropertyType(key string, value any, expected PropertyType) error {
 	switch expected {
 	case PropertyTypeText:
 		if _, ok := value.(string); !ok {
-			return fmt.Errorf("property %q must be string, got %T", key, value)
+			return calque.NewErr(ctx, fmt.Sprintf("property %q must be string, got %T", key, value))
 		}
 	case PropertyTypeTextArray:
 		switch v := value.(type) {
@@ -559,36 +560,36 @@ func validatePropertyType(key string, value any, expected PropertyType) error {
 			// Check that all elements are strings
 			for i, elem := range v {
 				if _, ok := elem.(string); !ok {
-					return fmt.Errorf("property %q[%d] must be string, got %T", key, i, elem)
+					return calque.NewErr(ctx, fmt.Sprintf("property %q[%d] must be string, got %T", key, i, elem))
 				}
 			}
 		default:
-			return fmt.Errorf("property %q must be string array, got %T", key, value)
+			return calque.NewErr(ctx, fmt.Sprintf("property %q must be string array, got %T", key, value))
 		}
 	case PropertyTypeInt:
 		switch value.(type) {
 		case int, int32, int64:
 			// Valid
 		default:
-			return fmt.Errorf("property %q must be int, got %T", key, value)
+			return calque.NewErr(ctx, fmt.Sprintf("property %q must be int, got %T", key, value))
 		}
 	case PropertyTypeNumber:
 		switch value.(type) {
 		case float32, float64, int, int32, int64:
 			// Valid - allow int as number
 		default:
-			return fmt.Errorf("property %q must be number, got %T", key, value)
+			return calque.NewErr(ctx, fmt.Sprintf("property %q must be number, got %T", key, value))
 		}
 	case PropertyTypeBool:
 		if _, ok := value.(bool); !ok {
-			return fmt.Errorf("property %q must be bool, got %T", key, value)
+			return calque.NewErr(ctx, fmt.Sprintf("property %q must be bool, got %T", key, value))
 		}
 	case PropertyTypeDate:
 		switch value.(type) {
 		case time.Time, string:
 			// Valid - accept Time or RFC3339 string
 		default:
-			return fmt.Errorf("property %q must be time.Time or RFC3339 string, got %T", key, value)
+			return calque.NewErr(ctx, fmt.Sprintf("property %q must be time.Time or RFC3339 string, got %T", key, value))
 		}
 	}
 
