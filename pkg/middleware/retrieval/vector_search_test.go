@@ -972,7 +972,7 @@ func TestApplyStrategy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, err := applyStrategy(tt.docs, tt.opts)
+			result, err := applyStrategy(context.Background(), tt.docs, tt.opts)
 
 			if tt.checkFn != nil {
 				tt.checkFn(t, result, err)
@@ -1535,8 +1535,8 @@ func TestBuildContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
-			result, err := buildContext(tt.docs, tt.opts, tt.store, tt.isNative)
+			ctx := context.Background()
+			result, err := buildContext(ctx, tt.docs, tt.opts, tt.store, tt.isNative)
 
 			if tt.checkFn != nil {
 				tt.checkFn(t, result, err)

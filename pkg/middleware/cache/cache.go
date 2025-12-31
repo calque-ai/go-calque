@@ -84,14 +84,16 @@ func (cm *Memory) CacheWithKey(handler calque.Handler, ttl time.Duration, keyFun
 
 		// Try to get from cache
 		if cached, err := cm.store.Get(key); err == nil && cached != nil {
-			_, err := w.Data.Write(cached)
-			return err
+			if _, writeErr := w.Data.Write(cached); writeErr != nil {
+				return calque.WrapErr(r.Context, writeErr, "failed to write cached response")
+			}
+			return nil
 		}
 
 		// Cache miss - read input and execute handler
 		input, err := io.ReadAll(r.Data)
 		if err != nil {
-			return err
+			return calque.WrapErr(r.Context, err, "failed to read input for cache")
 		}
 
 		var output bytes.Buffer
@@ -103,15 +105,18 @@ func (cm *Memory) CacheWithKey(handler calque.Handler, ttl time.Duration, keyFun
 
 		result := output.Bytes()
 
-		// Store in cache
-		if err := cm.store.Set(key, result, ttl); err != nil {
+		// Store in cache (log error but don't fail the request)
+		if setErr := cm.store.Set(key, result, ttl); setErr != nil {
+			wrappedErr := calque.WrapErr(r.Context, setErr, "failed to write to cache")
 			if cm.onError != nil {
-				cm.onError(fmt.Errorf("cache write failed: %w", err))
+				cm.onError(wrappedErr)
 			}
 		}
 
-		_, err = w.Data.Write(result)
-		return err
+		if _, writeErr := w.Data.Write(result); writeErr != nil {
+			return calque.WrapErr(r.Context, writeErr, "failed to write response")
+		}
+		return nil
 	})
 }
 
@@ -134,15 +139,17 @@ func (cm *Memory) Cache(handler calque.Handler, ttl time.Duration) calque.Handle
 		// Must read input to generate hash-based key
 		input, err := io.ReadAll(r.Data)
 		if err != nil {
-			return err
+			return calque.WrapErr(r.Context, err, "failed to read input for cache key generation")
 		}
 
 		key := fmt.Sprintf("%x", sha256.Sum256(input))
 
 		// Try to get from cache
 		if cached, err := cm.store.Get(key); err == nil && cached != nil {
-			_, err := w.Data.Write(cached)
-			return err
+			if _, writeErr := w.Data.Write(cached); writeErr != nil {
+				return calque.WrapErr(r.Context, writeErr, "failed to write cached response")
+			}
+			return nil
 		}
 
 		// Cache miss - execute handler
@@ -155,15 +162,18 @@ func (cm *Memory) Cache(handler calque.Handler, ttl time.Duration) calque.Handle
 
 		result := output.Bytes()
 
-		// Store in cache
-		if err := cm.store.Set(key, result, ttl); err != nil {
+		// Store in cache (log error but don't fail the request)
+		if setErr := cm.store.Set(key, result, ttl); setErr != nil {
+			wrappedErr := calque.WrapErr(r.Context, setErr, "failed to write to cache")
 			if cm.onError != nil {
-				cm.onError(fmt.Errorf("cache write failed: %w", err))
+				cm.onError(wrappedErr)
 			}
 		}
 
-		_, err = w.Data.Write(result)
-		return err
+		if _, writeErr := w.Data.Write(result); writeErr != nil {
+			return calque.WrapErr(r.Context, writeErr, "failed to write response")
+		}
+		return nil
 	})
 }
 

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/retrieval"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -61,8 +62,9 @@ type Config struct {
 //	    EmbeddingProvider: openaiProvider,
 //	})
 func New(config *Config) (*Client, error) {
+	ctx := context.Background()
 	if config.ConnectionString == "" {
-		return nil, fmt.Errorf("PostgreSQL connection string is required")
+		return nil, calque.NewErr(ctx, "PostgreSQL connection string is required")
 	}
 	if config.TableName == "" {
 		config.TableName = "documents" // Default table name
@@ -74,30 +76,30 @@ func New(config *Config) (*Client, error) {
 	// Parse pgxpool config
 	poolConfig, err := pgxpool.ParseConfig(config.ConnectionString)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse connection string: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to parse connection string")
 	}
 
 	// Register pgvector types for each connection
 	poolConfig.AfterConnect = pgxvec.RegisterTypes
 
 	// Create connection pool
-	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to create connection pool")
 	}
 
 	// Check that pgvector extension is installed (fail fast)
 	var extExists bool
-	err = pool.QueryRow(context.Background(),
+	err = pool.QueryRow(ctx,
 		"SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')",
 	).Scan(&extExists)
 	if err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("failed to check pgvector extension: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to check pgvector extension")
 	}
 	if !extExists {
 		pool.Close()
-		return nil, fmt.Errorf("pgvector extension not installed - run: CREATE EXTENSION vector")
+		return nil, calque.NewErr(ctx, "pgvector extension not installed - run: CREATE EXTENSION vector")
 	}
 
 	client := &Client{
@@ -114,7 +116,7 @@ func New(config *Config) (*Client, error) {
 // Search performs similarity search using pgvector cosine similarity.
 func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retrieval.SearchResult, error) {
 	if len(query.Vector) == 0 {
-		return nil, fmt.Errorf("query.Vector is required for pgvector search")
+		return nil, calque.NewErr(ctx, "query.Vector is required for pgvector search")
 	}
 
 	// Build SQL query with cosine similarity
@@ -135,7 +137,7 @@ func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retr
 		query.Limit,                      // $3
 	)
 	if err != nil {
-		return nil, fmt.Errorf("pgvector search failed: %w", err)
+		return nil, calque.WrapErr(ctx, err, "pgvector search failed")
 	}
 	defer rows.Close()
 
@@ -155,14 +157,14 @@ func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retr
 			&doc.Score,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
+			return nil, calque.WrapErr(ctx, err, "failed to scan row")
 		}
 
 		// Parse JSONB metadata
 		if len(metadataJSON) > 0 {
 			var metadata map[string]any
 			if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
-				return nil, fmt.Errorf("failed to parse metadata: %w", err)
+				return nil, calque.WrapErr(ctx, err, "failed to parse metadata")
 			}
 			doc.Metadata = metadata
 		}
@@ -174,7 +176,7 @@ func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retr
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating rows: %w", err)
+		return nil, calque.WrapErr(ctx, err, "error iterating rows")
 	}
 
 	return &retrieval.SearchResult{
@@ -198,7 +200,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 
 	// Check embedding provider is configured
 	if c.embeddingProvider == nil {
-		return fmt.Errorf("no embedding provider configured - cannot generate vectors for document storage")
+		return calque.NewErr(ctx, "no embedding provider configured - cannot generate vectors for document storage")
 	}
 
 	// Use batch for efficient bulk inserts
@@ -212,7 +214,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 		// Generate embedding for document content
 		embedding, err := c.embeddingProvider.Embed(ctx, doc.Content)
 		if err != nil {
-			return fmt.Errorf("failed to generate embedding for document %s: %w", doc.ID, err)
+			return calque.WrapErr(ctx, err, fmt.Sprintf("failed to generate embedding for document %s", doc.ID))
 		}
 
 		// Marshal metadata to JSONB
@@ -220,7 +222,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 		if doc.Metadata != nil {
 			metadataJSON, err = json.Marshal(doc.Metadata)
 			if err != nil {
-				return fmt.Errorf("failed to marshal metadata for document %s: %w", doc.ID, err)
+				return calque.WrapErr(ctx, err, fmt.Sprintf("failed to marshal metadata for document %s", doc.ID))
 			}
 		}
 
@@ -263,7 +265,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 	for i := 0; i < batch.Len(); i++ {
 		_, err := results.Exec()
 		if err != nil {
-			return fmt.Errorf("failed to store document %d: %w", i, err)
+			return calque.WrapErr(ctx, err, fmt.Sprintf("failed to store document %d", i))
 		}
 	}
 
@@ -279,7 +281,7 @@ func (c *Client) Delete(ctx context.Context, ids []string) error {
 	deleteSQL := fmt.Sprintf("DELETE FROM %s WHERE id = ANY($1)", c.tableName)
 	_, err := c.conn.Exec(ctx, deleteSQL, ids)
 	if err != nil {
-		return fmt.Errorf("failed to delete documents: %w", err)
+		return calque.WrapErr(ctx, err, "failed to delete documents")
 	}
 
 	return nil
@@ -290,7 +292,7 @@ func (c *Client) Delete(ctx context.Context, ids []string) error {
 // Note: PGVector doesn't generate embeddings internally, so this delegates to the configured provider.
 func (c *Client) GetEmbedding(ctx context.Context, text string) (retrieval.EmbeddingVector, error) {
 	if c.embeddingProvider == nil {
-		return nil, fmt.Errorf("no embedding provider configured - please set EmbeddingProvider in Config")
+		return nil, calque.NewErr(ctx, "no embedding provider configured - please set EmbeddingProvider in Config")
 	}
 
 	return c.embeddingProvider.Embed(ctx, text)
@@ -310,14 +312,14 @@ func (c *Client) GetEmbeddingProvider() retrieval.EmbeddingProvider {
 func (c *Client) Health(ctx context.Context) error {
 	// Check if connection pool is available
 	if c.conn == nil {
-		return fmt.Errorf("connection pool is closed")
+		return calque.NewErr(ctx, "connection pool is closed")
 	}
 
 	// Test database connectivity
 	var result int
 	err := c.conn.QueryRow(ctx, "SELECT 1").Scan(&result)
 	if err != nil {
-		return fmt.Errorf("database connectivity check failed: %w", err)
+		return calque.WrapErr(ctx, err, "database connectivity check failed")
 	}
 
 	// Verify pgvector extension exists
@@ -326,10 +328,10 @@ func (c *Client) Health(ctx context.Context) error {
 		"SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')",
 	).Scan(&extExists)
 	if err != nil {
-		return fmt.Errorf("extension check failed: %w", err)
+		return calque.WrapErr(ctx, err, "extension check failed")
 	}
 	if !extExists {
-		return fmt.Errorf("pgvector extension not installed - run: CREATE EXTENSION vector")
+		return calque.NewErr(ctx, "pgvector extension not installed - run: CREATE EXTENSION vector")
 	}
 
 	return nil
@@ -369,7 +371,7 @@ func (c *Client) ensureTableExists(ctx context.Context) error {
 		c.tableName,
 	).Scan(&exists)
 	if err != nil {
-		return fmt.Errorf("failed to check if table exists: %w", err)
+		return calque.WrapErr(ctx, err, "failed to check if table exists")
 	}
 
 	if exists {
@@ -379,7 +381,7 @@ func (c *Client) ensureTableExists(ctx context.Context) error {
 
 	// Table doesn't exist - create it
 	if c.vectorDimension <= 0 {
-		return fmt.Errorf("vectorDimension must be set to create table %s", c.tableName)
+		return calque.NewErr(ctx, fmt.Sprintf("vectorDimension must be set to create table %s", c.tableName))
 	}
 
 	// Create table with vector column
@@ -395,7 +397,7 @@ func (c *Client) ensureTableExists(ctx context.Context) error {
 
 	_, err = c.conn.Exec(ctx, createTableSQL)
 	if err != nil {
-		return fmt.Errorf("failed to create table %s: %w", c.tableName, err)
+		return calque.WrapErr(ctx, err, fmt.Sprintf("failed to create table %s", c.tableName))
 	}
 
 	// Create IVFFlat index for cosine similarity
@@ -408,7 +410,7 @@ func (c *Client) ensureTableExists(ctx context.Context) error {
 
 	_, err = c.conn.Exec(ctx, createIndexSQL)
 	if err != nil {
-		return fmt.Errorf("failed to create vector index: %w", err)
+		return calque.WrapErr(ctx, err, "failed to create vector index")
 	}
 
 	c.schemaEnsured = true

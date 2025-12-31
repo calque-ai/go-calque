@@ -436,7 +436,7 @@ func TestMemory_Cache_ErrorScenarios(t *testing.T) {
 				if !errorCallbackTriggered {
 					t.Errorf("%s: expected error callback to be triggered", tt.description)
 				}
-				if !strings.Contains(capturedError.Error(), "cache write failed") {
+				if !strings.Contains(capturedError.Error(), "failed to write to cache") {
 					t.Errorf("%s: expected cache write error, got: %v", tt.description, capturedError)
 				}
 			}
@@ -457,8 +457,10 @@ func TestMemory_Cache_InputReadError(t *testing.T) {
 	resp := calque.NewResponse(&buf)
 
 	err := cacheHandler.ServeFlow(req, resp)
-	if err != readErr {
-		t.Errorf("Expected read error to be propagated, got: %v", err)
+	if err == nil {
+		t.Error("Expected error to be returned")
+	} else if !strings.Contains(err.Error(), "failed to read input for cache key generation") {
+		t.Errorf("Expected wrapped read error, got: %v", err)
 	}
 }
 
