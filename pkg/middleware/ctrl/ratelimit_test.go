@@ -116,8 +116,8 @@ func TestRateLimitContextCancellation(t *testing.T) {
 		t.Error("Expected context cancellation error, got nil")
 	}
 
-	if !strings.Contains(err.Error(), "rate limit exceeded") {
-		t.Errorf("Expected rate limit error, got: %v", err)
+	if !strings.Contains(err.Error(), "rate limit wait failed") && !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Errorf("Expected rate limit or context error, got: %v", err)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/retrieval"
 	"github.com/go-openapi/strfmt"
 	weav "github.com/weaviate/weaviate-go-client/v5/weaviate"
@@ -96,7 +97,7 @@ type Config struct {
 //	}, schema)
 func New(ctx context.Context, config *Config, schema *SchemaConfig) (*Client, error) {
 	if schema == nil {
-		return nil, fmt.Errorf("schema cannot be nil")
+		return nil, calque.NewErr(ctx, "schema cannot be nil")
 	}
 
 	// Override className from schema if provided
@@ -112,7 +113,7 @@ func New(ctx context.Context, config *Config, schema *SchemaConfig) (*Client, er
 
 	// Ensure schema exists
 	if err := client.EnsureSchema(ctx, schema); err != nil {
-		return nil, fmt.Errorf("failed to ensure schema: %w", err)
+		return nil, calque.WrapErr(ctx, err, "failed to ensure schema")
 	}
 
 	return client, nil
@@ -123,7 +124,7 @@ func (c *Client) Search(ctx context.Context, query retrieval.SearchQuery) (*retr
 	// Determine class name: use query override or client default
 	className := c.getClassName(query.Collection)
 	if className == "" {
-		return nil, fmt.Errorf("no class specified in query or client config")
+		return nil, calque.NewErr(ctx, "no class specified in query or client config")
 	}
 
 	return c.performSearch(ctx, query, className, query.Limit, "weaviate search failed")
@@ -136,16 +137,16 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 	}
 
 	if c.client == nil {
-		return fmt.Errorf("weaviate client is not initialized")
+		return calque.NewErr(ctx, "weaviate client is not initialized")
 	}
 	if c.className == "" {
-		return fmt.Errorf("weaviate class name is not configured")
+		return calque.NewErr(ctx, "weaviate class name is not configured")
 	}
 
 	// Validate documents against schema if schema is configured
 	for i, doc := range documents {
 		if err := c.ValidateDocument(doc); err != nil {
-			return fmt.Errorf("document %d validation failed: %w", i, err)
+			return calque.WrapErr(ctx, err, fmt.Sprintf("document %d validation failed", i))
 		}
 	}
 
@@ -154,7 +155,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 	// Convert documents to Weaviate objects
 	for i, doc := range documents {
 		if doc.Content == "" {
-			return fmt.Errorf("document %d has empty content", i)
+			return calque.NewErr(ctx, fmt.Sprintf("document %d has empty content", i))
 		}
 
 		properties := make(map[string]any, 2) // content + metadata
@@ -193,12 +194,12 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 		Do(ctx)
 
 	if err != nil {
-		return fmt.Errorf("batch store failed: %w", err)
+		return calque.WrapErr(ctx, err, "batch store failed")
 	}
 
 	// Defensive check for result
 	if result == nil {
-		return fmt.Errorf("batch store returned nil result")
+		return calque.NewErr(ctx, "batch store returned nil result")
 	}
 
 	// Check for any batch errors
@@ -207,15 +208,15 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 		for i, res := range result {
 			// Defensive checks for result structure
 			if res.Result == nil {
-				errors = append(errors, fmt.Errorf("document %d: nil result", i))
+				errors = append(errors, calque.NewErr(ctx, fmt.Sprintf("document %d: nil result", i)))
 				continue
 			}
 			if res.Result.Errors != nil && len(res.Result.Errors.Error) > 0 {
-				errors = append(errors, fmt.Errorf("document %d failed: %v", i, res.Result.Errors.Error))
+				errors = append(errors, calque.NewErr(ctx, fmt.Sprintf("document %d failed: %v", i, res.Result.Errors.Error)))
 			}
 		}
 		if len(errors) > 0 {
-			return fmt.Errorf("batch store partially failed with %d errors: %v", len(errors), errors)
+			return calque.NewErr(ctx, fmt.Sprintf("batch store partially failed with %d errors: %v", len(errors), errors))
 		}
 	}
 
@@ -235,7 +236,7 @@ func (c *Client) Delete(ctx context.Context, ids []string) error {
 			WithID(ids[0]).
 			Do(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to delete document %s: %w", ids[0], err)
+			return calque.WrapErr(ctx, err, fmt.Sprintf("failed to delete document %s", ids[0]))
 		}
 		return nil
 	}
@@ -269,14 +270,14 @@ func (c *Client) Delete(ctx context.Context, ids []string) error {
 		Do(ctx)
 
 	if err != nil {
-		return fmt.Errorf("batch delete failed: %w", err)
+		return calque.WrapErr(ctx, err, "batch delete failed")
 	}
 
 	// Check if we deleted the expected number of documents
 	if result != nil && result.Results != nil {
 		if result.Results.Failed > 0 {
-			return fmt.Errorf("batch delete partially failed: %d succeeded, %d failed",
-				result.Results.Successful, result.Results.Failed)
+			return calque.NewErr(ctx, fmt.Sprintf("batch delete partially failed: %d succeeded, %d failed",
+				result.Results.Successful, result.Results.Failed))
 		}
 	}
 
@@ -304,12 +305,12 @@ func (c *Client) Health(ctx context.Context) error {
 	// Use the cluster health endpoint
 	healthy, err := c.client.Cluster().NodesStatusGetter().Do(ctx)
 	if err != nil {
-		return fmt.Errorf("weaviate health check failed: %w", err)
+		return calque.WrapErr(ctx, err, "weaviate health check failed")
 	}
 
 	// Check if any nodes are healthy
 	if healthy == nil || len(healthy.Nodes) == 0 {
-		return fmt.Errorf("weaviate cluster has no nodes")
+		return calque.NewErr(ctx, "weaviate cluster has no nodes")
 	}
 
 	// Check if at least one node is healthy
@@ -319,7 +320,7 @@ func (c *Client) Health(ctx context.Context) error {
 		}
 	}
 
-	return fmt.Errorf("weaviate cluster has no healthy nodes")
+	return calque.NewErr(ctx, "weaviate cluster has no healthy nodes")
 }
 
 // Close releases any resources held by the Weaviate client.
@@ -349,16 +350,16 @@ func (c *Client) Close() error {
 //	err := client.EnsureSchema(ctx, schema)
 func (c *Client) EnsureSchema(ctx context.Context, schema *SchemaConfig) error {
 	if schema == nil {
-		return fmt.Errorf("schema cannot be nil")
+		return calque.NewErr(ctx, "schema cannot be nil")
 	}
 	if schema.ClassName == "" {
-		return fmt.Errorf("schema class name is required")
+		return calque.NewErr(ctx, "schema class name is required")
 	}
 
 	// Check if class already exists
 	exists, err := c.client.Schema().ClassExistenceChecker().WithClassName(schema.ClassName).Do(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to check if class exists: %w", err)
+		return calque.WrapErr(ctx, err, "failed to check if class exists")
 	}
 
 	if exists {
@@ -373,7 +374,7 @@ func (c *Client) EnsureSchema(ctx context.Context, schema *SchemaConfig) error {
 	classObj := c.buildWeaviateClass(schema)
 	err = c.client.Schema().ClassCreator().WithClass(classObj).Do(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create class: %w", err)
+		return calque.WrapErr(ctx, err, "failed to create class")
 	}
 
 	// Cache the schema
@@ -641,7 +642,7 @@ func (c *Client) performSearch(ctx context.Context, query retrieval.SearchQuery,
 			WithNearVector(nearVector)
 
 	default:
-		return nil, fmt.Errorf("either query.Text or query.Vector must be provided")
+		return nil, calque.NewErr(ctx, "either query.Text or query.Vector must be provided")
 	}
 
 	// Add fields to retrieve - use schema if available, otherwise retrieve all known fields
@@ -664,7 +665,7 @@ func (c *Client) performSearch(ctx context.Context, query retrieval.SearchQuery,
 	// Execute query
 	result, err := builder.Do(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", errorMsg, err)
+		return nil, calque.WrapErr(ctx, err, errorMsg)
 	}
 
 	// Check for GraphQL errors
@@ -675,7 +676,7 @@ func (c *Client) performSearch(ctx context.Context, query retrieval.SearchQuery,
 				errMsgs = append(errMsgs, e.Message)
 			}
 		}
-		return nil, fmt.Errorf("%s: GraphQL errors: %v", errorMsg, errMsgs)
+		return nil, calque.NewErr(ctx, fmt.Sprintf("%s: GraphQL errors: %v", errorMsg, errMsgs))
 	}
 
 	// Parse results

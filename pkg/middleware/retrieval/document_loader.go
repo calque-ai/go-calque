@@ -169,7 +169,7 @@ func loadFromURL(ctx context.Context, url string) ([]Document, error) {
 	defer func() {
 		err := resp.Body.Close()
 		if err != nil {
-			fmt.Printf("warning: failed to close response body: %v\n", err)
+			calque.LogWarn(ctx, "failed to close response body", err)
 		}
 	}()
 

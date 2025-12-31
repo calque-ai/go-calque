@@ -81,8 +81,8 @@ func Route(handler calque.Handler, name, description, keywords string) calque.Ha
 //	    mathHandler, codeHandler, searchHandler)
 func Router(client ai.Client, handlers ...calque.Handler) calque.Handler {
 	if len(handlers) == 0 {
-		return calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
-			return fmt.Errorf("no handlers provided to router")
+		return calque.HandlerFunc(func(req *calque.Request, _ *calque.Response) error {
+			return calque.NewErr(req.Context, "no handlers provided to router")
 		})
 	}
 
@@ -166,12 +166,12 @@ func callSelectorWithSchema(ctx context.Context, selector calque.Handler, router
 	var selection RouteSelection
 	err := flow.Run(ctx, convert.ToJSONSchema(routerInput), convert.FromJSON(&selection))
 	if err != nil {
-		return nil, fmt.Errorf("selector flow failed: %w", err)
+		return nil, calque.WrapErr(ctx, err, "selector flow failed")
 	}
 
 	// Validate required fields
 	if selection.Route == "" {
-		return nil, fmt.Errorf("selector output missing required 'route' field")
+		return nil, calque.NewErr(ctx, "selector output missing required 'route' field")
 	}
 
 	return &selection, nil
@@ -195,8 +195,8 @@ func findHandlerByID(routeID string, routes []*routeHandler) calque.Handler {
 //	lb := multiagent.LoadBalancer(agent1, agent2, agent3)
 func LoadBalancer(handlers ...calque.Handler) calque.Handler {
 	if len(handlers) == 0 {
-		return calque.HandlerFunc(func(_ *calque.Request, _ *calque.Response) error {
-			return fmt.Errorf("no handlers provided to load balancer")
+		return calque.HandlerFunc(func(req *calque.Request, _ *calque.Response) error {
+			return calque.NewErr(req.Context, "no handlers provided to load balancer")
 		})
 	}
 

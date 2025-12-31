@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -195,7 +194,7 @@ func detectCapability[T any](llmClient ai.Client, cfg detectConfig[T]) calque.Ha
 		// Read user input for analysis
 		var userInput string
 		if err := calque.Read(req, &userInput); err != nil {
-			return fmt.Errorf("failed to read user input for %s detection: %w", cfg.capabilityName, err)
+			return calque.WrapErr(req.Context, err, "failed to read user input for "+cfg.capabilityName+" detection")
 		}
 
 		// Get available items from context

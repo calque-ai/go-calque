@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/cache"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -77,26 +78,26 @@ func (c *Client) connect(ctx context.Context) error {
 	}
 
 	if c.client == nil {
-		return fmt.Errorf("MCP client not initialized")
+		return calque.NewErr(ctx, "MCP client not initialized")
 	}
 
 	if c.transport == nil {
-		return fmt.Errorf("MCP transport not configured")
+		return calque.NewErr(ctx, "MCP transport not configured")
 	}
 
 	var err error
 	c.session, err = c.client.Connect(ctx, c.transport, nil)
 	if err != nil {
-		return fmt.Errorf("failed to connect to MCP server: %w", err)
+		return calque.WrapErr(ctx, err, "failed to connect to MCP server")
 	}
 
 	// Validate server capabilities match our requirements
 	if err := c.validateCapabilities(ctx); err != nil {
 		if closeErr := c.session.Close(); closeErr != nil {
-			return fmt.Errorf("capability validation failed: %w, and failed to close session: %v", err, closeErr)
+			return calque.WrapErr(ctx, err, fmt.Sprintf("capability validation failed, and failed to close session: %v", closeErr))
 		}
 		c.session = nil
-		return fmt.Errorf("capability validation failed: %w", err)
+		return calque.WrapErr(ctx, err, "capability validation failed")
 	}
 
 	return nil
@@ -112,21 +113,21 @@ func (c *Client) validateCapabilities(ctx context.Context) error {
 	// Check tools capability
 	if slices.Contains(c.capabilities, "tools") {
 		if _, err := c.session.ListTools(ctx, &mcp.ListToolsParams{}); err != nil {
-			return fmt.Errorf("server does not support tools capability: %w", err)
+			return calque.WrapErr(ctx, err, "server does not support tools capability")
 		}
 	}
 
 	// Check resources capability
 	if slices.Contains(c.capabilities, "resources") {
 		if _, err := c.session.ListResources(ctx, &mcp.ListResourcesParams{}); err != nil {
-			return fmt.Errorf("server does not support resources capability: %w", err)
+			return calque.WrapErr(ctx, err, "server does not support resources capability")
 		}
 	}
 
 	// Check prompts capability
 	if slices.Contains(c.capabilities, "prompts") {
 		if _, err := c.session.ListPrompts(ctx, &mcp.ListPromptsParams{}); err != nil {
-			return fmt.Errorf("server does not support prompts capability: %w", err)
+			return calque.WrapErr(ctx, err, "server does not support prompts capability")
 		}
 	}
 
