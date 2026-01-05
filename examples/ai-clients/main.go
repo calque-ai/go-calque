@@ -19,7 +19,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/openai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
@@ -43,13 +43,13 @@ func ollamaExample() {
 	flow := calque.NewFlow()
 
 	flow.
-		Use(logger.Print("INPUT")).                // Log input
+		Use(inspect.Print("INPUT")).               // Log input
 		Use(text.Transform(func(s string) string { // Transform input by adding context
 			return "Please provide a concise response to: " + s
 		})).
-		Use(logger.Print("PROMPT")).                         // Log finalized input
+		Use(inspect.Print("PROMPT")).                        // Log finalized input
 		Use(ctrl.Timeout(ai.Agent(client), 60*time.Second)). // Send the input to the agent and wrap it with a timeout
-		Use(logger.Head("RESPONSE", 100))                    // Log first 100 bytes of the agents response
+		Use(inspect.Head("RESPONSE", 100))                   // Log first 100 bytes of the agents response
 
 	// Run the flow
 	var result string
@@ -86,11 +86,11 @@ func geminiExample() {
 	flow := calque.NewFlow()
 
 	flow.
-		Use(logger.Print("INPUT")).                                                      // Log input
+		Use(inspect.Print("INPUT")).                                                     // Log input
 		Use(prompt.Template("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt template
-		Use(logger.Print("PROMPT")).                                                     // Log the finalized prompt
+		Use(inspect.Print("PROMPT")).                                                    // Log the finalized prompt
 		Use(ai.Agent(client)).                                                           // Send prompt to llm agent
-		Use(logger.Head("RESPONSE", 200))                                                // Log the agent response using logger.head for streaming
+		Use(inspect.Head("RESPONSE", 200))                                               // Log the agent response using inspect.head for streaming
 
 	// Run the flow
 	var result string
@@ -138,11 +138,11 @@ func openaiExample() {
 	flow := calque.NewFlow()
 
 	flow.
-		Use(logger.Print("INPUT")).                                                      // Log input
+		Use(inspect.Print("INPUT")).                                                     // Log input
 		Use(prompt.Template("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt template
-		Use(logger.Print("PROMPT")).                                                     // Log the finalized prompt
+		Use(inspect.Print("PROMPT")).                                                    // Log the finalized prompt
 		Use(ctrl.Timeout(ai.Agent(client), 30*time.Second)).                             // Send prompt to LLM agent with timeout
-		Use(logger.Head("RESPONSE", 200))                                                // Log the agent response
+		Use(inspect.Head("RESPONSE", 200))                                               // Log the agent response
 
 	// Run the flow
 	var result string

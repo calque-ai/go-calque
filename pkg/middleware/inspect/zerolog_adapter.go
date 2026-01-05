@@ -1,4 +1,4 @@
-package logger
+package inspect
 
 import (
 	"context"

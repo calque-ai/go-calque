@@ -14,7 +14,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 	"github.com/calque-ai/go-calque/pkg/middleware/retrieval"
 )
@@ -105,9 +105,9 @@ func runBasicSearchExample(store retrieval.VectorStore) {
 	}
 
 	flow := calque.NewFlow().
-		Use(logger.Print("QUERY")).
+		Use(inspect.Print("QUERY")).
 		Use(retrieval.VectorSearch(store, opts)).
-		Use(logger.Print("RESULTS"))
+		Use(inspect.Print("RESULTS"))
 
 	query := "How do I build data processing pipelines?"
 	fmt.Printf("Query: %q\n\n", query)
@@ -142,9 +142,9 @@ func runContextStrategyExample(store retrieval.VectorStore) {
 	}
 
 	flow := calque.NewFlow().
-		Use(logger.Print("QUERY")).
+		Use(inspect.Print("QUERY")).
 		Use(retrieval.VectorSearch(store, opts)).
-		Use(logger.Print("DIVERSE_CONTEXT"))
+		Use(inspect.Print("DIVERSE_CONTEXT"))
 
 	query := "How do I use Calque for building flows with retrieval?"
 	fmt.Printf("Query: %q\n\n", query)
@@ -175,7 +175,7 @@ func runRAGExample(store retrieval.VectorStore, client ai.Client) {
 
 	// Build RAG pipeline
 	flow := calque.NewFlow().
-		Use(logger.Print("USER_QUERY")).
+		Use(inspect.Print("USER_QUERY")).
 		Use(retrieval.VectorSearch(store, searchOpts)).
 		Use(prompt.Template(`Based on the following context, answer the user's question.
 
@@ -185,9 +185,9 @@ Context:
 Question: How do I create a data processing flow with retrieval in Calque?
 
 Answer:`)).
-		Use(logger.Print("RAG_PROMPT")).
+		Use(inspect.Print("RAG_PROMPT")).
 		Use(ctrl.Timeout(ai.Agent(client), 30*time.Second)).
-		Use(logger.Head("AI_RESPONSE", 500))
+		Use(inspect.Head("AI_RESPONSE", 500))
 
 	query := "How do I create a data processing flow with retrieval in Calque?"
 	fmt.Printf("Query: %q\n\n", query)

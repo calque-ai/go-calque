@@ -16,7 +16,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/memory"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
@@ -84,7 +84,7 @@ func handleStreamingChat(client *ollama.Client, conversationMemory *memory.Conve
 			// 1. Rate limiting
 			Use(ctrl.RateLimit(10, time.Second)).
 			// 2. Request logging
-			Use(logger.Head("CHAT_REQUEST", 100)).
+			Use(inspect.Head("CHAT_REQUEST", 100)).
 			// 3. Memory input - retrieves memory using userID as a key
 			Use(conversationMemory.Input(chatReq.UserID)).
 			// 4. Chat prompt template
@@ -94,7 +94,7 @@ func handleStreamingChat(client *ollama.Client, conversationMemory *memory.Conve
 			// 6. Memory output - stores response with userID
 			Use(conversationMemory.Output(chatReq.UserID)).
 			// 7. Response logging
-			Use(logger.Head("CHAT_RESPONSE", 100))
+			Use(inspect.Head("CHAT_RESPONSE", 100))
 
 		// Run pipeline
 		err := pipeline.Run(r.Context(), strings.NewReader(chatReq.Message), sseConverter)

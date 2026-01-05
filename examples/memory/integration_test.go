@@ -8,7 +8,7 @@ import (
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/memory"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
@@ -27,9 +27,9 @@ func TestConversationMemory(t *testing.T) {
 	// Create pipe with conversation memory
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Head("INPUT", 100)).
+		Use(inspect.Head("INPUT", 100)).
 		Use(convMem.Input("user123")).
-		Use(logger.Head("WITH_HISTORY", 100)).
+		Use(inspect.Head("WITH_HISTORY", 100)).
 		Use(prompt.System("You are a helpful coding assistant. Keep responses brief.")).
 		Use(agent).
 		Use(convMem.Output("user123"))
@@ -93,7 +93,7 @@ func TestContextMemory(t *testing.T) {
 	// Create pipe with context memory
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Head("INPUT", 100)).
+		Use(inspect.Head("INPUT", 100)).
 		Use(ctxMem.Input("session456", 2000)).
 		Use(prompt.System("You are a helpful coding assistant.")).
 		Use(agent).
@@ -204,12 +204,12 @@ func TestMemoryPipeline(t *testing.T) {
 	// Create complex pipeline
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("START")).
+		Use(inspect.Print("START")).
 		Use(convMem.Input("user789")).
 		Use(prompt.System("You are a helpful assistant. Use context from previous messages.")).
 		Use(agent).
 		Use(convMem.Output("user789")).
-		Use(logger.Print("END"))
+		Use(inspect.Print("END"))
 
 	// Test multiple conversation turns
 	conversation := []struct {

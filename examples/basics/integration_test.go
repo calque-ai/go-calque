@@ -10,7 +10,7 @@ import (
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
 
@@ -20,9 +20,9 @@ func TestTextOnlyFlow(t *testing.T) {
 	flow := calque.NewFlow()
 
 	flow.
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(text.Transform(strings.ToUpper)).
-		Use(logger.Print("TRANSFORMED")).
+		Use(inspect.Print("TRANSFORMED")).
 		Use(text.Branch(
 			func(s string) bool { return strings.Contains(s, "HELLO") },
 			text.Transform(func(s string) string { return s + " [GREETING DETECTED]" }),

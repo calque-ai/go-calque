@@ -8,7 +8,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/convert"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
 
@@ -27,9 +27,9 @@ func TestConverterBasics(t *testing.T) {
 
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("JSON_INPUT")).
+		Use(inspect.Print("JSON_INPUT")).
 		Use(text.Transform(strings.ToUpper)).
-		Use(logger.Print("UPPERCASE_JSON"))
+		Use(inspect.Print("UPPERCASE_JSON"))
 
 	var jsonResult ProductInfo
 	err := pipe.Run(context.Background(), convert.ToJSON(jsonString), convert.FromJSON(&jsonResult))
@@ -72,7 +72,7 @@ func TestAIConverterExample(t *testing.T) {
 	// Pipeline: struct -> YAML -> AI analysis -> result string
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("STRUCT_INPUT")).
+		Use(inspect.Print("STRUCT_INPUT")).
 		Use(agent)
 
 	var result string
@@ -176,9 +176,9 @@ func TestConverterPipeline(t *testing.T) {
 	// Create a complex pipeline with multiple converters
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(text.Transform(strings.ToUpper)).
-		Use(logger.Print("TRANSFORMED")).
+		Use(inspect.Print("TRANSFORMED")).
 		Use(text.Transform(func(s string) string {
 			return "Processed: " + s
 		}))

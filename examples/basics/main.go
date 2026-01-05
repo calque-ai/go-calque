@@ -15,7 +15,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
@@ -48,16 +48,16 @@ func runTextOnlyExample() {
 
 	// Build flow using middleware pattern - each Use() adds a handler to the flow
 	flow.
-		Use(logger.Print("INPUT")).           // Log original input, with a prefix
+		Use(inspect.Print("INPUT")).          // Log original input, with a prefix
 		Use(text.Transform(strings.ToUpper)). // Transform input to uppercase
-		Use(logger.Print("TRANSFORMED")).     // Log transformed result
+		Use(inspect.Print("TRANSFORMED")).    // Log transformed result
 		Use(text.Branch(                      // Branch based on content
 			func(s string) bool { return strings.Contains(s, "HELLO") },                 // Condition
 			text.Transform(func(s string) string { return s + " [GREETING DETECTED]" }), // If true
 			text.Transform(func(s string) string { return s + " [GENERAL TEXT]" }),      // If false
 		)).
 		Use(text.Transform(func(s string) string { return fmt.Sprintf("%s\nLength: %d characters", s, len(s)) })). // Add stats
-		Use(logger.Print("FINAL"))                                                                                 // Log final result
+		Use(inspect.Print("FINAL"))                                                                                // Log final result
 
 	inputText := "Hello world! This text flows through pipes, getting calqued and transformed along the way."
 	fmt.Printf("\nProcessing: %q\n\n", inputText)
@@ -81,13 +81,13 @@ func runAIExample(client ai.Client) {
 	flow := calque.NewFlow()
 
 	flow.
-		Use(logger.Print("INPUT")).                                                        // Log original input
+		Use(inspect.Print("INPUT")).                                                       // Log original input
 		Use(text.Transform(preprocessText)).                                               // Clean text
-		Use(logger.Print("PREPROCESSED")).                                                 // Log cleaned text
+		Use(inspect.Print("PREPROCESSED")).                                                // Log cleaned text
 		Use(prompt.Template("Analyze this text and provide a brief summary: {{.Input}}")). // Build AI prompt using a go template
-		Use(logger.Print("PROMPT")).                                                       // Log prompt
+		Use(inspect.Print("PROMPT")).                                                      // Log prompt
 		Use(ctrl.Timeout(ai.Agent(client), 30*time.Second)).                               // Send to AI with timeout
-		Use(logger.Head("AI_RESPONSE", 300)).                                              // Log first 300 bytes of AI response
+		Use(inspect.Head("AI_RESPONSE", 300)).                                             // Log first 300 bytes of AI response
 		Use(text.Branch(                                                                   // Branch on response type
 			func(response string) bool {
 				return strings.Contains(strings.ToLower(response), "summary")
@@ -95,7 +95,7 @@ func runAIExample(client ai.Client) {
 			text.Transform(func(s string) string { return s + "\n\n[Analysis completed successfully]" }), // If summary found
 			text.Transform(func(s string) string { return s + "\n\n[General response provided]" }),       // If no summary
 		)).
-		Use(logger.Head("FINAL", 400)) // Log first 400 bytes result
+		Use(inspect.Head("FINAL", 400)) // Log first 400 bytes result
 
 	inputText := "This AI framework calques ideas from text processing flows - copying and transforming data patterns."
 	fmt.Printf("\nProcessing: %q\n\n", inputText)
@@ -133,7 +133,7 @@ func runStreamingPipeline() {
 
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Head("INPUT", 100)).                   // Log first 100 bytes of original input
+		Use(inspect.Head("INPUT", 100)).                  // Log first 100 bytes of original input
 		Use(ctrl.TeeReader(&logBuffer, &errorBuffer)).    // STREAMING: Tee to multiple destinations
 		Use(text.LineProcessor(func(line string) string { // STREAMING: Process line-by-line
 			return fmt.Sprintf("[STREAM-%d] %s", len(line), strings.TrimSpace(line))
@@ -144,7 +144,7 @@ func runStreamingPipeline() {
 			}),
 			2*time.Second,
 		)).
-		Use(logger.Chunks("FINAL", 32)) // Log final results in chunks of 32 bytes as it streams in
+		Use(inspect.Chunks("FINAL", 32)) // Log final results in chunks of 32 bytes as it streams in
 
 	inputText := `Streaming processes each line individually
 Data flows through without full buffering
@@ -183,12 +183,12 @@ func runMixedPipeline() {
 	)
 
 	flow.
-		Use(logger.Head("INPUT", 100)). // Log original input
-		Use(ctrl.Parallel(              // Split stream for comparison
+		Use(inspect.Head("INPUT", 100)). // Log original input
+		Use(ctrl.Parallel(               // Split stream for comparison
 			streamingHandler, // STREAMING: Line-by-line processing
 			bufferedHandler,  // BUFFERED: Sequential chain processing
 		)).
-		Use(logger.Head("COMPARISON_RESULTS", 500)) // Show both results
+		Use(inspect.Head("COMPARISON_RESULTS", 500)) // Show both results
 
 	inputText := `Line 1: Compare streaming vs buffered
 Line 2: Streaming processes incrementally  
@@ -215,30 +215,30 @@ func runComposedPipelineExample() {
 	// Important: Don't Run this sub-pipeline directly, it will be composed into the main pipeline
 	textPreprocessor := calque.NewFlow()
 	textPreprocessor.
-		Use(logger.Print("PREPROCESS_INPUT")).
+		Use(inspect.Print("PREPROCESS_INPUT")).
 		Use(text.Transform(strings.TrimSpace)).
 		Use(text.Transform(func(s string) string {
 			// Normalize whitespace
 			return strings.Join(strings.Fields(s), " ")
 		})).
 		Use(text.Transform(strings.ToLower)).
-		Use(logger.Print("PREPROCESS_OUTPUT"))
+		Use(inspect.Print("PREPROCESS_OUTPUT"))
 
 	// Build reusable sub-pipeline for text analysis
 	textAnalyzer := calque.NewFlow()
 	textAnalyzer.
-		Use(logger.Print("ANALYZE_INPUT")).
+		Use(inspect.Print("ANALYZE_INPUT")).
 		Use(text.Transform(func(s string) string {
 			wordCount := len(strings.Fields(s))
 			charCount := len(s)
 			return fmt.Sprintf("TEXT: %s\nSTATS: %d words, %d characters", s, wordCount, charCount)
 		})).
-		Use(logger.Print("ANALYZE_OUTPUT"))
+		Use(inspect.Print("ANALYZE_OUTPUT"))
 
 	// Build main pipeline that composes the sub-pipelines
 	mainFlow := calque.NewFlow()
 	mainFlow.
-		Use(logger.Print("MAIN_START")).
+		Use(inspect.Print("MAIN_START")).
 		Use(textPreprocessor). // Use preprocessing sub-pipeline
 		Use(text.Branch(       // Branch based on content length
 			func(s string) bool { return len(s) > 50 },
@@ -251,7 +251,7 @@ func runComposedPipelineExample() {
 		Use(text.Transform(func(s string) string {
 			return fmt.Sprintf("FINAL RESULT:\n%s\n[Pipeline composition complete]", s)
 		})).
-		Use(logger.Print("MAIN_END"))
+		Use(inspect.Print("MAIN_END"))
 
 	// Test with different inputs
 	inputs := []string{

@@ -51,7 +51,7 @@ scripts/local.sh                   # Run build, lint, test, benchmarks
 - `pkg/middleware/memory/` - Memory management (conversation, context, store)
 - `pkg/middleware/tools/` - Tool integration (registry, execute, detect)
 - `pkg/middleware/text/` - Text processing and transformations
-- `pkg/middleware/logger/` - Observability with multiple adapter support
+- `pkg/middleware/inspect/` - Data flow inspection with multiple adapter support
 - `pkg/middleware/multiagent/` - Multi-agent routing and consensus
 - `pkg/middleware/mcp/` - Model Context Protocol implementation
 - `pkg/middleware/remote/grpc` - Remote gRPC Transport implementation

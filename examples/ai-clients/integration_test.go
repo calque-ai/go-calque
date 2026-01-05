@@ -8,7 +8,7 @@ import (
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
 
@@ -23,9 +23,9 @@ func TestMockClient(t *testing.T) {
 	// Create pipeline
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(agent).
-		Use(logger.Print("RESPONSE"))
+		Use(inspect.Print("RESPONSE"))
 
 	// Test the pipeline
 	var result string
@@ -207,11 +207,11 @@ func TestMockClientPipeline(t *testing.T) {
 	// Create complex pipeline
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("START")).
+		Use(inspect.Print("START")).
 		Use(prompt.System("You are an expert AI assistant.")).
 		Use(prompt.Template("Process this request: {{.Input}}")).
 		Use(agent).
-		Use(logger.Print("END"))
+		Use(inspect.Print("END"))
 
 	// Test the pipeline
 	var result string

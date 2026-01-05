@@ -8,7 +8,7 @@ import (
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
 
@@ -26,9 +26,9 @@ func TestBasicPromptTemplate(t *testing.T) {
 	// Create pipeline
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(template).
-		Use(logger.Print("PROMPT")).
+		Use(inspect.Print("PROMPT")).
 		Use(agent)
 
 	// Test the pipeline
@@ -177,12 +177,12 @@ func TestPromptPipeline(t *testing.T) {
 	// Create complex pipeline with multiple prompts
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("START")).
+		Use(inspect.Print("START")).
 		Use(prompt.System("You are a Go code reviewer. Analyze code and provide constructive feedback.")).
 		Use(prompt.Template("Review this Go code:\n{{.Input}}\n\nProvide feedback on:")).
 		Use(prompt.Template("1. Code structure\n2. Best practices\n3. Potential improvements\n4. Performance considerations")).
 		Use(agent).
-		Use(logger.Print("END"))
+		Use(inspect.Print("END"))
 
 	// Test the pipeline
 	var result string

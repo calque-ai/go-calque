@@ -1,7 +1,7 @@
-// Package logger provides structured logging middleware for the calque framework.
+// Package inspect provides data flow inspection middleware for the calque framework.
 // It implements level-based logging with context support and adapters for various
-// logging backends to provide consistent logging across the application.
-package logger
+// logging backends to provide consistent inspection and debugging of data streams.
+package inspect
 
 import (
 	"context"

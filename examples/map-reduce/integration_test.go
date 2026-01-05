@@ -8,7 +8,7 @@ import (
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
 
@@ -25,13 +25,13 @@ func TestMapReducePipeline(t *testing.T) {
 
 	// Create AI evaluation pipeline
 	evaluationPipeline := calque.NewFlow().
-		Use(logger.Head("resume evaluation", 200)).
+		Use(inspect.Head("resume evaluation", 200)).
 		Use(prompt.Template("System: {{.System}}\n\nResume data to evaluate: {{.Input}}", map[string]any{
 			"System": systemPrompt,
 		})).
-		Use(logger.Head("prompt with data", 1000)).
-		Use(logger.Timing("AI Response Time", ai.Agent(mockClient))).
-		Use(logger.Head("llm response", 200))
+		Use(inspect.Head("prompt with data", 1000)).
+		Use(inspect.Timing("AI Response Time", ai.Agent(mockClient))).
+		Use(inspect.Head("llm response", 200))
 
 	// Test input
 	input := "John Doe\nComputer Science\nMIT\nSoftware Engineer\n5 years experience"
@@ -258,15 +258,15 @@ func TestPipelineLogging(t *testing.T) {
 
 	// Create pipeline with comprehensive logging
 	pipeline := calque.NewFlow().
-		Use(logger.Print("START_EVALUATION")).
-		Use(logger.Head("INPUT_RESUME", 100)).
+		Use(inspect.Print("START_EVALUATION")).
+		Use(inspect.Head("INPUT_RESUME", 100)).
 		Use(prompt.Template("System: {{.System}}\n\nResume data to evaluate: {{.Input}}", map[string]any{
 			"System": systemPrompt,
 		})).
-		Use(logger.Head("PROMPT_DATA", 200)).
-		Use(logger.Timing("AI_EVALUATION_TIME", ai.Agent(mockClient))).
-		Use(logger.Head("AI_RESPONSE", 200)).
-		Use(logger.Print("END_EVALUATION"))
+		Use(inspect.Head("PROMPT_DATA", 200)).
+		Use(inspect.Timing("AI_EVALUATION_TIME", ai.Agent(mockClient))).
+		Use(inspect.Head("AI_RESPONSE", 200)).
+		Use(inspect.Print("END_EVALUATION"))
 
 	// Test input
 	input := "Logged Candidate\nComputer Science\nUniversity\nSoftware Engineer\n4 years experience"
