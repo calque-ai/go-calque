@@ -1,3 +1,4 @@
+// Package observability provides middleware for health checks, metrics, and distributed tracing.
 // Health checks verify that your application's dependencies (databases, APIs, caches)
 // are working correctly.
 package observability

@@ -1,4 +1,4 @@
-// PrometheusProvider implements MetricsProvider using Prometheus client library.
+// Package observability implements MetricsProvider using Prometheus client library.
 //
 // Prometheus will scrape /metrics and you'll see data like:
 //

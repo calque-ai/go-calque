@@ -1,4 +1,4 @@
-// Tracing provides middleware for distributed tracing in go-calque flows.
+// Package observability provides middleware for distributed tracing in go-calque flows.
 // Each operation creates a "span" that records:
 //
 //   - When the operation started and ended

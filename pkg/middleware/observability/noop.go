@@ -1,4 +1,4 @@
-// noop provides no-op and in-memory implementations for testing and development.
+// Package observability provides no-op and in-memory implementations for testing and development.
 package observability
 
 import (

@@ -1,3 +1,4 @@
+// Package observability implements TracerProvider using OpenTelemetry Protocol (OTLP).
 // OTLP is the standard protocol for sending telemetry data to observability backends.
 // This provider can export traces to:
 //

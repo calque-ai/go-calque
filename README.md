@@ -191,6 +191,7 @@ flow.Run(ctx, "How do I configure authentication?", &result)
 | **Retries & fallbacks** | Custom retry loops, fallback logic                   | `ctrl.Retry(handler, 3)`, `ctrl.Fallback(primary, backup)`    |
 | **Structured output**   | Hope the AI follows instructions, validate manually  | `ai.WithSchema()` - guaranteed valid JSON matching your types |
 | **RAG pipelines**       | Coordinate embeddings, search, prompt building       | Chain middleware: `VectorSearch → Template → Agent`           |
+| **Observability**       | Manual metrics, logging, tracing setup              | Built-in: `Metrics()`, `Tracing()`, `HealthCheck()`          |
 | **Testing**             | Mock HTTP clients, parse responses                   | Test each middleware independently                            |
 
 ### Code Comparison
@@ -386,11 +387,70 @@ flow.Run(ctx, "Write a bubble sort in Go", &result)    // Routes to codeAgent
 - **Response Caching**: `cache.Cache(handler, ttl)` - Cache handler responses with TTL
 - **Pluggable Backends**: In-memory store or custom storage adapters
 
-### Observability (`logger/`)
+### Observability (`observability/`, `calque/`)
 
-- **Logging**: `logger.Print(label)` - Log the whole input with a prefix label
-- **Head Logging**: `logger.Head(label, bytes)` - Log first N bytes for streaming
-- **Chunk Logging**: `logger.Chunks(label, size)` - Log streaming data in chunks
+- **Context Management** (`calque/`): Request tracking and metadata propagation
+  - **MetadataBus**: Thread-safe metadata sharing between concurrent middleware
+    - Channel-based communication for concurrent flows
+    - Set/Get operations for immutable values (trace ID, request ID)
+    - Send/Receive patterns for streaming metadata between handlers
+  - **Context Helpers**: `calque.WithTraceID`, `calque.WithRequestID` for request tracking
+  - **Context Propagation**: Automatic metadata extraction and propagation through middleware chains
+
+- **Error Handling** (`calque/`): Context-aware structured errors
+  - **Context-Aware Errors**: `calque.WrapErr(ctx, err, msg)` and `calque.NewErr(ctx, msg)`
+    - Automatic trace ID and request ID propagation
+    - Full compatibility with Go's error wrapping (`errors.Is`, `errors.As`, `errors.Unwrap`)
+  - **Structured Error Logging**: Automatic metadata enrichment with slog integration
+    - Errors carry trace ID, request ID, and custom tags
+    - Chainable tag methods for adding metadata
+
+- **Metrics** (`observability/`): Performance and usage metrics
+  - **Metrics Collection**: `observability.Metrics(provider, labels)` - Collect performance metrics
+    - Counters: total requests, errors
+    - Gauges: in-flight requests, active connections
+    - Histograms: request latencies, response sizes
+  - **Prometheus Integration**: `observability.NewPrometheusProvider()` - Export metrics to Prometheus
+    - Automatic recording: request counts, latencies, error rates, in-flight requests
+    - Custom labels: service name, version, environment for filtering in dashboards
+    - HTTP handler: `provider.Handler()` for `/metrics` endpoint
+
+- **Distributed Tracing** (`observability/`): Track requests across services
+  - **Tracing Middleware**: `observability.Tracing(provider, "operation-name")` - Create trace spans
+    - Automatic timing, error tracking, and context propagation
+    - Custom attributes: add user IDs, order IDs, or any metadata to spans
+  - **OTLP Support**: `observability.NewOTLPTracerProvider()` - Export to OTLP backends
+    - Jaeger: Popular open-source tracing backend
+    - Grafana Tempo: Scalable tracing backend from Grafana
+    - Any OTLP-compatible collector (Honeycomb, Datadog, New Relic)
+    - Configurable sampling, batching, and TLS support
+
+- **Health Checks** (`observability/`): Monitor application dependencies
+  - **Health Check Middleware**: `observability.HealthCheck(checks...)` - Run dependency checks
+    - Concurrent execution for fast response times
+    - JSON reports with overall status, individual check results, uptime
+  - **Check Types**:
+    - TCP checks: `observability.TCPHealthCheck` - Verify database/cache connectivity
+    - HTTP checks: `observability.HTTPHealthCheck` - Verify API endpoints
+    - Custom checks: `observability.FuncHealthCheck` - Implement any health check logic
+  - **Health Check Registry**: Dynamic registration and management of health checks
+
+- **Logging** (`calque/`, `inspect/`): Structured logging with context
+  - **Context-Aware Logging** (`calque/`): Primary logging API with automatic metadata injection
+    - `calque.LogInfo`, `calque.LogDebug`, `calque.LogWarn`, `calque.LogError` - Level-based logging helpers
+    - `calque.LogWith` - Create logger with pre-attached context fields
+    - `calque.LogAttr`, `calque.LogInfoAttr`, `calque.LogDebugAttr`, etc. - Type-safe slog.Attr logging
+    - Automatic trace_id and request_id appending from context
+    - Integration with slog for structured output
+    - `calque.WithLogger` for custom logger configuration
+    - Level-enabled checks for performance optimization
+  - **Data Flow Inspection** (`inspect/`): Middleware for inspecting data streams in flows
+    - `inspect.Print(prefix)` - Log complete input content
+    - `inspect.Head(prefix, bytes)` - Log first N bytes for streaming preview
+    - `inspect.Chunks(prefix, size)` - Log streaming data in fixed-size chunks
+    - `inspect.HeadTail(prefix, headBytes, tailBytes)` - Log beginning and end of streams
+    - `inspect.Timing(prefix, handler)` - Measure handler execution time and throughput
+    - `inspect.Sampling(prefix, numSamples, sampleSize)` - Distributed sampling across streams
 
 ## Converters
 
@@ -668,6 +728,7 @@ _Run the benchmarks: `cd examples/anagram && go test -bench=.`_
 **Guardrails & Safety** - 🔲 Input filtering, 🔲 output validation, ✅ schema compliance
 **HTTP/API Integration** - ✅ streaming responses
 **Model Context Protocol** - ✅ MCP client, ✅ natural language tools, ✅ StreamableHTTP
+**Observability** - ✅ Context management (MetadataBus), ✅ Error handling (context-aware errors), ✅ Metrics (Prometheus), ✅ Distributed Tracing (OTLP), ✅ Health Checks, ✅ Structured logging
 
 ### Framework Improvements
 

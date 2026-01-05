@@ -1,5 +1,6 @@
-// Metrics provides middleware for collecting metrics about flow execution and help you understand how your application is performing.
-// These metrics can be exported to Prometheus, Grafana, or any other monitoring system.
+// Package observability provides middleware for collecting metrics about flow execution.
+// These metrics help you understand how your application is performing and can be
+// exported to Prometheus, Grafana, or any other monitoring system.
 package observability
 
 import (
