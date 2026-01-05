@@ -18,7 +18,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/openai"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 )
 
 func main() {
@@ -75,9 +75,9 @@ func analyzeImageSimple(imagePath string) {
 	flow := calque.NewFlow()
 
 	flow.
-		Use(logger.Head("INPUT", 500)). // Will show JSON with base64 data
+		Use(inspect.Head("INPUT", 500)). // Will show JSON with base64 data
 		Use(ai.Agent(client)).
-		Use(logger.Head("RESPONSE", 200))
+		Use(inspect.Head("RESPONSE", 200))
 
 	// Run the flow - all data is serialized to json in the multimodal input
 	var result string
@@ -120,9 +120,9 @@ func analyzeImageStreaming(imagePath string) {
 	flow := calque.NewFlow()
 
 	flow.
-		Use(logger.Print("INPUT")).                                     // Will show JSON metadata only
+		Use(inspect.Print("INPUT")).                                    // Will show JSON metadata only
 		Use(ai.Agent(client, ai.WithMultimodalData(&multimodalInput))). // Multimodal data via option
-		Use(logger.Head("RESPONSE", 200))
+		Use(inspect.Head("RESPONSE", 200))
 
 	// Run the flow - input is JSON metadata, actual data is in WithMultimodalData
 	var result string
@@ -166,9 +166,9 @@ func analyzeImageOllama(imagePath string) {
 	flow := calque.NewFlow()
 
 	flow.
-		Use(logger.Head("INPUT", 200)). // Show some of the JSON
-		Use(ai.Agent(client)).          // No WithMultimodalData needed for simple approach
-		Use(logger.Head("RESPONSE", 200))
+		Use(inspect.Head("INPUT", 200)). // Show some of the JSON
+		Use(ai.Agent(client)).           // No WithMultimodalData needed for simple approach
+		Use(inspect.Head("RESPONSE", 200))
 
 	// Run the flow - identical to Gemini usage
 	var result string
@@ -213,9 +213,9 @@ func analyzeImageOpenAI(imagePath string) {
 	flow := calque.NewFlow()
 
 	flow.
-		Use(logger.Head("INPUT", 200)). // Show some of the JSON
-		Use(ai.Agent(client)).          // No WithMultimodalData needed for simple approach
-		Use(logger.Head("RESPONSE", 200))
+		Use(inspect.Head("INPUT", 200)). // Show some of the JSON
+		Use(ai.Agent(client)).           // No WithMultimodalData needed for simple approach
+		Use(inspect.Head("RESPONSE", 200))
 
 	// Run the flow
 	var result string

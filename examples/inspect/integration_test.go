@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
 
@@ -20,12 +20,12 @@ func TestSimpleLogging(t *testing.T) {
 	// Create a flow with simple logging
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("FULL_INPUT")).
-		Use(logger.Head("QUICK_DEBUG", 30)).
+		Use(inspect.Print("FULL_INPUT")).
+		Use(inspect.Head("QUICK_DEBUG", 30)).
 		Use(text.Transform(func(s string) string {
 			return "Processed: " + s
 		})).
-		Use(logger.HeadTail("FINAL_CHECK", 20, 15))
+		Use(inspect.HeadTail("FINAL_CHECK", 20, 15))
 
 	// Test input
 	input := "Quick debugging example with some additional content"
@@ -49,10 +49,10 @@ func TestSlogLogging(t *testing.T) {
 	// Create a flow with slog logging
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Head("INPUT", 40)).
+		Use(inspect.Head("INPUT", 40)).
 		Use(text.Transform(strings.ToLower)).
-		Use(logger.Print("STREAM_SAMPLING")).
-		Use(logger.HeadTail("RESULT", 20, 10))
+		Use(inspect.Print("STREAM_SAMPLING")).
+		Use(inspect.HeadTail("RESULT", 20, 10))
 
 	// Test input
 	input := "SLOG provides structured logging with JSON output by default."
@@ -76,12 +76,12 @@ func TestZerologLogging(t *testing.T) {
 	// Create a flow with zerolog logging
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Head("INPUT", 50)).
+		Use(inspect.Head("INPUT", 50)).
 		Use(text.Transform(func(s string) string {
 			return "Transformed: " + s
 		})).
-		Use(logger.Print("STREAM_SAMPLING")).
-		Use(logger.HeadTail("RESULT", 25, 10))
+		Use(inspect.Print("STREAM_SAMPLING")).
+		Use(inspect.HeadTail("RESULT", 25, 10))
 
 	// Test input
 	input := "Zerolog provides fast and structured logging capabilities."
@@ -105,10 +105,10 @@ func TestLoggingLevels(t *testing.T) {
 	// Create a flow with different log levels
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("DEBUG_HEAD")).
-		Use(logger.Print("INFO_HEAD")).
-		Use(logger.Print("WARN_HEAD")).
-		Use(logger.Print("ERROR_HEAD")).
+		Use(inspect.Print("DEBUG_HEAD")).
+		Use(inspect.Print("INFO_HEAD")).
+		Use(inspect.Print("WARN_HEAD")).
+		Use(inspect.Print("ERROR_HEAD")).
 		Use(text.Transform(func(s string) string {
 			return "Processed with levels: " + s
 		}))
@@ -135,11 +135,11 @@ func TestLoggingAttributes(t *testing.T) {
 	// Create a flow with custom attributes
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("ATTRIBUTE_TEST")).
+		Use(inspect.Print("ATTRIBUTE_TEST")).
 		Use(text.Transform(func(s string) string {
 			return "Enhanced: " + s
 		})).
-		Use(logger.Print("FINAL_ATTR"))
+		Use(inspect.Print("FINAL_ATTR"))
 
 	// Test input
 	input := "Testing logging with custom attributes"
@@ -163,7 +163,7 @@ func TestLoggingSampling(t *testing.T) {
 	// Create a flow with sampling
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("SAMPLE_LOG")).
+		Use(inspect.Print("SAMPLE_LOG")).
 		Use(text.Transform(func(s string) string {
 			return "Sampled: " + s
 		}))
@@ -190,15 +190,15 @@ func TestLoggingPipeline(t *testing.T) {
 	// Create a complex pipeline with multiple logging stages
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("START_PIPELINE")).
-		Use(logger.Head("INPUT_ANALYSIS", 40)).
+		Use(inspect.Print("START_PIPELINE")).
+		Use(inspect.Head("INPUT_ANALYSIS", 40)).
 		Use(text.Transform(strings.ToUpper)).
-		Use(logger.Print("TRANSFORM_LOG")).
+		Use(inspect.Print("TRANSFORM_LOG")).
 		Use(text.Transform(func(s string) string {
 			return "Final: " + s
 		})).
-		Use(logger.HeadTail("OUTPUT_ANALYSIS", 30, 20)).
-		Use(logger.Print("END_PIPELINE"))
+		Use(inspect.HeadTail("OUTPUT_ANALYSIS", 30, 20)).
+		Use(inspect.Print("END_PIPELINE"))
 
 	// Test input
 	input := "Complex logging pipeline test with multiple stages"
@@ -225,7 +225,7 @@ func TestLoggingConcurrency(t *testing.T) {
 	// Create a flow with logging
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("CONCURRENT_LOG")).
+		Use(inspect.Print("CONCURRENT_LOG")).
 		Use(text.Transform(func(s string) string {
 			return "Concurrent: " + s
 		}))
@@ -274,7 +274,7 @@ func TestLoggingErrorHandling(t *testing.T) {
 	// Create a flow that might encounter errors
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("ERROR_TEST")).
+		Use(inspect.Print("ERROR_TEST")).
 		Use(text.Transform(func(s string) string {
 			// Simulate potential error condition
 			if strings.Contains(s, "error") {
@@ -282,7 +282,7 @@ func TestLoggingErrorHandling(t *testing.T) {
 			}
 			return "Normal: " + s
 		})).
-		Use(logger.Print("ERROR_LOG"))
+		Use(inspect.Print("ERROR_LOG"))
 
 	// Test normal input
 	input := "Normal processing request"

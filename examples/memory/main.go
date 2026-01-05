@@ -12,7 +12,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/memory"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
@@ -44,9 +44,9 @@ func conversationExample(client ai.Client) {
 	// Create pipe with conversation memory
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Head("INPUT", 100)).
+		Use(inspect.Head("INPUT", 100)).
 		Use(convMem.Input("user123")). // Store input with user ID
-		Use(logger.Head("WITH_HISTORY", 100)).
+		Use(inspect.Head("WITH_HISTORY", 100)).
 		Use(prompt.System("You are a helpful coding assistant. Keep responses brief.")).
 		Use(ai.Agent(client)).         // Get LLM response
 		Use(convMem.Output("user123")) // Store response with user ID
@@ -102,7 +102,7 @@ func badgerConversationExample(client ai.Client) {
 	pipe := calque.NewFlow()
 	pipe.
 		Use(convMem.Input("user123")).
-		Use(logger.Head("WITH_HISTORY", 100)).
+		Use(inspect.Head("WITH_HISTORY", 100)).
 		Use(prompt.System("You are a helpful coding assistant. Keep responses brief.")).
 		Use(ai.Agent(client)).
 		Use(convMem.Output("user123"))
@@ -202,9 +202,9 @@ func contextExample(client ai.Client) {
 	// Create pipe with context memory (small limit for demo)
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Head("INPUT", 100)).
+		Use(inspect.Head("INPUT", 100)).
 		Use(contextMem.Input("session456", 200)). // Keep last 200 tokens
-		Use(logger.Head("WITH_CONTEXT", 100)).
+		Use(inspect.Head("WITH_CONTEXT", 100)).
 		Use(prompt.System("You are a helpful assistant. Be concise.")).
 		Use(ai.Agent(client)).                    // Get agent response
 		Use(contextMem.Output("session456", 200)) // Store response in context

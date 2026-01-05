@@ -20,7 +20,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/convert"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
@@ -67,9 +67,9 @@ func runConverterBasics() {
 	// Pipeline: Json String -> Json -> Uppercase -> Struct
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("JSON_INPUT")).      // Log original JSON
+		Use(inspect.Print("JSON_INPUT")).     // Log original JSON
 		Use(text.Transform(strings.ToUpper)). // Convert to uppercase for processing
-		Use(logger.Print("UPPERCASE_JSON"))   // Log transformed JSON
+		Use(inspect.Print("UPPERCASE_JSON"))  // Log transformed JSON
 
 	// Execute with json string input
 	// convert.ToJSON parses the string to make sure its valid json
@@ -102,9 +102,9 @@ func runAIConverterExample(client ai.Client) {
 	// Pipeline: struct -> YAML -> AI analysis -> result string
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("STRUCT_INPUT")).
+		Use(inspect.Print("STRUCT_INPUT")).
 		Use(prompt.Template("Analyze this product data and suggest improvements:\n\n{{.Input}}\n\nProvide a brief analysis.")).
-		Use(logger.Print("AI_PROMPT")).
+		Use(inspect.Print("AI_PROMPT")).
 		Use(ai.Agent(client))
 
 	// Execute with struct input, get string result

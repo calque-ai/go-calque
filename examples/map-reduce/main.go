@@ -16,7 +16,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/convert"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
 
@@ -83,13 +83,13 @@ func main() {
 
 	// Create AI evaluation pipeline
 	evaluationPipeline := calque.NewFlow().
-		Use(logger.Head("resume evaluation", 200)).
+		Use(inspect.Head("resume evaluation", 200)).
 		Use(prompt.Template("System: {{.System}}\n\nResume data to evaluate: {{.Input}}", map[string]any{
 			"System": systemPrompt,
 		})).
-		Use(logger.Head("prompt with data", 1000)).
-		Use(logger.Timing("AI Response Time", ai.Agent(client))).
-		Use(logger.Head("llm response", 200))
+		Use(inspect.Head("prompt with data", 1000)).
+		Use(inspect.Timing("AI Response Time", ai.Agent(client))).
+		Use(inspect.Head("llm response", 200))
 
 	// list of evaluation results
 	evaluations := make([]Evaluation, 0, len(resumes))

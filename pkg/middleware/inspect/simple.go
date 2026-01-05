@@ -1,4 +1,4 @@
-package logger
+package inspect
 
 import (
 	"github.com/calque-ai/go-calque/pkg/calque"

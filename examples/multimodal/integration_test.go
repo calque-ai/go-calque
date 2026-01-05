@@ -10,7 +10,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/convert"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 )
 
 // TestMultimodalSimple tests simple multimodal approach with image data
@@ -32,9 +32,9 @@ func TestMultimodalSimple(t *testing.T) {
 
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Head("INPUT", 100)).
+		Use(inspect.Head("INPUT", 100)).
 		Use(agent).
-		Use(logger.Head("RESPONSE", 100))
+		Use(inspect.Head("RESPONSE", 100))
 
 	// Run the flow
 	var result string
@@ -68,9 +68,9 @@ func TestMultimodalStreaming(t *testing.T) {
 
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Head("INPUT", 100)).
+		Use(inspect.Head("INPUT", 100)).
 		Use(agent).
-		Use(logger.Head("RESPONSE", 100))
+		Use(inspect.Head("RESPONSE", 100))
 
 	// Run the flow
 	var result string
@@ -211,11 +211,11 @@ func TestMultimodalPipeline(t *testing.T) {
 	// Create complex pipeline
 	flow := calque.NewFlow()
 	flow.
-		Use(logger.Print("START")).
-		Use(logger.Head("INPUT", 200)).
+		Use(inspect.Print("START")).
+		Use(inspect.Head("INPUT", 200)).
 		Use(agent).
-		Use(logger.Head("RESPONSE", 200)).
-		Use(logger.Print("END"))
+		Use(inspect.Head("RESPONSE", 200)).
+		Use(inspect.Print("END"))
 
 	// Run the flow
 	var result string

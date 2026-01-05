@@ -13,7 +13,7 @@ import (
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ctrl"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 )
 
 func main() {
@@ -98,9 +98,9 @@ func documentProcessingExample() {
 
 	// Process documents through the batch pipeline
 	flow := calque.NewFlow().
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(batchProcessor).
-		Use(logger.Print("OUTPUT"))
+		Use(inspect.Print("OUTPUT"))
 
 	var result string
 	err = flow.Run(context.Background(), strings.Join(documents, ctrl.DefaultBatchSeparator), &result)
@@ -162,9 +162,9 @@ func apiBatchingExample() {
 	fmt.Printf("   Sending %d API requests in batches of 5...\n", len(apiRequests))
 
 	flow := calque.NewFlow().
-		Use(logger.Print("API REQUESTS")).
+		Use(inspect.Print("API REQUESTS")).
 		Use(batchAPI).
-		Use(logger.Print("API RESPONSES"))
+		Use(inspect.Print("API RESPONSES"))
 
 	var result string
 	err := flow.Run(context.Background(), strings.Join(apiRequests, ctrl.DefaultBatchSeparator), &result)
@@ -254,9 +254,9 @@ func errorHandlingExample() {
 	fmt.Printf("   Testing error handling with %d items (some will fail)...\n", len(testItems))
 
 	flow := calque.NewFlow().
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(batchProcessor).
-		Use(logger.Print("OUTPUT"))
+		Use(inspect.Print("OUTPUT"))
 
 	var result string
 	err := flow.Run(context.Background(), strings.Join(testItems, ctrl.DefaultBatchSeparator), &result)
@@ -381,9 +381,9 @@ func customSeparatorExample() {
 	fmt.Printf("   Processing %d CSV records with custom separator '%s'...\n", len(csvData), customSeparator)
 
 	flow := calque.NewFlow().
-		Use(logger.Print("CSV INPUT")).
+		Use(inspect.Print("CSV INPUT")).
 		Use(batchProcessor).
-		Use(logger.Print("PROCESSED OUTPUT"))
+		Use(inspect.Print("PROCESSED OUTPUT"))
 
 	var result string
 	err := flow.Run(context.Background(), strings.Join(csvData, customSeparator), &result)

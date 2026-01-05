@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/text"
 )
 
@@ -33,12 +33,12 @@ func setupSimpleExample() {
 	flow := calque.NewFlow()
 
 	flow.
-		Use(logger.Print("FULL_INPUT")).     // Log the complete input content (buffered)
-		Use(logger.Head("QUICK_DEBUG", 30)). // Define a prefix and the number of bytes to preview (streaming)
+		Use(inspect.Print("FULL_INPUT")).     // Log the complete input content (buffered)
+		Use(inspect.Head("QUICK_DEBUG", 30)). // Define a prefix and the number of bytes to preview (streaming)
 		Use(text.Transform(func(s string) string {
 			return fmt.Sprintf("Processed: %s", s)
 		})).
-		Use(logger.HeadTail("FINAL_CHECK", 20, 15)) // Log n bytes of the beginning and end of an input (buffered)
+		Use(inspect.HeadTail("FINAL_CHECK", 20, 15)) // Log n bytes of the beginning and end of an input (buffered)
 
 	input := "Quick debugging example"
 	var result string
@@ -64,25 +64,25 @@ func setupSlogExample() {
 	slogLogger := slog.New(jsonHandler)
 
 	// Create our logger instance
-	log := logger.New(logger.NewSlogAdapter(slogLogger))
+	log := inspect.New(inspect.NewSlogAdapter(slogLogger))
 
 	// Build pipeline using slog structured logging
 	flow := calque.NewFlow()
 
 	flow.
 		Use(log.Info().Head("INPUT", 40,
-			logger.Attr("framework", "calque-flow"),
-			logger.Attr("logger", "slog"),
+			inspect.Attr("framework", "calque-flow"),
+			inspect.Attr("logger", "slog"),
 		)).
 		Use(text.Transform(func(s string) string {
 			return fmt.Sprintf("Transformed: %s", strings.ToLower(s))
 		})).
 		Use(log.Warn().Sampling("STREAM_SAMPLING", 3, 20,
-			logger.Attr("sample_type", "output"),
+			inspect.Attr("sample_type", "output"),
 		)).
 		Use(log.Info().HeadTail("RESULT", 20, 10,
-			logger.Attr("stage", "final"),
-			logger.Attr("json_output", true),
+			inspect.Attr("stage", "final"),
+			inspect.Attr("json_output", true),
 		))
 
 	input := "SLOG provides structured logging with JSON output by default."
@@ -108,14 +108,14 @@ func setupZerologExample() {
 		Logger().
 		Level(zerolog.DebugLevel) // Enable all levels
 
-	log := logger.New(logger.NewZerologAdapter(zlog))
+	log := inspect.New(inspect.NewZerologAdapter(zlog))
 
 	flow := calque.NewFlow()
 
 	flow.
 		Use(log.Info().Head("INFO_START", 30)).
 		Use(log.Debug().Chunks("DEBUG_CHUNKS", 20,
-			logger.Attr("chunk_processing", true),
+			inspect.Attr("chunk_processing", true),
 		)).
 		Use(log.Info().Timing("TRANSFORM_TIMING", text.Transform(func(s string) string {
 			// Simulate some processing that might have issues
@@ -125,8 +125,8 @@ func setupZerologExample() {
 			return s + " [NORMAL_PROCESSING]"
 		}))).
 		Use(log.Warn().HeadTail("WARN_ANALYSIS", 15, 10,
-			logger.Attr("analysis", "size_check"),
-			logger.Attr("threshold", 50),
+			inspect.Attr("analysis", "size_check"),
+			inspect.Attr("threshold", 50),
 		))
 
 	// Test with longer input to trigger the warning path

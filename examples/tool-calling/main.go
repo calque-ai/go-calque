@@ -17,7 +17,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/openai"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 	"github.com/invopop/jsonschema"
 	"github.com/joho/godotenv"
@@ -247,9 +247,9 @@ func runOpenAIAgent() {
 
 	var result string
 	flow := calque.NewFlow()
-	flow.Use(logger.Head("REQUEST", 500))
+	flow.Use(inspect.Head("REQUEST", 500))
 	flow.Use(agent)
-	flow.Use(logger.Head("RESPONSE", 500))
+	flow.Use(inspect.Head("RESPONSE", 500))
 	err = flow.Run(ctx, input, &result)
 	if err != nil {
 		log.Printf("OpenAI agent error: %v", err)

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 )
 
 // TestBatchProcessingBasic tests basic document processing functionality
@@ -250,9 +250,9 @@ func TestBatchPipeline(t *testing.T) {
 
 	// Create complete pipeline
 	flow := calque.NewFlow().
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(documentProcessor).
-		Use(logger.Print("OUTPUT"))
+		Use(inspect.Print("OUTPUT"))
 
 	// Test input
 	input := "First document content\n---\nSecond document content\n---\nThird document content"

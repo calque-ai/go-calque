@@ -11,7 +11,7 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
-	"github.com/calque-ai/go-calque/pkg/middleware/logger"
+	"github.com/calque-ai/go-calque/pkg/middleware/inspect"
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
 
@@ -36,9 +36,9 @@ func basicTemplateExample(client ai.Client) {
 
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(prompt.Template("You are a helpful assistant. {{.Input}}")).
-		Use(logger.Print("PROMPT")).
+		Use(inspect.Print("PROMPT")).
 		Use(ai.Agent(client))
 
 	var result string
@@ -62,9 +62,9 @@ func templateWithDataExample(client ai.Client) {
 
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(prompt.Template("You are a {{.Role}} specializing in {{.Language}}. {{.Input}}", params)).
-		Use(logger.Print("PROMPT")).
+		Use(inspect.Print("PROMPT")).
 		Use(ai.Agent(client))
 
 	var result string
@@ -82,9 +82,9 @@ func systemPromptExample(client ai.Client) {
 
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(prompt.System("You are a concise coding expert. Always provide practical examples.")).
-		Use(logger.Print("PROMPT")).
+		Use(inspect.Print("PROMPT")).
 		Use(ai.Agent(client))
 
 	var result string
@@ -102,9 +102,9 @@ func chatPromptExample(client ai.Client) {
 
 	pipe := calque.NewFlow()
 	pipe.
-		Use(logger.Print("INPUT")).
+		Use(inspect.Print("INPUT")).
 		Use(prompt.Chat("assistant", "I'm an AI assistant specialized in programming.")).
-		Use(logger.Print("PROMPT")).
+		Use(inspect.Print("PROMPT")).
 		Use(ai.Agent(client))
 
 	var result string

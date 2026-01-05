@@ -194,9 +194,9 @@ flow := calque.NewFlow().
 ```go
 // Monitor batch processing performance
 flow := calque.NewFlow().
-    Use(logger.Print("BATCH_START")).
+    Use(inspect.Print("BATCH_START")).
     Use(ctrl.Batch(handler, 10, 500*time.Millisecond)).
-    Use(logger.Print("BATCH_END"))
+    Use(inspect.Print("BATCH_END"))
 ```
 
 ## Best Practices
