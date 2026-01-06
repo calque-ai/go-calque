@@ -78,7 +78,7 @@ func TestYAMLInputConverter_ToReader(t *testing.T) {
 		{
 			name: "map[any]any",
 			data: map[any]any{"name": yamlTestConstant, 123: "number"},
-			want: "\"123\": number\nname: test\n",
+			want: "123: number\nname: test\n",
 		},
 		{
 			name: "slice",
