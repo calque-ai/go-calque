@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 const (
@@ -836,4 +838,244 @@ func BenchmarkFlow_copyInputToOutput_StreamingConversion(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+// TestFlow_readerToOutput_IOWriter tests io.Writer output type
+func TestFlow_readerToOutput_IOWriter(t *testing.T) {
+	flow := NewFlow()
+
+	t.Run("bytes.Buffer as io.Writer", func(t *testing.T) {
+		var buf bytes.Buffer
+		reader := strings.NewReader("test data")
+
+		err := flow.readerToOutput(reader, &buf)
+		if err != nil {
+			t.Fatalf("readerToOutput failed: %v", err)
+		}
+
+		if buf.String() != "test data" {
+			t.Errorf("Expected %q, got %q", "test data", buf.String())
+		}
+	})
+
+	t.Run("custom io.Writer", func(t *testing.T) {
+		// Test with a custom writer to ensure interface matching works
+		written := make([]byte, 0)
+		writer := &testWriter{
+			write: func(p []byte) (int, error) {
+				written = append(written, p...)
+				return len(p), nil
+			},
+		}
+
+		reader := strings.NewReader("hello world")
+		err := flow.readerToOutput(reader, writer)
+		if err != nil {
+			t.Fatalf("readerToOutput failed: %v", err)
+		}
+
+		if string(written) != "hello world" {
+			t.Errorf("Expected %q, got %q", "hello world", string(written))
+		}
+	})
+}
+
+// TestFlow_readerToOutput_NilHandling tests nil output discarding
+func TestFlow_readerToOutput_NilHandling(t *testing.T) {
+	flow := NewFlow()
+
+	t.Run("nil output discards data", func(t *testing.T) {
+		// Large data that would OOM if buffered
+		largeData := strings.Repeat("x", 1024*1024) // 1MB
+		reader := strings.NewReader(largeData)
+
+		err := flow.readerToOutput(reader, nil)
+		if err != nil {
+			t.Fatalf("readerToOutput with nil failed: %v", err)
+		}
+
+		// Test passes if no panic/OOM
+	})
+
+	t.Run("nil output doesn't buffer", func(t *testing.T) {
+		// Use slow reader to verify it's consumed immediately
+		slowReader := &slowReader{
+			data:  []byte("test"),
+			delay: 10 * time.Millisecond,
+		}
+
+		start := time.Now()
+		err := flow.readerToOutput(slowReader, nil)
+		duration := time.Since(start)
+
+		if err != nil {
+			t.Fatalf("readerToOutput failed: %v", err)
+		}
+
+		// Should take at least the read delay (streaming, not buffered)
+		if duration < 10*time.Millisecond {
+			t.Errorf("Completed too fast (%v), data may not have been consumed", duration)
+		}
+	})
+}
+
+// TestFlow_readerToOutput_OutputConverterStreaming tests OutputConverter streaming
+func TestFlow_readerToOutput_OutputConverterStreaming(t *testing.T) {
+	flow := NewFlow()
+
+	t.Run("OutputConverter receives data in real-time", func(t *testing.T) {
+		receivedAt := make([]time.Time, 0)
+		var mu sync.Mutex
+
+		converter := &testOutputConverter{
+			fromReader: func(r io.Reader) error {
+				buf := make([]byte, 1)
+				for {
+					_, err := r.Read(buf)
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						return err
+					}
+					mu.Lock()
+					receivedAt = append(receivedAt, time.Now())
+					mu.Unlock()
+				}
+				return nil
+			},
+		}
+
+		// Slow reader that produces data over time
+		slowReader := &slowReaderMulti{
+			chunks: []string{"a", "b", "c"},
+			delay:  50 * time.Millisecond,
+		}
+
+		start := time.Now()
+		err := flow.readerToOutput(slowReader, converter)
+		if err != nil {
+			t.Fatalf("readerToOutput failed: %v", err)
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		if len(receivedAt) != 3 {
+			t.Fatalf("Expected 3 bytes received, got %d", len(receivedAt))
+		}
+
+		// Verify streaming: bytes should arrive incrementally
+		firstByteDelay := receivedAt[0].Sub(start)
+		if firstByteDelay > 100*time.Millisecond {
+			t.Errorf("First byte delayed %v, indicates buffering", firstByteDelay)
+		}
+
+		// Second byte should arrive ~50ms after first
+		secondDelay := receivedAt[1].Sub(receivedAt[0])
+		if secondDelay < 30*time.Millisecond || secondDelay > 100*time.Millisecond {
+			t.Errorf("Second byte delay %v unexpected, should be ~50ms", secondDelay)
+		}
+	})
+}
+
+// TestFlow_readerToOutput_TypePriority tests type matching priority
+func TestFlow_readerToOutput_TypePriority(t *testing.T) {
+	flow := NewFlow()
+
+	t.Run("OutputConverter takes priority over io.Writer", func(t *testing.T) {
+		// Create a type that implements both OutputConverter and io.Writer
+		converterCalled := false
+		writerCalled := false
+
+		hybrid := &hybridConverter{
+			fromReader: func(r io.Reader) error {
+				converterCalled = true
+				_, err := io.Copy(io.Discard, r)
+				return err
+			},
+			write: func(p []byte) (int, error) {
+				writerCalled = true
+				return len(p), nil
+			},
+		}
+
+		reader := strings.NewReader("test")
+		err := flow.readerToOutput(reader, hybrid)
+		if err != nil {
+			t.Fatalf("readerToOutput failed: %v", err)
+		}
+
+		if !converterCalled {
+			t.Error("OutputConverter.FromReader should have been called")
+		}
+		if writerCalled {
+			t.Error("io.Writer.Write should NOT have been called (OutputConverter has priority)")
+		}
+	})
+}
+
+// Test helper types
+
+type testWriter struct {
+	write func([]byte) (int, error)
+}
+
+func (w *testWriter) Write(p []byte) (int, error) {
+	if w.write != nil {
+		return w.write(p)
+	}
+	return len(p), nil
+}
+
+type slowReader struct {
+	data  []byte
+	pos   int
+	delay time.Duration
+}
+
+func (r *slowReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, io.EOF
+	}
+	time.Sleep(r.delay)
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
+}
+
+type slowReaderMulti struct {
+	chunks []string
+	pos    int
+	delay  time.Duration
+}
+
+func (r *slowReaderMulti) Read(p []byte) (int, error) {
+	if r.pos >= len(r.chunks) {
+		return 0, io.EOF
+	}
+	time.Sleep(r.delay)
+	n := copy(p, r.chunks[r.pos])
+	r.pos++
+	return n, nil
+}
+
+type hybridConverter struct {
+	fromReader func(io.Reader) error
+	write      func([]byte) (int, error)
+}
+
+func (h *hybridConverter) FromReader(r io.Reader) error {
+	if h.fromReader != nil {
+		return h.fromReader(r)
+	}
+	_, err := io.Copy(io.Discard, r)
+	return err
+}
+
+func (h *hybridConverter) Write(p []byte) (int, error) {
+	if h.write != nil {
+		return h.write(p)
+	}
+	return len(p), nil
 }

@@ -1,6 +1,7 @@
 package calque
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -1364,4 +1365,321 @@ func BenchmarkByteOutput(b *testing.B) {
 			}
 		})
 	}
+}
+
+// TestFlow_Run_StreamingScenarios tests all 6 streaming scenarios to ensure
+// proper streaming behavior and prevent memory leaks
+func TestFlow_Run_StreamingScenarios(t *testing.T) {
+	t.Run("Scenario1_LongStreamWithOutputConverter_KeepsUp", func(t *testing.T) {
+		// Scenario 1: Long-running stream with output converter that keeps up
+		// CRITICAL: Output must be consumed in real-time, not buffered
+
+		flow := NewFlow()
+		flow.Use(HandlerFunc(func(req *Request, res *Response) error {
+			// Simulate streaming: send data in chunks over time
+			for i := 0; i < 10; i++ {
+				_, err := res.Data.Write([]byte(fmt.Sprintf("chunk-%d\n", i)))
+				if err != nil {
+					return err
+				}
+				time.Sleep(10 * time.Millisecond) // Simulate slow production
+			}
+			return nil
+		}))
+
+		// Create an OutputConverter that tracks when data arrives
+		received := make([]string, 0)
+		var mu sync.Mutex
+		startTime := time.Now()
+		chunkTimes := make([]time.Duration, 0)
+
+		converter := &testOutputConverter{
+			fromReader: func(r io.Reader) error {
+				scanner := bufio.NewScanner(r)
+				for scanner.Scan() {
+					mu.Lock()
+					received = append(received, scanner.Text())
+					chunkTimes = append(chunkTimes, time.Since(startTime))
+					mu.Unlock()
+				}
+				return scanner.Err()
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		err := flow.Run(ctx, "", converter)
+		if err != nil {
+			t.Fatalf("Flow.Run failed: %v", err)
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		// Verify all chunks received
+		if len(received) != 10 {
+			t.Errorf("Expected 10 chunks, got %d", len(received))
+		}
+
+		// CRITICAL: Verify streaming - first chunk should arrive early (not buffered)
+		// If buffered, all chunks would arrive at ~100ms. If streaming, first arrives ~10ms
+		if len(chunkTimes) > 0 && chunkTimes[0] > 50*time.Millisecond {
+			t.Errorf("First chunk arrived too late (%v), indicates buffering instead of streaming", chunkTimes[0])
+		}
+	})
+
+	t.Run("Scenario2_LongStreamWithOutputConverter_Slow", func(t *testing.T) {
+		// Scenario 2: Long-running stream where output consumer is slower than producer
+		// CRITICAL: Should use pipe backpressure, not unbounded buffering
+
+		flow := NewFlow()
+		flow.Use(HandlerFunc(func(req *Request, res *Response) error {
+			// Fast producer: send 100 chunks quickly
+			for i := 0; i < 100; i++ {
+				_, err := res.Data.Write([]byte(fmt.Sprintf("data-%d\n", i)))
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		}))
+
+		received := make([]string, 0)
+		var mu sync.Mutex
+
+		converter := &testOutputConverter{
+			fromReader: func(r io.Reader) error {
+				scanner := bufio.NewScanner(r)
+				for scanner.Scan() {
+					// Slow consumer: process each chunk slowly
+					time.Sleep(5 * time.Millisecond)
+					mu.Lock()
+					received = append(received, scanner.Text())
+					mu.Unlock()
+				}
+				return scanner.Err()
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		err := flow.Run(ctx, "", converter)
+		if err != nil {
+			t.Fatalf("Flow.Run failed: %v", err)
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		if len(received) != 100 {
+			t.Errorf("Expected 100 chunks, got %d", len(received))
+		}
+
+		// Test passes if no OOM and all data received
+		// Pipe backpressure should limit memory growth
+	})
+
+	t.Run("Scenario3_LongStreamWithNilOutput", func(t *testing.T) {
+		// Scenario 3: Long-running stream with output not needed
+		// CRITICAL: Must discard output without buffering (prevent memory leak)
+
+		flow := NewFlow()
+		flow.Use(HandlerFunc(func(req *Request, res *Response) error {
+			// Produce large amounts of data
+			for i := 0; i < 1000; i++ {
+				_, err := res.Data.Write([]byte(fmt.Sprintf("discarded-data-%d\n", i)))
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		}))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Run with nil output - should discard without buffering
+		err := flow.Run(ctx, "", nil)
+		if err != nil {
+			t.Fatalf("Flow.Run with nil output failed: %v", err)
+		}
+
+		// Test passes if no OOM and completes quickly
+		// If buffering occurred, would use ~50KB+ memory
+	})
+
+	t.Run("Scenario4_ShortInputWithStringOutput", func(t *testing.T) {
+		// Scenario 4: Short input, one-shot processing with *string output
+		// CRITICAL: Should buffer (required for *string type)
+
+		flow := NewFlow()
+		flow.Use(HandlerFunc(func(req *Request, res *Response) error {
+			data, _ := io.ReadAll(req.Data)
+			_, err := res.Data.Write([]byte("processed: " + string(data)))
+			return err
+		}))
+
+		var output string
+		err := flow.Run(context.Background(), "test input", &output)
+		if err != nil {
+			t.Fatalf("Flow.Run failed: %v", err)
+		}
+
+		expected := "processed: test input"
+		if output != expected {
+			t.Errorf("Expected %q, got %q", expected, output)
+		}
+	})
+
+	t.Run("Scenario5_ShortInputWithNilOutput", func(t *testing.T) {
+		// Scenario 5: Short input with output not needed
+		// CRITICAL: Should discard efficiently
+
+		flow := NewFlow()
+		handlerCalled := false
+		flow.Use(HandlerFunc(func(req *Request, res *Response) error {
+			handlerCalled = true
+			_, err := res.Data.Write([]byte("discarded output"))
+			return err
+		}))
+
+		err := flow.Run(context.Background(), "test input", nil)
+		if err != nil {
+			t.Fatalf("Flow.Run failed: %v", err)
+		}
+
+		if !handlerCalled {
+			t.Error("Handler should have been called")
+		}
+	})
+
+	t.Run("Scenario6_StreamingWithIOWriter", func(t *testing.T) {
+		// Test io.Writer output (used by ServeFlow for composability)
+		// CRITICAL: Should stream directly without intermediate buffering
+
+		flow := NewFlow()
+		flow.Use(HandlerFunc(func(req *Request, res *Response) error {
+			for i := 0; i < 5; i++ {
+				_, err := res.Data.Write([]byte(fmt.Sprintf("line-%d\n", i)))
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		}))
+
+		var buf bytes.Buffer
+		err := flow.Run(context.Background(), "", &buf)
+		if err != nil {
+			t.Fatalf("Flow.Run failed: %v", err)
+		}
+
+		expected := "line-0\nline-1\nline-2\nline-3\nline-4\n"
+		if buf.String() != expected {
+			t.Errorf("Expected %q, got %q", expected, buf.String())
+		}
+	})
+
+	t.Run("MemoryLeak_Prevention_NilOutput", func(t *testing.T) {
+		// Regression test: Ensure nil output doesn't cause memory leak
+		// This was the original bug reported
+
+		// Test simply verifies it completes without OOM
+		// Buffering 10MB would cause test suite memory pressure
+		flow := NewFlow()
+		flow.Use(HandlerFunc(func(req *Request, res *Response) error {
+			// Simulate large output that would cause OOM if buffered
+			largeData := make([]byte, 1024*1024) // 1MB
+			for i := 0; i < 10; i++ {
+				_, err := res.Data.Write(largeData)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		}))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		err := flow.Run(ctx, "", nil)
+		if err != nil {
+			t.Fatalf("Flow.Run failed: %v", err)
+		}
+
+		// Test passes if it completes without OOM
+		// If buffering occurred, 10MB would be held in memory
+	})
+
+	t.Run("RealTime_Streaming_OutputConverter", func(t *testing.T) {
+		// Verify OutputConverter receives data in real-time, not after buffering
+
+		flow := NewFlow()
+		flow.Use(HandlerFunc(func(req *Request, res *Response) error {
+			for i := 0; i < 3; i++ {
+				_, err := res.Data.Write([]byte(fmt.Sprintf("msg-%d\n", i)))
+				if err != nil {
+					return err
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			return nil
+		}))
+
+		receivedAt := make([]time.Time, 0)
+		var mu sync.Mutex
+		startTime := time.Now()
+
+		converter := &testOutputConverter{
+			fromReader: func(r io.Reader) error {
+				scanner := bufio.NewScanner(r)
+				for scanner.Scan() {
+					mu.Lock()
+					receivedAt = append(receivedAt, time.Now())
+					mu.Unlock()
+				}
+				return scanner.Err()
+			},
+		}
+
+		err := flow.Run(context.Background(), "", converter)
+		if err != nil {
+			t.Fatalf("Flow.Run failed: %v", err)
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		if len(receivedAt) != 3 {
+			t.Fatalf("Expected 3 messages, got %d", len(receivedAt))
+		}
+
+		// CRITICAL: Messages should arrive incrementally, not all at once
+		// First message should arrive around 50ms, not 150ms
+		firstDelay := receivedAt[0].Sub(startTime)
+		if firstDelay > 100*time.Millisecond {
+			t.Errorf("First message delayed %v, indicates buffering instead of streaming", firstDelay)
+		}
+
+		// Messages should be spread out (streaming), not bunched (buffered)
+		secondDelay := receivedAt[1].Sub(receivedAt[0])
+		if secondDelay < 30*time.Millisecond {
+			t.Errorf("Messages arrived too close together (%v), indicates buffering", secondDelay)
+		}
+	})
+}
+
+// testOutputConverter is a test helper that implements OutputConverter
+type testOutputConverter struct {
+	fromReader func(io.Reader) error
+}
+
+func (c *testOutputConverter) FromReader(r io.Reader) error {
+	if c.fromReader != nil {
+		return c.fromReader(r)
+	}
+	_, err := io.Copy(io.Discard, r)
+	return err
 }
