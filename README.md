@@ -73,10 +73,6 @@ Three lines to set up, one line to run.
 
 ## What You Can Build
 
-<table>
-<tr>
-<td width="50%">
-
 ### Chatbot with Memory
 
 ```go
@@ -88,9 +84,6 @@ flow := calque.NewFlow().
     Use(convMem.Output(userID))
 ```
 
-</td>
-<td width="50%">
-
 ### AI with Tool Calling
 
 ```go
@@ -100,11 +93,6 @@ weather := tools.Simple("weather", "Weather", weatherFn)
 flow := calque.NewFlow().
     Use(ai.Agent(client, ai.WithTools(calculator, weather)))
 ```
-
-</td>
-</tr>
-<tr>
-<td width="50%">
 
 ### Structured Output
 
@@ -116,9 +104,6 @@ var result MyType
 flow.Run(ctx, "Analyze this", convert.FromJSONSchema(&result))
 ```
 
-</td>
-<td width="50%">
-
 ### RAG Pipeline
 
 ```go
@@ -127,10 +112,6 @@ flow := calque.NewFlow().
     Use(prompt.Template(ragTemplate)).
     Use(ai.Agent(client))
 ```
-
-</td>
-</tr>
-</table>
 
 📖 **[See Getting Started Guide →](docs/getting-started.md)**
 
@@ -183,7 +164,8 @@ Go-Calque is built for **production AI workloads** where LLM latency dominates.
 | **[Getting Started](docs/getting-started.md)** | Installation, quickstart, core concepts |
 | **[Middleware Reference](docs/middleware.md)** | All middleware packages and usage |
 | **[Architecture](docs/architecture.md)** | Streaming pipeline deep dive |
-| **[Advanced Topics](docs/advanced.md)** | Custom middleware, concurrency, composition |
+| **[Advanced Topics](docs/advanced.md)** | Custom middleware, concurrency, error handling |
+| **[Recipes & Examples](docs/recipes.md)** | HTTP integration, testing, real-world examples |
 | **[Performance](docs/BENCHMARK_ANALYSIS_REPORT.md)** | Benchmark analysis and optimization |
 | **[Examples](examples/)** | Runnable code examples |
 | **[API Reference](https://pkg.go.dev/github.com/calque-ai/go-calque)** | pkg.go.dev documentation |
@@ -200,6 +182,22 @@ Go-Calque is built for **production AI workloads** where LLM latency dominates.
 | [retrieval](examples/retrieval/) | RAG/vector search |
 | [mcp](examples/mcp/) | Model Context Protocol |
 
+## Roadmap
+
+### Middleware
+- ✅ Tool Calling - Function execution for AI agents
+- ✅ Information Retrieval - Vector search, context building, semantic filtering
+- ✅ Multi-Agent - Agent routing, load balancing, conditional routing
+- ✅ HTTP/API Integration - Streaming responses
+- ✅ Model Context Protocol - MCP client, natural language tools
+- ✅ Observability - Metrics, tracing, health checks, structured logging
+- 🔲 Guardrails & Safety - Input filtering, output validation
+
+### Framework
+- 🔲 Vector-based semantic memory
+- 🔲 Planning & reflection capabilities
+- 🔲 Anthropic/Claude support
+
 ## Contributing
 
 1. Fork the repository
@@ -213,6 +211,16 @@ See [AGENTS.md](AGENTS.md) for development setup.
 
 <a href="https://github.com/calque-ai/go-calque/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=calque-ai/go-calque" />
+</a>
+
+## Star History
+
+<a href="https://www.star-history.com/#calque-ai/go-calque&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=calque-ai/go-calque&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=calque-ai/go-calque&type=Date" />
+   <img alt="Star history of calque-ai/go-calque over time" src="https://api.star-history.com/svg?repos=calque-ai/go-calque&type=Date" />
+ </picture>
 </a>
 
 ## License

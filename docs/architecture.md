@@ -305,5 +305,5 @@ See [Benchmark Analysis](BENCHMARK_ANALYSIS_REPORT.md) for detailed metrics.
 
 ## Next
 
-**→ [Advanced Topics](advanced.md)** - Custom middleware, testing, and optimization patterns
+**→ [Advanced Topics](advanced.md)** - Custom middleware, flow composition, error handling
 

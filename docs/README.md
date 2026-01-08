@@ -9,7 +9,8 @@ Welcome to the Go-Calque documentation.
 | [Getting Started](getting-started.md) | Installation, quickstart, core concepts |
 | [Middleware Reference](middleware.md) | All middleware packages and usage |
 | [Architecture](architecture.md) | Streaming pipeline deep dive |
-| [Advanced Topics](advanced.md) | Custom middleware, concurrency, composition |
+| [Advanced Topics](advanced.md) | Custom middleware, concurrency, error handling |
+| [Recipes & Examples](recipes.md) | HTTP integration, testing, real-world examples |
 | [Performance](BENCHMARK_ANALYSIS_REPORT.md) | Benchmark analysis and optimization |
 
 ## Examples
@@ -53,16 +54,31 @@ All runnable examples are in the [`examples/`](../examples/) directory:
 ### Running Benchmarks
 
 ```bash
-# All benchmarks
-go test -bench=. -benchmem ./benchmarks/...
+# Run all benchmarks
+go test -bench=. -benchmem ./pkg/calque/...
+go test -bench=. -benchmem ./examples/anagram/...
 
-# Specific categories
-go test -bench=BenchmarkAILatency -benchmem ./benchmarks/...
-go test -bench=BenchmarkChainVsFlow -benchmem ./benchmarks/...
+# Generate benchmark report
+./scripts/generate_benchmark_report.sh
 
-# With profiling
-go test -bench=BenchmarkRealisticWorkflow -cpuprofile=cpu.prof ./benchmarks/...
-go tool pprof -http=:8080 cpu.prof
+# Update report with new data
+./scripts/generate_benchmark_report.sh --update
+
+# Generate CPU and memory profiles
+./scripts/generate_benchmark_report.sh --profile
+
+# Both update and profile
+./scripts/generate_benchmark_report.sh --update --profile
+```
+
+### Analyzing Profiles
+
+```bash
+# View CPU profile in browser
+go tool pprof -http=:8080 benchmark_profiles/cpu.prof
+
+# View memory profile in browser
+go tool pprof -http=:8081 benchmark_profiles/mem.prof
 ```
 
 ## Reference
