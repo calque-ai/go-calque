@@ -1,7 +1,6 @@
 package calque
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"runtime"
@@ -242,20 +241,15 @@ func (f *Flow) Run(ctx context.Context, input any, output any) error {
 		return f.copyInputToOutput(input, output)
 	}
 
-	// 1. Convert input (any) -> io.Reader
+	// Convert input (any) -> io.Reader
 	reader, err := f.inputToReader(input)
 	if err != nil {
 		return err
 	}
 
-	// 2. Execute flow with pure streaming I/O
-	var outputBuffer bytes.Buffer
-	if err := f.runWithStreaming(ctx, reader, &outputBuffer); err != nil {
-		return err
-	}
-
-	// 3. Convert io.Reader -> output (any)
-	return f.readerToOutput(&outputBuffer, output)
+	// Execute flow with streaming output conversion
+	// readerToOutput is called concurrently inside runWithStreaming for true streaming
+	return f.runWithStreaming(ctx, reader, output)
 }
 
 // runWithStreaming executes the flow with pure streaming I/O (no conversions).
@@ -266,13 +260,7 @@ func (f *Flow) Run(ctx context.Context, input any, output any) error {
 //
 // This is the core streaming execution logic separated from conversion concerns.
 // Enables flow composability by working with raw streaming I/O interfaces.
-func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output io.Writer) error {
-	if len(f.handlers) == 0 {
-		// No handlers, just copy input to output
-		_, err := io.Copy(output, input)
-		return err
-	}
-
+func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output any) error {
 	// Create a chain of pipes between handlers
 	pipes := make([]struct {
 		r *PipeReader
@@ -360,7 +348,7 @@ func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output io.
 	// Consume final output in background
 	outputDone := make(chan error, 2)
 	go func() {
-		_, err := io.Copy(output, finalReader)
+		err := f.readerToOutput(finalReader, output)
 		outputDone <- err
 	}()
 

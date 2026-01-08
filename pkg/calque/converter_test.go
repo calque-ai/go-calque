@@ -281,8 +281,8 @@ func TestFlow_readerToOutput(t *testing.T) {
 			readerData:  testData,
 			output:      nil,
 			expectedOut: nil,
-			wantErr:     true,
-			description: "Nil output should return error",
+			wantErr:     false,
+			description: "Nil output should discard data without error (prevents memory leak)",
 		},
 	}
 
