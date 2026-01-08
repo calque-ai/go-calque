@@ -66,8 +66,17 @@ func (f *Flow) readerToOutput(reader io.Reader, output any) error {
 		return err
 
 	case *io.Reader:
-		// Assign reader directly without copying
-		*out = reader
+		// Buffer data and create a new reader for deferred reading
+		// *io.Reader output is inherently incompatible with streaming because:
+		// - Run() must return before user can read from the output
+		// - Cannot return a live pipe that's still being written to
+		// For true streaming output, use io.Writer or OutputConverter instead
+		var buf bytes.Buffer
+		_, err := io.Copy(&buf, reader)
+		if err != nil {
+			return err
+		}
+		*out = bytes.NewReader(buf.Bytes())
 		return nil
 
 	case *[]byte:
