@@ -359,13 +359,23 @@ func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output any
 		close(done)
 	}()
 
+	var flowErr error
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		flowErr = ctx.Err()
 	case err := <-errCh:
-		return err
+		flowErr = err
 	case <-done:
-		// Wait for output collection to complete
-		return <-outputDone
+		// Handlers completed successfully
 	}
+
+	// Always wait for output goroutine to complete to prevent data races
+	// Even if the flow failed, we must let readerToOutput finish writing
+	outputErr := <-outputDone
+
+	// Return the first error that occurred
+	if flowErr != nil {
+		return flowErr
+	}
+	return outputErr
 }

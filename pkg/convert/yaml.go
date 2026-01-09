@@ -278,7 +278,10 @@ func (y *YAMLOutputConverter) FromReader(reader io.Reader) error {
 	if err != nil {
 		// Drain the reader on error to prevent pipe deadlock
 		// When decode fails, the writer may still be trying to write data
-		io.Copy(io.Discard, reader)
+		if _, drainErr := io.Copy(io.Discard, reader); drainErr != nil {
+			// If draining fails, return both errors for better diagnostics
+			return calque.WrapErr(context.Background(), err, fmt.Sprintf("failed to decode YAML (drain error: %v)", drainErr))
+		}
 
 		// Handle EOF as empty input (valid for YAML)
 		if err == io.EOF {
