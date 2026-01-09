@@ -277,7 +277,7 @@ func TestMetadataBus_Receive(t *testing.T) {
 
 	mb.Close()
 
-	received := make([]Metadata, 0)
+	received := make([]Metadata, 0, 3)
 	for meta := range mb.Receive() {
 		received = append(received, meta)
 	}

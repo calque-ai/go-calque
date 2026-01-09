@@ -330,7 +330,7 @@ func TestAnagramPerformance(t *testing.T) {
 	t.Parallel()
 
 	// Create a larger test dataset
-	words := make([]string, 1000)
+	words := make([]string, 1000, 1005)
 	for i := 0; i < 1000; i++ {
 		words[i] = fmt.Sprintf("word%d", i)
 	}
