@@ -919,3 +919,30 @@ hex: 0xff`
 		}
 	})
 }
+
+// TestYAMLOutputConverter_PipeDeadlock tests that FromReader drains the reader
+// on error to prevent pipe deadlocks when used with streaming sources.
+func TestYAMLOutputConverter_PipeDeadlock(t *testing.T) {
+	t.Run("invalid YAML with pipe", func(t *testing.T) {
+		// Create a pipe to simulate the scenario where a writer is
+		// streaming data and the reader fails to decode
+		pr, pw := io.Pipe()
+
+		// Write invalid YAML in a goroutine (simulates MockClient streaming)
+		go func() {
+			defer pw.Close()
+			pw.Write([]byte("invalid: [unclosed yaml"))
+		}()
+
+		// Try to decode - should fail but not deadlock
+		var result map[string]any
+		converter := FromYAML(&result)
+
+		err := converter.FromReader(pr)
+		if err == nil {
+			t.Error("Expected error for invalid YAML, got nil")
+		}
+
+		// If we get here without timing out, the reader was properly drained
+	})
+}

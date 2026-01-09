@@ -497,12 +497,11 @@ func (c *Client) buildWeaviateClass(schema *SchemaConfig) *models.Class {
 	}
 
 	// Always include content property
-	properties := []*models.Property{
-		{
-			Name:        "content",
-			DataType:    []string{"text"},
-			Description: "Document content",
-		},
+	properties := make([]*models.Property, 1, 1+len(schema.Properties))
+	properties[0] = &models.Property{
+		Name:        "content",
+		DataType:    []string{"text"},
+		Description: "Document content",
 	}
 
 	// Add user-defined properties

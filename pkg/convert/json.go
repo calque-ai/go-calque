@@ -260,7 +260,15 @@ func (j *JSONInputConverter) flushBufferedData(tempBuf *bytes.Buffer, bufWriter 
 func (j *JSONOutputConverter) FromReader(reader io.Reader) error {
 	// Use json.Decoder for streaming decode
 	decoder := json.NewDecoder(reader)
-	if err := decoder.Decode(j.target); err != nil {
+	err := decoder.Decode(j.target)
+
+	if err != nil {
+		// Drain the reader on error to prevent pipe deadlock
+		// When decode fails, the writer may still be trying to write data
+		if _, drainErr := io.Copy(io.Discard, reader); drainErr != nil {
+			// If draining fails, return both errors for better diagnostics
+			return calque.WrapErr(context.Background(), err, fmt.Sprintf("failed to decode JSON (drain error: %v)", drainErr))
+		}
 		return calque.WrapErr(context.Background(), err, "failed to decode JSON")
 	}
 	return nil

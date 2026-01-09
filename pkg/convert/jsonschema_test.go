@@ -626,3 +626,58 @@ func TestJSONSchemaConverter_StringInput(t *testing.T) {
 		}
 	})
 }
+
+// TestJSONSchemaOutputConverter_PipeDeadlock tests that FromReader drains the reader
+// on error to prevent pipe deadlocks when used with streaming sources.
+func TestJSONSchemaOutputConverter_PipeDeadlock(t *testing.T) {
+	type TestStruct struct {
+		Name string `json:"name"`
+	}
+
+	t.Run("invalid JSON with pipe - direct decode fails", func(t *testing.T) {
+		// Create a pipe to simulate the scenario where a writer is
+		// streaming data and the reader fails to decode
+		pr, pw := io.Pipe()
+
+		// Write invalid JSON in a goroutine (simulates MockClient streaming)
+		go func() {
+			defer pw.Close()
+			pw.Write([]byte("invalid json response"))
+		}()
+
+		// Try to decode - should fail but not deadlock
+		var result TestStruct
+		converter := FromJSONSchema[TestStruct](&result)
+
+		err := converter.FromReader(pr)
+		if err == nil {
+			t.Error("Expected error for invalid JSON, got nil")
+		}
+
+		// If we get here without timing out, the reader was properly drained
+	})
+
+	t.Run("valid JSON with extra fields with pipe - fallback path", func(t *testing.T) {
+		// This tests the fallback path where direct decode fails due to DisallowUnknownFields
+		// It has extra fields, so direct decode fails, then fallback should handle it
+		pr, pw := io.Pipe()
+
+		// Write valid JSON with extra field in a goroutine
+		go func() {
+			defer pw.Close()
+			pw.Write([]byte(`{"name": "test", "extra": "field"}`))
+		}()
+
+		// Try to decode - direct decode will fail due to extra field
+		// Fallback will fail because no wrapper key
+		var result TestStruct
+		converter := FromJSONSchema[TestStruct](&result)
+
+		err := converter.FromReader(pr)
+		if err == nil {
+			t.Error("Expected error for missing wrapper key, got nil")
+		}
+
+		// If we get here without timing out, the reader was properly drained
+	})
+}

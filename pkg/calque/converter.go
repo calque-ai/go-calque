@@ -48,37 +48,59 @@ func (f *Flow) inputToReader(input any) (io.Reader, error) {
 // readerToOutput writes the final reader data to the output pointer
 // Only buffers when necessary
 func (f *Flow) readerToOutput(reader io.Reader, output any) error {
-	// Check if output is a converter
-	if conv, ok := output.(OutputConverter); ok {
-		return conv.FromReader(reader)
+	// Handle nil output - discard data to prevent memory leak
+	if output == nil {
+		_, err := io.Copy(io.Discard, reader)
+		return err
 	}
 
-	// Handle built-in types
-	switch outPtr := output.(type) {
-	case *io.Reader:
-		*outPtr = reader
-		return nil
+	// Handle all output types
+	switch out := output.(type) {
+	case OutputConverter:
+		// Custom converters (SSE, JSON, etc.) - stream via FromReader
+		return out.FromReader(reader)
 
-	case *[]byte:
+	case io.Writer:
+		// Direct streaming to io.Writer (used by ServeFlow)
+		_, err := io.Copy(out, reader)
+		return err
+
+	case *io.Reader:
+		// Buffer data and create a new reader for deferred reading
+		// *io.Reader output is inherently incompatible with streaming because:
+		// - Run() must return before user can read from the output
+		// - Cannot return a live pipe that's still being written to
+		// For true streaming output, use io.Writer or OutputConverter instead
 		var buf bytes.Buffer
 		_, err := io.Copy(&buf, reader)
 		if err != nil {
 			return err
 		}
-		*outPtr = buf.Bytes()
+		*out = bytes.NewReader(buf.Bytes())
+		return nil
+
+	case *[]byte:
+		// Buffer entire stream into byte slice
+		var buf bytes.Buffer
+		_, err := io.Copy(&buf, reader)
+		if err != nil {
+			return err
+		}
+		*out = buf.Bytes()
 		return nil
 
 	case *string:
+		// Buffer entire stream into string
 		var builder strings.Builder
 		_, err := io.Copy(&builder, reader)
 		if err != nil {
 			return err
 		}
-		*outPtr = builder.String()
+		*out = builder.String()
 		return nil
 
 	default:
-		return NewErr(context.Background(), fmt.Sprintf("unsupported output type: %T (use a converter for complex types)", output))
+		return NewErr(context.Background(), fmt.Sprintf("unsupported output type: %T (use a converter for custom types)", output))
 	}
 }
 

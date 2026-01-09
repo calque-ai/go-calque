@@ -136,10 +136,19 @@ func (j *SchemaOutputConverter[T]) FromReader(reader io.Reader) error {
 	decoder := json.NewDecoder(teeReader)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(j.target); err == nil {
+		// Drain any remaining data in the reader to prevent pipe deadlock
+		if _, drainErr := io.Copy(io.Discard, reader); drainErr != nil {
+			return calque.WrapErr(context.Background(), drainErr, "failed to drain reader after successful decode")
+		}
 		return nil // Success - pure streaming, no marshal/unmarshal overhead!
 	}
 
-	// Direct streaming failed, use buffered data for wrapper logic
+	// Direct streaming failed, drain the teeReader to get all data into buffer
+	if _, drainErr := io.Copy(io.Discard, teeReader); drainErr != nil {
+		return calque.WrapErr(context.Background(), drainErr, "failed to read complete JSON data")
+	}
+
+	// Use buffered data for wrapper logic
 	var wrapper map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &wrapper); err != nil {
 		return calque.WrapErr(context.Background(), err, "failed to parse JSON")
