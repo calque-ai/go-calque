@@ -15,9 +15,9 @@ This report analyzes go-calque's streaming concurrent pipeline architecture for 
 | Metric | Result | Implication |
 |--------|--------|-------------|
 | Single handler overhead | ~15-18 µs | Negligible for AI workloads |
-| AI overhead at 100ms | <0.02% | Framework cost is invisible |
-| AI overhead at 10ms | ~0.13% | Still negligible |
-| AI overhead at 1ms | ~1.2% | Acceptable |
+| Framework overhead at 100ms AI latency | <0.02% | Framework cost is invisible |
+| Framework overhead at 10ms AI latency | ~0.13% | Still negligible |
+| Framework overhead at 1ms AI latency | ~1.2% | Acceptable |
 | ctrl.Chain vs Flow | **3.4x faster** | Use Chain for sequential |
 | Memory per handler | ~33KB | Linear, predictable |
 | Text processing (large) | **7x faster** | Framework beats baseline |
@@ -109,7 +109,7 @@ Comparing `ctrl.Chain` (sequential) vs regular Flow (concurrent) with 3 handlers
 
 ---
 
-## 4. AI Latency Impact
+## 4. Framework Overhead vs AI Latency
 
 How framework overhead compares to AI response times:
 
@@ -192,12 +192,6 @@ For a 5-handler flow (173 KB total):
 | MetadataBus | 3.8 KB | 2.2% |
 | Pipe structs | 5 KB | 2.9% |
 | Other | 4.9 KB | 2.9% |
-
-### Optimization Opportunities
-
-1. **Pool io.Pipe buffers** - biggest impact (92% of memory)
-2. **Lazy MetadataBus creation** - only when used
-3. **Reuse Flow instances** - avoid setup overhead
 
 ---
 

@@ -150,7 +150,7 @@ Go-Calque is built for **production AI workloads** where LLM latency dominates.
 
 | Metric | Value |
 |--------|-------|
-| **AI Overhead** | <0.02% at 100ms latency |
+| **Framework Overhead** | <0.02% at 100ms AI latency |
 | **Streaming** | 3x faster than buffered |
 | **Text Processing** | Up to 86% faster than hand-coded |
 | **Memory** | 87% less allocation with streaming |
