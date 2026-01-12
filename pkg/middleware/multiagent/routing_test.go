@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
@@ -129,30 +131,83 @@ func TestRouterFallbackOnSelectorError(t *testing.T) {
 }
 
 func TestLoadBalancer(t *testing.T) {
-	handler1 := createMockHandler("handler1", "response1")
-	handler2 := createMockHandler("handler2", "response2")
-	handler3 := createMockHandler("handler3", "response3")
+	t.Run("RoundRobin", func(t *testing.T) {
+		handler1 := createMockHandler("handler1", "response1")
+		handler2 := createMockHandler("handler2", "response2")
+		handler3 := createMockHandler("handler3", "response3")
 
-	lb := LoadBalancer(handler1, handler2, handler3)
+		lb := LoadBalancer(handler1, handler2, handler3)
 
-	// Test round-robin distribution
-	expected := []string{"handler1: response1", "handler2: response2", "handler3: response3", "handler1: response1"}
+		// Test round-robin distribution
+		expected := []string{"handler1: response1", "handler2: response2", "handler3: response3", "handler1: response1"}
 
-	for i, expectedResp := range expected {
-		var output bytes.Buffer
-		req := calque.NewRequest(context.Background(), strings.NewReader("test input"))
-		res := calque.NewResponse(&output)
+		for i, expectedResp := range expected {
+			var output bytes.Buffer
+			req := calque.NewRequest(context.Background(), strings.NewReader("test input"))
+			res := calque.NewResponse(&output)
 
-		err := lb.ServeFlow(req, res)
-		if err != nil {
-			t.Errorf("LoadBalancer failed on iteration %d: %v", i, err)
-			continue
+			err := lb.ServeFlow(req, res)
+			if err != nil {
+				t.Errorf("LoadBalancer failed on iteration %d: %v", i, err)
+				continue
+			}
+
+			if output.String() != expectedResp {
+				t.Errorf("Iteration %d: expected %q, got %q", i, expectedResp, output.String())
+			}
+		}
+	})
+
+	t.Run("Concurrent", func(t *testing.T) {
+		var counts [3]atomic.Int64
+
+		handlers := make([]calque.Handler, 3)
+		for i := range handlers {
+			idx := i
+			handlers[i] = calque.HandlerFunc(func(_ *calque.Request, res *calque.Response) error {
+				counts[idx].Add(1)
+				_, err := fmt.Fprintf(res.Data, "handler%d", idx)
+				return err
+			})
 		}
 
-		if output.String() != expectedResp {
-			t.Errorf("Iteration %d: expected %q, got %q", i, expectedResp, output.String())
+		lb := LoadBalancer(handlers...)
+
+		const numGoroutines = 100
+		const requestsPerGoroutine = 100
+
+		var wg sync.WaitGroup
+		wg.Add(numGoroutines)
+
+		for range numGoroutines {
+			go func() {
+				defer wg.Done()
+				for range requestsPerGoroutine {
+					var output bytes.Buffer
+					req := calque.NewRequest(context.Background(), strings.NewReader("test"))
+					res := calque.NewResponse(&output)
+
+					if err := lb.ServeFlow(req, res); err != nil {
+						t.Errorf("LoadBalancer failed: %v", err)
+						return
+					}
+				}
+			}()
 		}
-	}
+
+		wg.Wait()
+
+		// Verify total requests
+		totalRequests := int64(numGoroutines * requestsPerGoroutine)
+		var totalCounted int64
+		for i := range counts {
+			totalCounted += counts[i].Load()
+		}
+
+		if totalCounted != totalRequests {
+			t.Errorf("Expected %d total requests, got %d", totalRequests, totalCounted)
+		}
+	})
 }
 
 func TestEmptyHandlers(t *testing.T) {
