@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/convert"
@@ -200,10 +201,11 @@ func LoadBalancer(handlers ...calque.Handler) calque.Handler {
 		})
 	}
 
-	counter := 0
+	var counter atomic.Uint64
 	return calque.HandlerFunc(func(req *calque.Request, res *calque.Response) error {
-		handler := handlers[counter%len(handlers)]
-		counter++
+		// Atomically increment and get the previous value for round-robin selection
+		idx := counter.Add(1) - 1
+		handler := handlers[idx%uint64(len(handlers))]
 		return handler.ServeFlow(req, res)
 	})
 }
