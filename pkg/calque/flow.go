@@ -270,6 +270,10 @@ func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output any
 	// Creates pipe pairs (r, w) for each handler - these connect handlers together
 	for i := 0; i < len(f.handlers); i++ {
 		pipes[i].r, pipes[i].w = Pipe()
+		// Ensure all pipes are closed on exit to unblock goroutines
+		// Errors are intentionally ignored as this is best-effort cleanup
+		defer func(idx int) { _ = pipes[idx].r.Close() }(i)
+		defer func(idx int) { _ = pipes[idx].w.Close() }(i)
 	}
 
 	// Create error channel for goroutine communication
@@ -278,6 +282,11 @@ func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output any
 	// Creates inputReader for the first handler's input
 	inputR, inputW := io.Pipe()                    // Create a pipe for input
 	inputReader := &PipeReader{PipeReader: inputR} // Wraps the input reader
+	// Ensure input pipe is closed on exit
+	// Errors are intentionally ignored as this is best-effort cleanup
+	defer func() { _ = inputR.Close() }()
+	defer func() { _ = inputW.Close() }()
+
 	go func() {
 		defer func() {
 			if err := inputW.Close(); err != nil {
@@ -286,12 +295,17 @@ func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output any
 				_ = err
 			}
 		}()
+
+		// Copy data from input reader to input pipe
+		// This will unblock if either inputW or inputR is closed
 		if _, err := io.Copy(inputW, input); err != nil {
 			// Send copy errors to error channel as they indicate real problems
-			select {
-			case errCh <- err:
-			default:
-				// Channel might be full, but we've already signaled an error
+			// But ignore ErrClosedPipe which happens on normal shutdown
+			if err != io.ErrClosedPipe {
+				select {
+				case errCh <- err:
+				default:
+				}
 			}
 		}
 	}()
@@ -367,6 +381,16 @@ func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output any
 		flowErr = err
 	case <-done:
 		// Handlers completed successfully
+	}
+
+	// If the flow failed, close all pipes immediately to unblock blocked goroutines
+	if flowErr != nil {
+		for _, p := range pipes {
+			_ = p.r.Close()
+			_ = p.w.Close()
+		}
+		_ = inputR.Close()
+		_ = inputW.Close()
 	}
 
 	// Always wait for output goroutine to complete to prevent data races

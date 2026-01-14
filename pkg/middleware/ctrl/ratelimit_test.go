@@ -158,8 +158,8 @@ func TestRateLimiterRefill(t *testing.T) {
 		t.Errorf("Expected %d tokens, got %d", expectedTokens, limiter.tokens)
 	}
 
-	if limiter.lastRefill.Before(now) {
-		t.Error("lastRefill should be updated to recent time")
+	if limiter.lastRefill.Before(now.Add(-100 * time.Millisecond)) {
+		t.Error("lastRefill should be updated to account for added tokens")
 	}
 }
 

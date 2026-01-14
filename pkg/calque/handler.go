@@ -220,7 +220,7 @@ func Read[T string | []byte](req *Request, outPtr *T) error {
 	case *[]byte:
 		*ptr = buf.Bytes()
 	default:
-		return NewErr(context.Background(), fmt.Sprintf("unsupported type %T", outPtr))
+		return NewErr(req.Context, fmt.Sprintf("unsupported type %T", outPtr))
 	}
 	return nil
 }
