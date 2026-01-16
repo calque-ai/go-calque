@@ -60,12 +60,6 @@ func RateLimit(rate int, per time.Duration) calque.Handler {
 // Wait blocks until a token is available or context is cancelled
 func (rl *rateLimiter) Wait(ctx context.Context) error {
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
 		rl.mu.Lock()
 		rl.refill()
 
@@ -74,14 +68,21 @@ func (rl *rateLimiter) Wait(ctx context.Context) error {
 			rl.mu.Unlock()
 			return nil
 		}
+
+		// Calculate how long to wait for the next token
+		nextRefill := rl.lastRefill.Add(rl.refillRate)
+		wait := time.Until(nextRefill)
 		rl.mu.Unlock()
 
-		// Sleep for a short duration before checking again
+		if wait <= 0 {
+			wait = time.Nanosecond // Minimal wait if we just missed it
+		}
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(rl.refillRate / 10):
-			continue
+		case <-time.After(wait):
+			// Try again after waiting
 		}
 	}
 }
@@ -97,6 +98,7 @@ func (rl *rateLimiter) refill() {
 		if rl.tokens > rl.maxTokens {
 			rl.tokens = rl.maxTokens
 		}
-		rl.lastRefill = now
+		// Increment lastRefill by exact intervals to avoid drift and maintain precision
+		rl.lastRefill = rl.lastRefill.Add(time.Duration(tokensToAdd) * rl.refillRate)
 	}
 }
