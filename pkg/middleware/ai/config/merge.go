@@ -24,10 +24,10 @@ func (m *Merger) Merge(target, source interface{}) {
 	sourceVal := reflect.ValueOf(source)
 
 	// Dereference pointers
-	if targetVal.Kind() == reflect.Ptr {
+	if targetVal.Kind() == reflect.Pointer {
 		targetVal = targetVal.Elem()
 	}
-	if sourceVal.Kind() == reflect.Ptr {
+	if sourceVal.Kind() == reflect.Pointer {
 		sourceVal = sourceVal.Elem()
 	}
 

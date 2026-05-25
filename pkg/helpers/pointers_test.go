@@ -8,8 +8,8 @@ import (
 func TestPtrOf(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    interface{}
-		expected interface{}
+		input    any
+		expected any
 	}{
 		{"int", 42, 42},
 		{"int32", int32(42), int32(42)},
@@ -34,7 +34,7 @@ func TestPtrOf(t *testing.T) {
 			inputValue := reflect.ValueOf(tt.input)
 			if tt.input == nil {
 				// Handle nil case specially
-				result := PtrOf[interface{}](nil)
+				result := PtrOf[any](nil)
 
 				if result == nil {
 					t.Fatal("Expected non-nil pointer")
@@ -49,7 +49,7 @@ func TestPtrOf(t *testing.T) {
 
 			// Create a function that can call PtrOf with the specific type
 			ptrOfFunc := reflect.MakeFunc(
-				reflect.TypeOf(func(interface{}) interface{} { return nil }),
+				reflect.TypeOf(func(any) any { return nil }),
 				func(_ []reflect.Value) []reflect.Value {
 					// This is a bit complex due to Go's type system
 					// We'll use a simpler approach for the test
@@ -70,7 +70,7 @@ func TestPtrOf(t *testing.T) {
 
 			// Extract the value from the pointer using reflect
 			resultValue := reflect.ValueOf(result)
-			if resultValue.Kind() != reflect.Ptr {
+			if resultValue.Kind() != reflect.Pointer {
 				t.Fatal("Expected pointer result")
 			}
 
