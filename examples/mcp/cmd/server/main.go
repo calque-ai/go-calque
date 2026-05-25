@@ -56,9 +56,9 @@ func searchTool(_ context.Context, _ *mcp.CallToolRequest, args SearchParams) (*
 	}
 
 	var output strings.Builder
-	output.WriteString(fmt.Sprintf("Search results for '%s':\n", args.Query))
+	fmt.Fprintf(&output, "Search results for '%s':\n", args.Query)
 	for i, result := range results {
-		output.WriteString(fmt.Sprintf("%d. %s\n", i+1, result))
+		fmt.Fprintf(&output, "%d. %s\n", i+1, result)
 	}
 
 	return &mcp.CallToolResult{

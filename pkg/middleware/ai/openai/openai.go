@@ -516,7 +516,7 @@ func (c *Client) multimodalToMessages(ctx context.Context, multimodal *ai.Multim
 			if part.Reader != nil {
 				// Use streaming base64 encoder to avoid loading entire image into memory
 				var buf strings.Builder
-				buf.WriteString(fmt.Sprintf("data:%s;base64,", part.MimeType))
+				fmt.Fprintf(&buf, "data:%s;base64,", part.MimeType)
 
 				encoder := base64.NewEncoder(base64.StdEncoding, &buf)
 				_, err = io.Copy(encoder, part.Reader)

@@ -358,7 +358,7 @@ func (c *Client) Prompt(name string) calque.Handler {
 			}
 
 			if textContent, ok := message.Content.(*mcp.TextContent); ok {
-				output.WriteString(fmt.Sprintf("%s: %s", message.Role, textContent.Text))
+				fmt.Fprintf(&output, "%s: %s", message.Role, textContent.Text)
 			}
 		}
 
@@ -539,8 +539,8 @@ func (c *Client) multiResourceHandler(getURIs func([]byte) ([]string, error), de
 			result, err := c.session.ReadResource(ctx, params)
 			if err != nil {
 				// Continue with error note rather than failing completely
-				output.WriteString(fmt.Sprintf("=== Resource %d (Error) ===\n", resourceNum))
-				output.WriteString(fmt.Sprintf("Failed to read %s: %v\n\n", uri, err))
+				fmt.Fprintf(&output, "=== Resource %d (Error) ===\n", resourceNum)
+				fmt.Fprintf(&output, "Failed to read %s: %v\n\n", uri, err)
 				resourceNum++
 				continue
 			}
@@ -548,14 +548,14 @@ func (c *Client) multiResourceHandler(getURIs func([]byte) ([]string, error), de
 			// Add all contents from this resource
 			for i, content := range result.Contents {
 				if len(result.Contents) == 1 {
-					output.WriteString(fmt.Sprintf("=== Resource %d ===\n", resourceNum))
+					fmt.Fprintf(&output, "=== Resource %d ===\n", resourceNum)
 				} else {
-					output.WriteString(fmt.Sprintf("=== Resource %d.%d ===\n", resourceNum, i+1))
+					fmt.Fprintf(&output, "=== Resource %d.%d ===\n", resourceNum, i+1)
 				}
 				if content.Text != "" {
 					output.WriteString(content.Text)
 				} else if len(content.Blob) > 0 {
-					output.WriteString(fmt.Sprintf("[Binary content: %d bytes, type: %s]", len(content.Blob), content.MIMEType))
+					fmt.Fprintf(&output, "[Binary content: %d bytes, type: %s]", len(content.Blob), content.MIMEType)
 				}
 				output.WriteString("\n\n")
 			}

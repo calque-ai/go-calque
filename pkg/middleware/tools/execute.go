@@ -362,15 +362,15 @@ func formatToolResults(results []ToolResult, originalOutput []byte) string {
 	output.WriteString("Tool execution results:\n\n")
 
 	for i, result := range results {
-		output.WriteString(fmt.Sprintf("Tool %d: %s\n", i+1, result.ToolCall.Name))
+		fmt.Fprintf(&output, "Tool %d: %s\n", i+1, result.ToolCall.Name)
 		if result.ToolCall.Arguments != "" {
-			output.WriteString(fmt.Sprintf("Arguments: %s\n", result.ToolCall.Arguments))
+			fmt.Fprintf(&output, "Arguments: %s\n", result.ToolCall.Arguments)
 		}
 
 		if result.Error != "" {
-			output.WriteString(fmt.Sprintf("Error: %s\n", result.Error))
+			fmt.Fprintf(&output, "Error: %s\n", result.Error)
 		} else {
-			output.WriteString(fmt.Sprintf("Result: %s\n", string(result.Result)))
+			fmt.Fprintf(&output, "Result: %s\n", string(result.Result))
 		}
 		output.WriteString("\n")
 	}

@@ -1,18 +1,18 @@
-name: 'Setup Go Environment'
-description: 'Sets up Go environment with common CI configuration'
+name: "Setup Go Environment"
+description: "Sets up Go environment with common CI configuration"
 
 inputs:
   go-version:
-    description: 'Go version to set up'
+    description: "Go version to set up"
     required: false
-    default: '1.24.2'
+    default: "1.26.3"
   ci-environment:
-    description: 'Set up CI environment variables'
+    description: "Set up CI environment variables"
     required: false
-    default: 'true'
+    default: "true"
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
     - name: Set up Go
       uses: actions/setup-go@v5

@@ -478,14 +478,14 @@ func (o *Client) convertToOllamaTools(_ context.Context, toolList []tools.Tool) 
 
 	for i, tool := range internalTools {
 		// Convert internal schema properties to Ollama format
-		properties := make(map[string]api.ToolProperty)
+		properties := api.NewToolPropertiesMap()
 
 		if tool.Parameters != nil && tool.Parameters.Properties != nil {
 			for name, prop := range tool.Parameters.Properties {
-				properties[name] = api.ToolProperty{
+				properties.Set(name, api.ToolProperty{
 					Type:        api.PropertyType{prop.Type},
 					Description: prop.Description,
-				}
+				})
 			}
 		}
 
@@ -516,16 +516,12 @@ func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *calque.Respon
 
 	for i, call := range toolCalls {
 		// Marshal all arguments to JSON
-		var argsJSON string
-		if call.Function.Arguments != nil {
+		argsJSON := "{}"
+		if call.Function.Arguments.Len() > 0 {
 			argsBytes, err := json.Marshal(call.Function.Arguments)
 			if err == nil {
 				argsJSON = string(argsBytes)
-			} else {
-				argsJSON = "{}"
 			}
-		} else {
-			argsJSON = "{}"
 		}
 
 		toolCall := map[string]any{
