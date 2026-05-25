@@ -371,16 +371,22 @@ func TestConvertToOllamaTools(t *testing.T) {
 	}
 }
 
+func makeToolArgs(m map[string]any) api.ToolCallFunctionArguments {
+	args := api.NewToolCallFunctionArguments()
+	for k, v := range m {
+		args.Set(k, v)
+	}
+	return args
+}
+
 func TestWriteOllamaToolCalls(t *testing.T) {
 	client := &Client{}
 
 	toolCalls := []api.ToolCall{
 		{
 			Function: api.ToolCallFunction{
-				Name: "calculator",
-				Arguments: map[string]any{
-					"input": "2+2",
-				},
+				Name:      "calculator",
+				Arguments: makeToolArgs(map[string]any{"input": "2+2"}),
 			},
 		},
 	}
@@ -592,10 +598,8 @@ func TestExecuteRequestScenarios(t *testing.T) {
 			toolCalls: []api.ToolCall{
 				{
 					Function: api.ToolCallFunction{
-						Name: "calculator",
-						Arguments: map[string]any{
-							"input": "2+2",
-						},
+						Name:      "calculator",
+						Arguments: makeToolArgs(map[string]any{"input": "2+2"}),
 					},
 				},
 			},
@@ -611,10 +615,8 @@ func TestExecuteRequestScenarios(t *testing.T) {
 			toolCalls: []api.ToolCall{
 				{
 					Function: api.ToolCallFunction{
-						Name: "search",
-						Arguments: map[string]any{
-							"query": "golang",
-						},
+						Name:      "search",
+						Arguments: makeToolArgs(map[string]any{"query": "golang"}),
 					},
 				},
 			},
@@ -779,10 +781,8 @@ func TestToolCallPriority(t *testing.T) {
 	toolCalls := []api.ToolCall{
 		{
 			Function: api.ToolCallFunction{
-				Name: "calculator",
-				Arguments: map[string]any{
-					"expression": "2+2",
-				},
+				Name:      "calculator",
+				Arguments: makeToolArgs(map[string]any{"expression": "2+2"}),
 			},
 		},
 	}

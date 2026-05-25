@@ -3,7 +3,7 @@ package tools
 import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/invopop/jsonschema"
-	orderedmap "github.com/wk8/go-ordered-map/v2"
+	orderedmap "github.com/pb33f/ordered-map/v2"
 )
 
 // Tool defines a function that can be called by the LLM (OpenAI Function Calling standard).
