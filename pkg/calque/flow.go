@@ -280,8 +280,8 @@ func (f *Flow) runWithStreaming(ctx context.Context, input io.Reader, output any
 	errCh := make(chan error, len(f.handlers)+2) // create error chan with small extra buffer
 
 	// Creates inputReader for the first handler's input
-	inputR, inputW := io.Pipe()                    // Create a pipe for input
-	inputReader := &PipeReader{PipeReader: inputR} // Wraps the input reader
+	inputR, inputW := Pipe()
+	inputReader := inputR
 	// Ensure input pipe is closed on exit
 	// Errors are intentionally ignored as this is best-effort cleanup
 	defer func() { _ = inputR.Close() }()
