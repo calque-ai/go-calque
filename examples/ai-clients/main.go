@@ -29,6 +29,7 @@ func main() {
 	ollamaExample()
 	geminiExample()
 	openaiExample()
+	vertexExample()
 }
 
 func ollamaExample() {
@@ -77,9 +78,51 @@ func geminiExample() {
 	}
 
 	// Create Gemini example client (reads GOOGLE_API_KEY from env unless set in the config)
-	client, err := gemini.New("gemini-2.0-flash", gemini.WithConfig(config))
+	client, err := gemini.New("gemini-3.6-flash", gemini.WithConfig(config))
 	if err != nil {
 		log.Fatal("Failed to create Gemini client:", err)
+	}
+
+	// Create flow with llm agent integration
+	flow := calque.NewFlow()
+
+	flow.
+		Use(inspect.Print("INPUT")).                                                     // Log input
+		Use(prompt.Template("Please provide a concise response. Question: {{.Input}}")). // Setup a prompt template
+		Use(inspect.Print("PROMPT")).                                                    // Log the finalized prompt
+		Use(ai.Agent(client)).                                                           // Send prompt to llm agent
+		Use(inspect.Head("RESPONSE", 200))                                               // Log the agent response using inspect.head for streaming
+
+	// Run the flow
+	var result string
+	err = flow.Run(context.Background(), "What is the Go programming language?", &result)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("\nFinal result:")
+	fmt.Println(result)
+}
+
+func vertexExample() {
+
+	// Load environment variables from .env file
+	// Make sure to have GOOGLE_CLOUD_PROJECT (and optionally GOOGLE_CLOUD_LOCATION) set
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Printf("Warning: Could not load .env file: %v", err)
+		log.Println("To run Vertex AI example:")
+		log.Println("  1. Set up a GCP project and enable the Vertex AI API")
+		log.Println("  2. Run: gcloud auth application-default login")
+		log.Println("  3. Create .env file with: GOOGLE_CLOUD_PROJECT=your_project_id")
+		return
+	}
+
+	// Create Vertex AI client (uses ADC credentials — no API key needed)
+	client, err := gemini.NewVertex("gemini-3.6-flash")
+	if err != nil {
+		log.Printf("Failed to create Vertex AI client: %v", err)
+		return
 	}
 
 	// Create flow with llm agent integration

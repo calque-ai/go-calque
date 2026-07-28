@@ -94,7 +94,7 @@ func runSimpleAgent() {
 	})
 
 	// Create Gemini example client (reads GOOGLE_API_KEY from env)
-	client, err := gemini.New("gemini-2.5-flash")
+	client, err := gemini.New("gemini-3.6-flash")
 	if err != nil {
 		log.Fatal("Failed to create Gemini client:", err)
 	}

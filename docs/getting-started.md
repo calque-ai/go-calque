@@ -192,7 +192,7 @@ client, err := ollama.New("llama3.2:3b")
 ```go
 import "github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
 
-client, err := gemini.New(context.Background(), "gemini-pro")
+client, err := gemini.New("gemini-3.6-flash")
 // Uses GOOGLE_API_KEY environment variable
 ```
 

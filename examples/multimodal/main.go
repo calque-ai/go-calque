@@ -67,7 +67,7 @@ func analyzeImageSimple(imagePath string) {
 	)
 
 	// Create Gemini client
-	client, err := gemini.New("gemini-2.0-flash")
+	client, err := gemini.New("gemini-3.6-flash")
 	if err != nil {
 		log.Fatal("Failed to create Gemini client:", err)
 	}
@@ -111,7 +111,7 @@ func analyzeImageStreaming(imagePath string) {
 	)
 
 	// Create Gemini client
-	client, err := gemini.New("gemini-2.0-flash")
+	client, err := gemini.New("gemini-3.6-flash")
 	if err != nil {
 		log.Fatal("Failed to create Gemini client:", err)
 	}

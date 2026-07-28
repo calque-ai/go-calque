@@ -28,7 +28,7 @@ const applicationJSON = "application/json"
 //
 // Example:
 //
-//	client, _ := gemini.New("gemini-1.5-pro")
+//	client, _ := gemini.New("gemini-3.6-flash")
 //	agent := ai.Agent(client)
 type Client struct {
 	client    *genai.Client
@@ -49,7 +49,8 @@ type Client struct {
 //		MaxTokens: helpers.PtrOf(1000),
 //	}
 type Config struct {
-	// Required. API key for Google AI/Vertex AI authentication
+	// Required. API key for Google AI Studio authentication.
+	// Not used by NewVertex — Vertex AI authenticates via ADC instead.
 	APIKey string
 
 	// Optional. Controls randomness in token selection (0.0-2.0)
@@ -120,7 +121,7 @@ func (o configOption) Apply(opts *Config) {
 // Example:
 //
 //	config := &gemini.Config{Temperature: helpers.PtrOf(float32(0.9))}
-//	client, _ := gemini.New("gemini-pro", gemini.WithConfig(config))
+//	client, _ := gemini.New("gemini-3.6-flash", gemini.WithConfig(config))
 func WithConfig(config *Config) Option {
 	return configOption{config: config}
 }
@@ -151,11 +152,11 @@ func DefaultConfig() *Config {
 // Behavior: Initializes authenticated Gemini client
 //
 // Requires GOOGLE_API_KEY environment variable or config.APIKey.
-// Supports all Gemini models: gemini-pro, gemini-1.5-pro, etc.
+// Supports all Gemini models: gemini-3.6-flash, gemini-3.5-flash-lite, etc.
 //
 // Example:
 //
-//	client, err := gemini.New("gemini-1.5-pro")
+//	client, err := gemini.New("gemini-3.6-flash")
 //	if err != nil { log.Fatal(err) }
 func New(model string, opts ...Option) (*Client, error) {
 	ctx := context.Background()

@@ -36,7 +36,7 @@ ai.Agent(client,
 |----------|--------|-------------|
 | OpenAI | `ai/openai` | `openai.New("gpt-4")` |
 | Ollama | `ai/ollama` | `ollama.New("llama3.2:3b")` |
-| Gemini | `ai/gemini` | `gemini.New(ctx, "gemini-pro")` |
+| Gemini | `ai/gemini` | `gemini.New("gemini-3.6-flash")` |
 
 ---
 

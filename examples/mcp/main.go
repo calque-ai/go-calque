@@ -63,7 +63,7 @@ func runAutoExample() {
 	defer client.Close()
 
 	// Create Gemini example client (reads GOOGLE_API_KEY from env)
-	aiClient, err := gemini.New("gemini-2.5-flash")
+	aiClient, err := gemini.New("gemini-3.6-flash")
 	if err != nil {
 		log.Printf("Failed to create Gemini client: %v", err)
 		return

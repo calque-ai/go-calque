@@ -76,7 +76,7 @@ func example1SimpleLogging() {
 func example2CumulativeTracking() {
 	fmt.Println("=== Example 2: Cumulative Usage Tracking (Gemini) ===")
 
-	client, err := gemini.New("gemini-2.5-flash", gemini.WithConfig(&gemini.Config{
+	client, err := gemini.New("gemini-3.6-flash", gemini.WithConfig(&gemini.Config{
 		Temperature: helpers.PtrOf(float32(0.7)),
 	}))
 	if err != nil {

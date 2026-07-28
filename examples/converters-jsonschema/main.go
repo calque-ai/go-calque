@@ -76,7 +76,7 @@ func main() {
 	}
 
 	// Initialize Gemini client for Example 3
-	geminiClient, err := gemini.New("gemini-2.0-flash")
+	geminiClient, err := gemini.New("gemini-3.6-flash")
 	if err != nil {
 		log.Printf("Could not connect to Gemini: %v", err)
 		log.Println("To run example 3:")

@@ -34,19 +34,19 @@ func TestNew(t *testing.T) {
 		},
 		{
 			name:          "no API key",
-			model:         "gemini-pro",
+			model:         "gemini-3.6-flash",
 			setupEnv:      func() { os.Unsetenv("GOOGLE_API_KEY") },
 			expectError:   true,
 			errorContains: "GOOGLE_API_KEY environment variable not set",
 		},
 		{
 			name:     "valid model with env API key",
-			model:    "gemini-1.5-pro",
+			model:    "gemini-3.6-flash",
 			setupEnv: func() { os.Setenv("GOOGLE_API_KEY", "test-api-key") },
 		},
 		{
 			name:  "valid model with config API key",
-			model: "gemini-pro",
+			model: "gemini-3.6-flash",
 			opts: []Option{
 				WithConfig(&Config{
 					APIKey:      "config-api-key",
@@ -556,7 +556,7 @@ func TestClientInterfaceCompliance(_ *testing.T) {
 
 func TestBuildRequestConfig(t *testing.T) {
 	client := &Client{
-		model: "gemini-1.5-pro",
+		model: "gemini-3.6-flash",
 		config: &Config{
 			Temperature: helpers.PtrOf(float32(0.8)),
 			MaxTokens:   helpers.PtrOf(1000),
@@ -792,7 +792,7 @@ func TestChat_Integration(t *testing.T) {
 
 			// Test that we can build a client (without real API key)
 			client := &Client{
-				model:  "gemini-1.5-pro",
+				model:  "gemini-3.6-flash",
 				config: &Config{Temperature: helpers.PtrOf(float32(0.7))},
 			}
 
