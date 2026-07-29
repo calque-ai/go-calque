@@ -19,7 +19,13 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
-const applicationJSON = "application/json"
+const (
+	applicationJSON  = "application/json"
+	responseTypeJSON = "json_object"
+	responseTypeJSONSchema = "json_schema"
+	toolCallType     = "function"
+	contentTypeText  = "text"
+)
 
 // Client implements the Client interface for Google Gemini.
 //
@@ -281,9 +287,9 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 
 	if responseFormat != nil {
 		switch responseFormat.Type {
-		case "json_object":
+		case responseTypeJSON:
 			config.ResponseMIMEType = applicationJSON
-		case "json_schema":
+		case responseTypeJSONSchema:
 			config.ResponseMIMEType = applicationJSON
 			if responseFormat.Schema != nil {
 				config.ResponseJsonSchema = responseFormat.Schema
@@ -461,8 +467,8 @@ func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calq
 
 		// OpenAI format with type and function fields
 		toolCall := map[string]any{
-			"type": "function",
-			"function": map[string]any{
+			"type": toolCallType,
+			toolCallType: map[string]any{
 				"name":      call.Name,
 				"arguments": argsJSON,
 			},
@@ -508,7 +514,7 @@ func (g *Client) multimodalToParts(ctx context.Context, multimodal *ai.Multimoda
 
 	for _, part := range multimodal.Parts {
 		switch part.Type {
-		case "text":
+		case contentTypeText:
 			if part.Text != "" {
 				parts = append(parts, genai.Part{Text: part.Text})
 			}

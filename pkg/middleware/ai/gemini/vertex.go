@@ -12,6 +12,8 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 )
 
+const defaultVertexLocation = "us-central1"
+
 // VertexConfig holds Vertex AI-specific configuration.
 //
 // Configures authentication via GCP project and location (ADC credentials are
@@ -100,7 +102,7 @@ func WithVertexConfig(cfg *VertexConfig) VertexOption {
 func DefaultVertexConfig() *VertexConfig {
 	location := os.Getenv("GOOGLE_CLOUD_LOCATION")
 	if location == "" {
-		location = "us-central1"
+		location = defaultVertexLocation
 	}
 	return &VertexConfig{
 		Project:     os.Getenv("GOOGLE_CLOUD_PROJECT"),
