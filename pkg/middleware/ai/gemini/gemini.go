@@ -20,11 +20,12 @@ import (
 )
 
 const (
-	applicationJSON  = "application/json"
-	responseTypeJSON = "json_object"
+	applicationJSON        = "application/json"
+	responseTypeJSON       = "json_object"
 	responseTypeJSONSchema = "json_schema"
-	toolCallType     = "function"
-	contentTypeText  = "text"
+	toolCallType           = "function"
+	contentTypeText        = "text"
+	errModelNameRequired   = "model name is required"
 )
 
 // Client implements the Client interface for Google Gemini.
@@ -167,7 +168,7 @@ func DefaultConfig() *Config {
 func New(model string, opts ...Option) (*Client, error) {
 	ctx := context.Background()
 	if model == "" {
-		return nil, calque.NewErr(ctx, "model name is required")
+		return nil, calque.NewErr(ctx, errModelNameRequired)
 	}
 
 	// Build config from options

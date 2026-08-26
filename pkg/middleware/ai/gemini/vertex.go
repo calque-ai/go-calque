@@ -128,7 +128,7 @@ func DefaultVertexConfig() *VertexConfig {
 func NewVertex(model string, opts ...VertexOption) (*Client, error) {
 	ctx := context.Background()
 	if model == "" {
-		return nil, calque.NewErr(ctx, "model name is required")
+		return nil, calque.NewErr(ctx, errModelNameRequired)
 	}
 
 	cfg := DefaultVertexConfig()

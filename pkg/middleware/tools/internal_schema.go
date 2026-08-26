@@ -7,6 +7,13 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
+// JSON keys used when serializing tool schemas to map[string]any for
+// provider-specific formats (e.g. OpenAI function calling).
+const (
+	fieldName        = "name"
+	fieldDescription = "description"
+)
+
 // InternalToolSchema represents a tool in our provider-agnostic internal format
 // This schema is designed to be easily convertible to any LLM provider's tool format
 type InternalToolSchema struct {
@@ -189,8 +196,8 @@ func FormatToolsAsOpenAIInternal(tools []Tool) string {
 
 	for i, tool := range internalTools {
 		function := map[string]any{
-			"name":        tool.Name,
-			"description": tool.Description,
+			fieldName:        tool.Name,
+			fieldDescription: tool.Description,
 		}
 
 		if tool.Parameters != nil {
@@ -224,8 +231,8 @@ func FormatToolsAsOpenAIInternal(tools []Tool) string {
 // This is useful for providers that need OpenAI-compatible output
 func (t *InternalToolSchema) ToOpenAIFormat() map[string]any {
 	result := map[string]any{
-		"name":        t.Name,
-		"description": t.Description,
+		fieldName:        t.Name,
+		fieldDescription: t.Description,
 	}
 
 	if t.Parameters != nil {

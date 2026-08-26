@@ -14,6 +14,13 @@ import (
 	qd "github.com/qdrant/go-client/qdrant"
 )
 
+// Reserved Qdrant payload field names.
+const (
+	payloadFieldContent = "content"
+	payloadFieldCreated = "created"
+	payloadFieldUpdated = "updated"
+)
+
 // Client represents a Qdrant vector database client.
 //
 // Implements the retrieval.VectorStore interface for Qdrant operations.
@@ -464,13 +471,7 @@ func (c *Client) storeBatch(ctx context.Context, documents []retrieval.Document)
 		}
 
 		// Create vector data
-		vectors := &qd.Vectors{
-			VectorsOptions: &qd.Vectors_Vector{
-				Vector: &qd.Vector{
-					Data: vectorData,
-				},
-			},
-		}
+		vectors := qd.NewVectorsDense(vectorData)
 
 		// Build payload from document metadata
 		payload := buildQdrantPayload(doc)
@@ -550,14 +551,14 @@ func buildQdrantPayload(doc retrieval.Document) map[string]*qd.Value {
 	payload := make(map[string]*qd.Value)
 
 	// Add document content
-	payload["content"] = qd.NewValueString(doc.Content)
+	payload[payloadFieldContent] = qd.NewValueString(doc.Content)
 
 	// Add timestamps if available
 	if !doc.Created.IsZero() {
-		payload["created"] = qd.NewValueString(doc.Created.Format(time.RFC3339))
+		payload[payloadFieldCreated] = qd.NewValueString(doc.Created.Format(time.RFC3339))
 	}
 	if !doc.Updated.IsZero() {
-		payload["updated"] = qd.NewValueString(doc.Updated.Format(time.RFC3339))
+		payload[payloadFieldUpdated] = qd.NewValueString(doc.Updated.Format(time.RFC3339))
 	}
 
 	// Add metadata fields
@@ -636,7 +637,7 @@ func (c *Client) convertQdrantPoint(point *qd.ScoredPoint) retrieval.Document {
 func (c *Client) extractPayloadData(payload map[string]*qd.Value, doc *retrieval.Document) {
 	for key, value := range payload {
 		// Skip timestamp fields (handled separately)
-		if key == "created" || key == "updated" {
+		if key == payloadFieldCreated || key == payloadFieldUpdated {
 			continue
 		}
 
@@ -646,7 +647,7 @@ func (c *Client) extractPayloadData(payload map[string]*qd.Value, doc *retrieval
 		case *qd.Value_StringValue:
 			extractedValue = value.GetStringValue()
 			// Check for special content field
-			if key == "content" {
+			if key == payloadFieldContent {
 				doc.Content = value.GetStringValue()
 			}
 		case *qd.Value_IntegerValue:
@@ -666,7 +667,7 @@ func (c *Client) extractPayloadData(payload map[string]*qd.Value, doc *retrieval
 
 // extractTimestamps extracts created and updated timestamps from payload
 func (c *Client) extractTimestamps(payload map[string]*qd.Value, doc *retrieval.Document) {
-	if createdValue, exists := payload["created"]; exists {
+	if createdValue, exists := payload[payloadFieldCreated]; exists {
 		if createdStr := createdValue.GetStringValue(); createdStr != "" {
 			if created, err := time.Parse(time.RFC3339, createdStr); err == nil {
 				doc.Created = created
@@ -674,7 +675,7 @@ func (c *Client) extractTimestamps(payload map[string]*qd.Value, doc *retrieval.
 		}
 	}
 
-	if updatedValue, exists := payload["updated"]; exists {
+	if updatedValue, exists := payload[payloadFieldUpdated]; exists {
 		if updatedStr := updatedValue.GetStringValue(); updatedStr != "" {
 			if updated, err := time.Parse(time.RFC3339, updatedStr); err == nil {
 				doc.Updated = updated

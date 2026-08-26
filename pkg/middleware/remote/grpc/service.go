@@ -43,6 +43,8 @@ import (
 	grpcerrors "github.com/calque-ai/go-calque/pkg/grpc"
 )
 
+const defaultMethod = "FlowService/ExecuteFlow"
+
 // Service represents a registered gRPC service with connection and metadata.
 type Service struct {
 	Name       string
@@ -131,10 +133,10 @@ func NewService(name, endpoint string) *Service {
 		Name:       name,
 		Endpoint:   endpoint,
 		Streaming:  false,
-		Method:     "FlowService/ExecuteFlow", // Default method
-		Timeout:    30 * time.Second,          // Default timeout
-		MaxRetries: 3,                         // Default retries
-		RetryDelay: 1 * time.Second,           // Default retry delay
+		Method:     defaultMethod,    // Default method
+		Timeout:    30 * time.Second, // Default timeout
+		MaxRetries: 3,                // Default retries
+		RetryDelay: 1 * time.Second,  // Default retry delay
 	}
 }
 
@@ -144,10 +146,10 @@ func ServiceWithTypes[TReq, TResp proto.Message](name, endpoint string) *Service
 		Name:       name,
 		Endpoint:   endpoint,
 		Streaming:  false,
-		Method:     "FlowService/ExecuteFlow", // Default method
-		Timeout:    30 * time.Second,          // Default timeout
-		MaxRetries: 3,                         // Default retries
-		RetryDelay: 1 * time.Second,           // Default retry delay
+		Method:     defaultMethod,    // Default method
+		Timeout:    30 * time.Second, // Default timeout
+		MaxRetries: 3,                // Default retries
+		RetryDelay: 1 * time.Second,  // Default retry delay
 	}
 }
 

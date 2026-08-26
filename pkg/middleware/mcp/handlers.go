@@ -153,7 +153,7 @@ func (c *Client) Tool(name string, progressCallbacks ...func(*ProgressNotificati
 			}
 			errorMessage := errorText.String()
 			if errorMessage == "" {
-				errorMessage = "unknown error (no text content in error response)"
+				errorMessage = errUnknownToolError
 			}
 			return c.handleError(calque.NewErr(ctx, fmt.Sprintf("tool %s returned error: %s", name, errorMessage)))
 		}

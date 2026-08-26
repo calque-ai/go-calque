@@ -15,6 +15,13 @@ import (
 	"github.com/calque-ai/go-calque/pkg/helpers"
 )
 
+// Credential type identifiers for CredentialsConfig.Type.
+const (
+	CredentialsTypeInsecure = "insecure"
+	CredentialsTypeTLS      = "tls"
+	CredentialsTypeMTLS     = "mtls"
+)
+
 // GRPCConfig holds configuration for gRPC services.
 type GRPCConfig struct {
 	Services map[string]ServiceConfig `yaml:"services" json:"services"`
@@ -50,7 +57,7 @@ type TLSConfig struct {
 
 // CredentialsConfig holds credentials configuration.
 type CredentialsConfig struct {
-	Type     string            `yaml:"type" json:"type"` // "insecure", "tls", "mtls"
+	Type     string            `yaml:"type" json:"type"` // CredentialsTypeInsecure, CredentialsTypeTLS, or CredentialsTypeMTLS
 	CertFile string            `yaml:"cert_file" json:"cert_file"`
 	KeyFile  string            `yaml:"key_file" json:"key_file"`
 	CAFile   string            `yaml:"ca_file" json:"ca_file"`
@@ -125,7 +132,7 @@ func (c *GRPCConfig) LoadFromEnv() error {
 				Endpoint: endpoint,
 				Timeout:  timeout,
 				Credentials: CredentialsConfig{
-					Type: helpers.GetStringFromEnv(fmt.Sprintf("GRPC_%s_CREDENTIALS_TYPE", strings.ToUpper(service)), "insecure"),
+					Type: helpers.GetStringFromEnv(fmt.Sprintf("GRPC_%s_CREDENTIALS_TYPE", strings.ToUpper(service)), CredentialsTypeInsecure),
 				},
 				KeepAlive: KeepAliveConfig{
 					Time:                helpers.GetDurationFromEnv(fmt.Sprintf("GRPC_%s_KEEPALIVE_TIME", strings.ToUpper(service)), 30*time.Second),
@@ -170,14 +177,14 @@ func (c *GRPCConfig) GetServiceConfig(ctx context.Context, serviceName string) (
 // GetCredentials returns gRPC credentials based on configuration.
 func (sc *ServiceConfig) GetCredentials(ctx context.Context) (credentials.TransportCredentials, error) {
 	switch sc.Credentials.Type {
-	case "insecure":
+	case CredentialsTypeInsecure:
 		return insecure.NewCredentials(), nil
-	case "tls":
+	case CredentialsTypeTLS:
 		if sc.Credentials.CAFile == "" {
 			return nil, calque.NewErr(ctx, "CA file required for TLS credentials")
 		}
 		return credentials.NewClientTLSFromFile(sc.Credentials.CAFile, sc.Credentials.CertFile)
-	case "mtls":
+	case CredentialsTypeMTLS:
 		if sc.Credentials.CertFile == "" || sc.Credentials.KeyFile == "" || sc.Credentials.CAFile == "" {
 			return nil, calque.NewErr(ctx, "cert file, key file, and CA file required for mTLS credentials")
 		}

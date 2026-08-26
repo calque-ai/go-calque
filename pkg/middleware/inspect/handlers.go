@@ -13,6 +13,14 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
+// Log attribute keys shared across multiple handlers.
+const (
+	attrTotalBytes = "total_bytes"
+	attrData       = "data"
+	attrDurationMs = "duration_ms"
+	attrDurationUs = "duration_µs"
+)
+
 // Head logs a preview of the first N bytes of the input stream.
 //
 // Input: any data type (streaming - uses bufio.Reader.Peek for preview)
@@ -87,8 +95,8 @@ func (hb *HandlerBuilder) Chunks(prefix string, chunkSize int, attrs ...Attribut
 				allAttrs = append(allAttrs,
 					Attribute{"chunk_num", chunkNum},
 					Attribute{"chunk_size", n},
-					Attribute{"total_bytes", totalBytes},
-					Attribute{"data", formatPreview(buf[:n])},
+					Attribute{attrTotalBytes, totalBytes},
+					Attribute{attrData, formatPreview(buf[:n])},
 				)
 				logFunc(fmt.Sprintf("[%s] Chunk %d", prefix, chunkNum), allAttrs...)
 
@@ -192,7 +200,7 @@ func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int
 			// Log empty stream
 			allAttrs := make([]Attribute, len(attrs), len(attrs)+1)
 			copy(allAttrs, attrs)
-			allAttrs = append(allAttrs, Attribute{"total_bytes", 0})
+			allAttrs = append(allAttrs, Attribute{attrTotalBytes, 0})
 			logFunc(fmt.Sprintf("[%s] Empty stream", prefix), allAttrs...)
 			return nil
 		}
@@ -227,7 +235,7 @@ func (hb *HandlerBuilder) Sampling(prefix string, numSamples int, sampleSize int
 		allAttrs := make([]Attribute, len(attrs), len(attrs)+5)
 		copy(allAttrs, attrs)
 		allAttrs = append(allAttrs,
-			Attribute{"total_bytes", totalBytes},
+			Attribute{attrTotalBytes, totalBytes},
 			Attribute{"num_samples", len(samples)},
 			Attribute{"sample_size", sampleSize},
 			Attribute{"sample_positions", samplePositions},
@@ -267,7 +275,7 @@ func (hb *HandlerBuilder) Print(prefix string, attrs ...Attribute) calque.Handle
 		allAttrs := make([]Attribute, len(attrs), len(attrs)+2)
 		copy(allAttrs, attrs)
 		allAttrs = append(allAttrs,
-			Attribute{"total_bytes", len(allData)},
+			Attribute{attrTotalBytes, len(allData)},
 			Attribute{"content", string(allData)}, // Full content as string
 		)
 		logFunc(fmt.Sprintf("[%s]", prefix), allAttrs...)
@@ -347,7 +355,7 @@ func (hb *HandlerBuilder) HeadTail(prefix string, headBytes, tailBytes int, attr
 		allAttrs = append(allAttrs,
 			Attribute{"head", formatPreview(capture.headBuf)},
 			Attribute{"tail", formatPreview(capture.tailBuf)},
-			Attribute{"total_bytes", capture.totalBytes},
+			Attribute{attrTotalBytes, capture.totalBytes},
 		)
 		logFunc(fmt.Sprintf("[%s]", prefix), allAttrs...)
 
@@ -363,11 +371,11 @@ func formatDuration(d time.Duration) (string, float64) {
 
 	switch {
 	case milliseconds < 10: // Use microseconds for better precision under 10ms
-		return "duration_µs", microseconds
+		return attrDurationUs, microseconds
 	case milliseconds >= 1000:
 		return "duration_s", seconds
 	default:
-		return "duration_ms", milliseconds
+		return attrDurationMs, milliseconds
 	}
 }
 

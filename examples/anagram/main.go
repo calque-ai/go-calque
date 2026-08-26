@@ -20,9 +20,9 @@ type Anagrams map[string]map[string]struct{}
 func main() {
 	// Sample words for testing
 	words := []string{
-		"listen", "silent", "hello", "world", "act", "cat", "tac",
-		"race", "care", "acre", "programming", "go", "og", "a", "b",
-		"stressed", "desserts", "evil", "live", "vile",
+		"listen", "silent", "hello", "world", "act", "cat", "tac", //nolint:goconst // sample data, not worth extracting to constants
+		"race", "care", "acre", "programming", "go", "og", "a", "b", //nolint:goconst // sample data, not worth extracting to constants
+		"stressed", "desserts", "evil", "live", "vile", //nolint:goconst // sample data, not worth extracting to constants
 	}
 
 	fmt.Println("Anagram Processing Example")

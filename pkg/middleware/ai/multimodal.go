@@ -4,6 +4,14 @@ import (
 	"io"
 )
 
+// ContentPart type identifiers for ContentPart.Type.
+const (
+	ContentTypeText  = "text"
+	ContentTypeImage = "image"
+	ContentTypeAudio = "audio"
+	ContentTypeVideo = "video"
+)
+
 // MultimodalInput represents input that can contain multiple types of content.
 //
 // Supports text, images, audio, and video content through ContentPart entries.
@@ -60,7 +68,7 @@ type ContentPart struct {
 //	part := ai.Text("What do you see in this image?")
 func Text(text string) ContentPart {
 	return ContentPart{
-		Type: "text",
+		Type: ContentTypeText,
 		Text: text,
 	}
 }
@@ -80,7 +88,7 @@ func Text(text string) ContentPart {
 //	part := ai.Image(imageReader, "image/jpeg")
 func Image(reader io.Reader, mimeType string) ContentPart {
 	return ContentPart{
-		Type:     "image",
+		Type:     ContentTypeImage,
 		Reader:   reader,
 		MimeType: mimeType,
 	}
@@ -101,7 +109,7 @@ func Image(reader io.Reader, mimeType string) ContentPart {
 //	part := ai.ImageData(imageBytes, "image/jpeg")
 func ImageData(data []byte, mimeType string) ContentPart {
 	return ContentPart{
-		Type:     "image",
+		Type:     ContentTypeImage,
 		Data:     data,
 		MimeType: mimeType,
 	}
@@ -121,7 +129,7 @@ func ImageData(data []byte, mimeType string) ContentPart {
 //	part := ai.Audio(audioReader, "audio/wav")
 func Audio(reader io.Reader, mimeType string) ContentPart {
 	return ContentPart{
-		Type:     "audio",
+		Type:     ContentTypeAudio,
 		Reader:   reader,
 		MimeType: mimeType,
 	}
@@ -141,7 +149,7 @@ func Audio(reader io.Reader, mimeType string) ContentPart {
 //	part := ai.Video(videoReader, "video/mp4")
 func Video(reader io.Reader, mimeType string) ContentPart {
 	return ContentPart{
-		Type:     "video",
+		Type:     ContentTypeVideo,
 		Reader:   reader,
 		MimeType: mimeType,
 	}

@@ -13,6 +13,12 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
+// JSON Schema type names used when generating mock structured output.
+const (
+	jsonSchemaTypeString = "string"
+	jsonSchemaTypeObject = "object"
+)
+
 // MockClient implements the Client interface for testing
 type MockClient struct {
 	response         string
@@ -197,14 +203,14 @@ func (m *MockClient) simulateStructuredOutput(schema *ResponseFormat, input stri
 
 	// Generate a simple mock JSON response based on the schema type
 	switch schema.Type {
-	case "json_object":
+	case ResponseFormatJSONObject:
 		// Simple JSON object
 		mockJSON = map[string]interface{}{
 			"message": fmt.Sprintf("Mock JSON response to: %s", input),
 			"type":    "mock_response",
 			"input":   input,
 		}
-	case "json_schema":
+	case ResponseFormatJSONSchema:
 		// Try to generate a response that matches the schema structure
 		if schema.Schema != nil {
 			mockJSON = m.generateMockFromSchema(schema.Schema, input)
@@ -243,7 +249,7 @@ func (m *MockClient) generateMockFromSchema(schema *jsonschema.Schema, input str
 			propSchema := pair.Value
 
 			switch propSchema.Type {
-			case "string":
+			case jsonSchemaTypeString:
 				result[key] = fmt.Sprintf("mock_%s_for_%s", key, input)
 			case "integer", "number":
 				result[key] = 42
@@ -251,7 +257,7 @@ func (m *MockClient) generateMockFromSchema(schema *jsonschema.Schema, input str
 				result[key] = true
 			case "array":
 				result[key] = []interface{}{"mock_item_1", "mock_item_2"}
-			case "object":
+			case jsonSchemaTypeObject:
 				result[key] = map[string]interface{}{"nested": "mock_value"}
 			default:
 				result[key] = fmt.Sprintf("mock_%s", key)

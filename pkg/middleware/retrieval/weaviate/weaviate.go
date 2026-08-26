@@ -35,6 +35,16 @@ const (
 	PropertyTypeDate PropertyType = "date"
 )
 
+// vectorizerNone disables Weaviate's built-in vectorization module.
+const vectorizerNone = "none"
+
+// Reserved Weaviate schema/query field names.
+const (
+	fieldContent    = "content"
+	fieldAdditional = "_additional"
+	fieldScore      = "score"
+)
+
 // PropertyConfig defines a single property in the Weaviate schema.
 type PropertyConfig struct {
 	Name        string       // Property name
@@ -159,7 +169,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 		}
 
 		properties := make(map[string]any, 2) // content + metadata
-		properties["content"] = doc.Content
+		properties[fieldContent] = doc.Content
 
 		// Add metadata if present - flatten metadata fields to top level for filtering
 		if doc.Metadata != nil {
@@ -493,14 +503,14 @@ func (c *Client) buildWeaviateClass(schema *SchemaConfig) *models.Class {
 	if schema.Vectorizer != "" {
 		classObj.Vectorizer = schema.Vectorizer
 	} else {
-		classObj.Vectorizer = "none"
+		classObj.Vectorizer = vectorizerNone
 	}
 
 	// Always include content property
 	properties := make([]*models.Property, 0, 1+len(schema.Properties))
 	properties = append(properties, &models.Property{
-		Name:        "content",
-		DataType:    []string{"text"},
+		Name:        fieldContent,
+		DataType:    []string{string(PropertyTypeText)},
 		Description: "Document content",
 	})
 
@@ -514,9 +524,9 @@ func (c *Client) buildWeaviateClass(schema *SchemaConfig) *models.Class {
 		// Convert our PropertyType to Weaviate data types
 		switch prop.Type {
 		case PropertyTypeText:
-			weaviateProp.DataType = []string{"text"}
+			weaviateProp.DataType = []string{string(PropertyTypeText)}
 		case PropertyTypeTextArray:
-			weaviateProp.DataType = []string{"text[]"}
+			weaviateProp.DataType = []string{string(PropertyTypeTextArray)}
 		case PropertyTypeInt:
 			weaviateProp.DataType = []string{"int"}
 		case PropertyTypeNumber:
@@ -526,7 +536,7 @@ func (c *Client) buildWeaviateClass(schema *SchemaConfig) *models.Class {
 		case PropertyTypeDate:
 			weaviateProp.DataType = []string{"date"}
 		default:
-			weaviateProp.DataType = []string{"text"} // Fallback to text
+			weaviateProp.DataType = []string{string(PropertyTypeText)} // Fallback to text
 		}
 
 		// Set indexing (Weaviate indexes by default, but we can configure it)
@@ -723,7 +733,7 @@ func (c *Client) parseSearchResults(result *models.GraphQLResponse, className st
 // getFieldsToRetrieve returns the list of GraphQL fields to retrieve based on schema
 func (c *Client) getFieldsToRetrieve() []graphql.Field {
 	fields := []graphql.Field{
-		{Name: "content"},
+		{Name: fieldContent},
 	}
 
 	// Use schema to determine fields
@@ -735,10 +745,10 @@ func (c *Client) getFieldsToRetrieve() []graphql.Field {
 
 	// Always include _additional fields
 	fields = append(fields, graphql.Field{
-		Name: "_additional",
+		Name: fieldAdditional,
 		Fields: []graphql.Field{
 			{Name: "id"},
-			{Name: "score"},
+			{Name: fieldScore},
 		},
 	})
 
@@ -752,7 +762,7 @@ func (c *Client) parseWeaviateDocument(doc map[string]any) retrieval.Document {
 	}
 
 	// Extract content
-	if content, ok := doc["content"].(string); ok {
+	if content, ok := doc[fieldContent].(string); ok {
 		document.Content = content
 	}
 
@@ -766,11 +776,11 @@ func (c *Client) parseWeaviateDocument(doc map[string]any) retrieval.Document {
 	}
 
 	// Extract additional fields
-	if additional, ok := doc["_additional"].(map[string]any); ok {
+	if additional, ok := doc[fieldAdditional].(map[string]any); ok {
 		if id, ok := additional["id"].(string); ok {
 			document.ID = id
 		}
-		if score, ok := additional["score"].(float64); ok {
+		if score, ok := additional[fieldScore].(float64); ok {
 			document.Score = score
 		}
 	}

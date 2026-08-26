@@ -20,6 +20,12 @@ type Client interface {
 	Chat(r *calque.Request, w *calque.Response, opts *AgentOptions) error
 }
 
+// Response format type identifiers for ResponseFormat.Type.
+const (
+	ResponseFormatJSONObject = "json_object"
+	ResponseFormatJSONSchema = "json_schema"
+)
+
 // ResponseFormat defines structured output requirements.
 //
 // Configures AI models to return structured JSON responses according to
@@ -28,11 +34,11 @@ type Client interface {
 // Example:
 //
 //	format := &ai.ResponseFormat{
-//		Type: "json_schema",
+//		Type: ai.ResponseFormatJSONSchema,
 //		Schema: userProfileSchema,
 //	}
 type ResponseFormat struct {
-	Type   string             `json:"type"`             // "json_object" or "json_schema"
+	Type   string             `json:"type"`             // ResponseFormatJSONObject or ResponseFormatJSONSchema
 	Schema *jsonschema.Schema `json:"schema,omitempty"` // JSON schema for validation
 }
 
