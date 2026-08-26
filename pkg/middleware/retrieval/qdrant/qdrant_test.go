@@ -842,9 +842,7 @@ func TestQdrantConfigValidation(t *testing.T) {
 			}
 
 			// Clean up
-			if client != nil {
-				_ = client.Close()
-			}
+			_ = client.Close()
 		})
 	}
 }
