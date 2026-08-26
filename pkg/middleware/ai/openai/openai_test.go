@@ -691,7 +691,7 @@ func TestWriteOpenAIToolCalls(t *testing.T) {
 				},
 			},
 			checkFunc: func(output string) error {
-				var result map[string]interface{}
+				var result map[string]any
 				if err := json.Unmarshal([]byte(output), &result); err != nil {
 					return fmt.Errorf("failed to parse JSON: %v", err)
 				}
@@ -699,7 +699,7 @@ func TestWriteOpenAIToolCalls(t *testing.T) {
 				if !ok {
 					return fmt.Errorf("missing tool_calls field")
 				}
-				calls := toolCalls.([]interface{})
+				calls := toolCalls.([]any)
 				if len(calls) != 1 {
 					return fmt.Errorf("expected 1 tool call, got %d", len(calls))
 				}
@@ -710,7 +710,7 @@ func TestWriteOpenAIToolCalls(t *testing.T) {
 			name:      "empty tool calls",
 			toolCalls: []openai.ChatCompletionMessageFunctionToolCall{},
 			checkFunc: func(output string) error {
-				var result map[string]interface{}
+				var result map[string]any
 				if err := json.Unmarshal([]byte(output), &result); err != nil {
 					return fmt.Errorf("failed to parse JSON: %v", err)
 				}
@@ -721,7 +721,7 @@ func TestWriteOpenAIToolCalls(t *testing.T) {
 				if toolCalls == nil {
 					return nil // Empty tool calls are represented as null/nil
 				}
-				calls, ok := toolCalls.([]interface{})
+				calls, ok := toolCalls.([]any)
 				if !ok {
 					return fmt.Errorf("tool_calls is not an array: %T", toolCalls)
 				}

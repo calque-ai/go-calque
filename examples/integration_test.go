@@ -61,7 +61,7 @@ func TestConcurrentPipelines(t *testing.T) {
 	const numPipelines = 5
 	results := make(chan string, numPipelines)
 
-	for i := 0; i < numPipelines; i++ {
+	for i := range numPipelines {
 		go func(id int) {
 			flow := calque.NewFlow()
 			flow.Use(text.Transform(func(s string) string {
@@ -80,7 +80,7 @@ func TestConcurrentPipelines(t *testing.T) {
 
 	// Collect results
 	successCount := 0
-	for i := 0; i < numPipelines; i++ {
+	for range numPipelines {
 		result := <-results
 		// Check that we got a valid result
 		if strings.Contains(result, "Pipeline") && strings.Contains(result, "MESSAGE") {
@@ -155,7 +155,7 @@ func TestMemoryEfficiency(t *testing.T) {
 	// Run multiple pipelines to test memory efficiency
 	const numIterations = 100
 
-	for i := 0; i < numIterations; i++ {
+	for i := range numIterations {
 		flow := calque.NewFlow()
 		flow.Use(text.Transform(strings.ToUpper))
 		flow.Use(text.Transform(func(s string) string {
@@ -406,7 +406,7 @@ func TestRateLimiting(t *testing.T) {
 	const numRequests = 5
 	results := make(chan error, numRequests)
 
-	for i := 0; i < numRequests; i++ {
+	for i := range numRequests {
 		go func(id int) {
 			var result string
 			err := flow.Run(context.Background(), fmt.Sprintf("request %d", id), &result)
@@ -416,7 +416,7 @@ func TestRateLimiting(t *testing.T) {
 
 	// Collect results
 	successCount := 0
-	for i := 0; i < numRequests; i++ {
+	for range numRequests {
 		if err := <-results; err == nil {
 			successCount++
 		}
@@ -462,9 +462,9 @@ func TestStressTest(t *testing.T) {
 	const pipelineIterations = 10
 	results := make(chan error, numPipelines)
 
-	for i := 0; i < numPipelines; i++ {
+	for i := range numPipelines {
 		go func(pipelineID int) {
-			for j := 0; j < pipelineIterations; j++ {
+			for j := range pipelineIterations {
 				flow := calque.NewFlow()
 				flow.Use(text.Transform(strings.ToUpper))
 				flow.Use(text.Transform(func(s string) string {
@@ -489,7 +489,7 @@ func TestStressTest(t *testing.T) {
 	}
 
 	// Collect results
-	for i := 0; i < numPipelines; i++ {
+	for range numPipelines {
 		if err := <-results; err != nil {
 			t.Errorf("Stress test failed: %v", err)
 		}

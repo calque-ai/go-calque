@@ -466,7 +466,7 @@ func testRoundtripConversion(t *testing.T, input proto.Message, target proto.Mes
 
 func generateLargeMetadata(size int) map[string]string {
 	metadata := make(map[string]string, size)
-	for i := 0; i < size; i++ {
+	for i := range size {
 		metadata[fmt.Sprintf("key_%d", i)] = fmt.Sprintf("value_%d", i)
 	}
 	return metadata

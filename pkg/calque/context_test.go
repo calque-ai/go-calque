@@ -213,7 +213,7 @@ func TestMetadataBus_SetGet_Concurrent(_ *testing.T) {
 	mb := NewMetadataBus(10)
 	var wg sync.WaitGroup
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -386,7 +386,7 @@ func TestMetadataBus_ReceiveContext(t *testing.T) {
 
 func TestMetadataBus_SendAfterClose_Race(_ *testing.T) {
 	// Test that concurrent send/close doesn't panic
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		mb := NewMetadataBus(10)
 		var wg sync.WaitGroup
 
@@ -408,11 +408,11 @@ func TestMetadataBus_Concurrent(t *testing.T) {
 	mb := NewMetadataBus(100)
 	var wg sync.WaitGroup
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < 10; j++ {
+			for range 10 {
 				mb.Send(Metadata{Key: "sender", Value: id})
 			}
 		}(i)

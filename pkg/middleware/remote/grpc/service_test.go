@@ -348,7 +348,7 @@ func TestServiceRegistryConcurrency(t *testing.T) {
 	concurrency := 10
 	done := make(chan error, concurrency)
 
-	for i := 0; i < concurrency; i++ {
+	for i := range concurrency {
 		go func(i int) {
 			service := &Service{
 				Name:     fmt.Sprintf("service-%d", i),
@@ -360,7 +360,7 @@ func TestServiceRegistryConcurrency(t *testing.T) {
 	}
 
 	// Wait for all registrations to complete
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		select {
 		case err := <-done:
 			if err != nil {
@@ -372,7 +372,7 @@ func TestServiceRegistryConcurrency(t *testing.T) {
 	}
 
 	// Test concurrent retrieval
-	for i := 0; i < concurrency; i++ {
+	for i := range concurrency {
 		go func(i int) {
 			_, err := registry.Get(fmt.Sprintf("service-%d", i))
 			done <- err
@@ -380,7 +380,7 @@ func TestServiceRegistryConcurrency(t *testing.T) {
 	}
 
 	// Wait for all retrievals to complete
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		select {
 		case err := <-done:
 			if err != nil {

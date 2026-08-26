@@ -103,7 +103,6 @@ func TestConvertGoogleSchemaToInvopop(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -300,7 +299,6 @@ func TestGetResources(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -343,7 +341,6 @@ func TestGetSelectedResource(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -381,7 +378,6 @@ func TestHasSelectedResource(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -421,7 +417,6 @@ func TestGetResourceContent(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -459,7 +454,6 @@ func TestGetPrompts(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -502,7 +496,6 @@ func TestGetSelectedPrompt(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -540,7 +533,6 @@ func TestHasSelectedPrompt(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -580,7 +572,6 @@ func TestGetPromptContent(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -595,7 +586,7 @@ func TestGetPromptContent(t *testing.T) {
 // Helper function to create context with mock resources
 func createContextWithResources(count int) context.Context {
 	resources := make([]*mcp.Resource, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		uri := fmt.Sprintf("file:///resource_%d.json", i)
 		resources[i] = &mcp.Resource{
 			URI:         uri,
@@ -610,7 +601,7 @@ func createContextWithResources(count int) context.Context {
 // Helper function to create context with mock prompts
 func createContextWithPrompts(count int) context.Context {
 	prompts := make([]*mcp.Prompt, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		name := fmt.Sprintf("prompt_%d", i)
 		prompts[i] = &mcp.Prompt{
 			Name:        name,

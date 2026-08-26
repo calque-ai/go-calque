@@ -659,11 +659,11 @@ func TestMemory_Cache_ConcurrentAccess(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()
-			for j := 0; j < numRequests; j++ {
+			for j := range numRequests {
 				input := fmt.Sprintf("input-%d-%d", goroutineID, j)
 				req := calque.NewRequest(context.Background(), strings.NewReader(input))
 				var buf bytes.Buffer

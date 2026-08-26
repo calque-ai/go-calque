@@ -217,10 +217,11 @@ func (c *Client) SearchWithDiversification(ctx context.Context, query retrieval.
 	// Calculate prefetch limit for each vector space
 	prefetchLimit := opts.CandidatesLimit
 	if prefetchLimit <= 0 {
-		prefetchLimit = query.Limit * 2 // Default to 2x for hybrid fusion
-		if prefetchLimit < 20 {
-			prefetchLimit = 20 // Minimum for meaningful fusion
-		}
+		prefetchLimit = max(
+			// Default to 2x for hybrid fusion
+			query.Limit*2,
+			// Minimum for meaningful fusion
+			20)
 	}
 
 	// Execute multiple searches across different vector spaces
@@ -315,10 +316,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 	const batchSize = 100 // Reasonable batch size for network efficiency
 
 	for i := 0; i < len(documents); i += batchSize {
-		end := i + batchSize
-		if end > len(documents) {
-			end = len(documents)
-		}
+		end := min(i+batchSize, len(documents))
 
 		batch := documents[i:end]
 		if err := c.storeBatch(ctx, batch); err != nil {
@@ -344,10 +342,7 @@ func (c *Client) Delete(ctx context.Context, ids []string) error {
 	const batchSize = 100 // Reasonable batch size for deletion operations
 
 	for i := 0; i < len(ids); i += batchSize {
-		end := i + batchSize
-		if end > len(ids) {
-			end = len(ids)
-		}
+		end := min(i+batchSize, len(ids))
 
 		batch := ids[i:end]
 		if err := c.deleteBatch(ctx, batch); err != nil {
@@ -536,7 +531,7 @@ func (c *Client) ensureCollectionExists(ctx context.Context) error {
 			Size:     vectorSize,
 			Distance: distance,
 		}),
-		ShardNumber: qd.PtrOf(uint32(2)),
+		ShardNumber: new(uint32(2)),
 	})
 
 	if err != nil {

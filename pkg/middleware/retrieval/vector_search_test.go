@@ -153,8 +153,8 @@ func TestSelectDiverse(t *testing.T) {
 				{Content: "neural networks explained", Score: 0.75},
 			},
 			opts: &SearchOptions{
-				DiversityLambda:   ptr(0.5),
-				MaxDiverseResults: ptr(3),
+				DiversityLambda:   new(0.5),
+				MaxDiverseResults: new(3),
 			},
 			checkFn: func(t *testing.T, result []Document) {
 				if len(result) != 3 {
@@ -186,8 +186,8 @@ func TestSelectDiverse(t *testing.T) {
 				{Content: "dog", Score: 0.50},        // Diverse but low score
 			},
 			opts: &SearchOptions{
-				DiversityLambda:   ptr(0.9), // High lambda = favor relevance
-				MaxDiverseResults: ptr(2),
+				DiversityLambda:   new(0.9), // High lambda = favor relevance
+				MaxDiverseResults: new(2),
 			},
 			checkFn: func(t *testing.T, result []Document) {
 				if len(result) != 2 {
@@ -207,8 +207,8 @@ func TestSelectDiverse(t *testing.T) {
 				{Content: "banana yellow", Score: 0.60},     // Diverse
 			},
 			opts: &SearchOptions{
-				DiversityLambda:   ptr(0.1), // Low lambda = favor diversity
-				MaxDiverseResults: ptr(2),
+				DiversityLambda:   new(0.1), // Low lambda = favor diversity
+				MaxDiverseResults: new(2),
 			},
 			checkFn: func(t *testing.T, result []Document) {
 				if len(result) != 2 {
@@ -230,7 +230,7 @@ func TestSelectDiverse(t *testing.T) {
 				{Content: "doc5", Score: 0.5},
 			},
 			opts: &SearchOptions{
-				MaxDiverseResults: ptr(2),
+				MaxDiverseResults: new(2),
 			},
 			checkFn: func(t *testing.T, result []Document) {
 				if len(result) != 2 {
@@ -265,7 +265,7 @@ func TestSelectDiverse(t *testing.T) {
 				{Content: "different content", Score: 0.7},
 			},
 			opts: &SearchOptions{
-				MaxDiverseResults: ptr(2),
+				MaxDiverseResults: new(2),
 			},
 			checkFn: func(t *testing.T, result []Document) {
 				if len(result) != 2 {
@@ -794,7 +794,7 @@ func TestEstimateTokens(t *testing.T) {
 			name: "custom token estimation ratio",
 			text: "word1 word2 word3",
 			opts: &SearchOptions{
-				TokenEstimationRatio: ptr(2.0),
+				TokenEstimationRatio: new(2.0),
 			},
 			checkFn: func(t *testing.T, result int) {
 				// 3 words * 2.0 = 6 tokens
@@ -869,7 +869,7 @@ func TestApplyStrategy(t *testing.T) {
 				{Content: "medium", Score: 0.6},
 			},
 			opts: &SearchOptions{
-				Strategy: ptr(StrategyRelevant),
+				Strategy: new(StrategyRelevant),
 			},
 			checkFn: func(t *testing.T, result []Document, err error) {
 				if err != nil {
@@ -898,7 +898,7 @@ func TestApplyStrategy(t *testing.T) {
 				{Content: "middle", Created: yesterday},
 			},
 			opts: &SearchOptions{
-				Strategy: ptr(StrategyRecent),
+				Strategy: new(StrategyRecent),
 			},
 			checkFn: func(t *testing.T, result []Document, err error) {
 				if err != nil {
@@ -923,7 +923,7 @@ func TestApplyStrategy(t *testing.T) {
 				{Content: "deep learning", Score: 0.8},
 			},
 			opts: &SearchOptions{
-				Strategy: ptr(StrategyDiverse),
+				Strategy: new(StrategyDiverse),
 			},
 			checkFn: func(t *testing.T, result []Document, err error) {
 				if err != nil {
@@ -940,7 +940,7 @@ func TestApplyStrategy(t *testing.T) {
 				{Content: "one two three four five six seven eight nine ten"},
 			},
 			opts: &SearchOptions{
-				Strategy: ptr(StrategySummary),
+				Strategy: new(StrategySummary),
 			},
 			checkFn: func(t *testing.T, result []Document, err error) {
 				if err != nil {
@@ -958,7 +958,7 @@ func TestApplyStrategy(t *testing.T) {
 				{Content: "doc"},
 			},
 			opts: &SearchOptions{
-				Strategy: ptr(ContextStrategy("invalid")),
+				Strategy: new(ContextStrategy("invalid")),
 			},
 			checkFn: func(t *testing.T, _ []Document, err error) {
 				if err == nil {
@@ -979,11 +979,6 @@ func TestApplyStrategy(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Helper function to create pointer to value
-func ptr[T any](v T) *T {
-	return &v
 }
 
 // TestVectorSearch tests the main VectorSearch handler
@@ -1045,7 +1040,7 @@ func TestVectorSearch(t *testing.T) {
 			},
 			opts: &SearchOptions{
 				Threshold: 0.5,
-				Strategy:  ptr(StrategyRelevant),
+				Strategy:  new(StrategyRelevant),
 			},
 			input: "test query",
 			checkFn: func(t *testing.T, output string) {
@@ -1084,7 +1079,7 @@ func TestVectorSearch(t *testing.T) {
 			},
 			opts: &SearchOptions{
 				Threshold: 0.5,
-				Strategy:  ptr(StrategyRelevant),
+				Strategy:  new(StrategyRelevant),
 				MaxTokens: 5, // Very small limit
 			},
 			input: "test query",
@@ -1287,7 +1282,7 @@ func TestStrategySearch(t *testing.T) {
 				},
 			},
 			opts: &SearchOptions{
-				Strategy:           ptr(StrategyDiverse),
+				Strategy:           new(StrategyDiverse),
 				StrategyProcessing: StrategyPost,
 			},
 			expectNative:   false,
@@ -1306,7 +1301,7 @@ func TestStrategySearch(t *testing.T) {
 				},
 			},
 			opts: &SearchOptions{
-				Strategy:           ptr(StrategyDiverse),
+				Strategy:           new(StrategyDiverse),
 				StrategyProcessing: StrategyNative,
 			},
 			expectNative:   true,
@@ -1318,7 +1313,7 @@ func TestStrategySearch(t *testing.T) {
 				searchResult: &SearchResult{Documents: []Document{}},
 			},
 			opts: &SearchOptions{
-				Strategy:           ptr(StrategyDiverse),
+				Strategy:           new(StrategyDiverse),
 				StrategyProcessing: StrategyNative,
 			},
 			expectErr: true,
@@ -1332,7 +1327,7 @@ func TestStrategySearch(t *testing.T) {
 				},
 			},
 			opts: &SearchOptions{
-				Strategy:           ptr(StrategyDiverse),
+				Strategy:           new(StrategyDiverse),
 				StrategyProcessing: StrategyAuto,
 			},
 			expectNative:   false,
@@ -1351,7 +1346,7 @@ func TestStrategySearch(t *testing.T) {
 				},
 			},
 			opts: &SearchOptions{
-				Strategy:           ptr(StrategyRelevant),
+				Strategy:           new(StrategyRelevant),
 				StrategyProcessing: StrategyNative,
 			},
 			expectNative:   true,
@@ -1469,7 +1464,7 @@ func TestBuildContext(t *testing.T) {
 			},
 			opts: &SearchOptions{
 				MaxTokens: 3, // Very small
-				Strategy:  ptr(StrategyRelevant),
+				Strategy:  new(StrategyRelevant),
 			},
 			store:    &mockVectorStore{},
 			isNative: false,
@@ -1491,7 +1486,7 @@ func TestBuildContext(t *testing.T) {
 			},
 			opts: &SearchOptions{
 				MaxTokens: 15,
-				Strategy:  ptr(StrategyRelevant),
+				Strategy:  new(StrategyRelevant),
 			},
 			store: &mockTokenEstimatorStore{
 				tokensPerDoc: 10,
@@ -1514,7 +1509,7 @@ func TestBuildContext(t *testing.T) {
 				{Content: "high score", Score: 0.9},
 			},
 			opts: &SearchOptions{
-				Strategy: ptr(StrategyRelevant),
+				Strategy: new(StrategyRelevant),
 			},
 			store:    &mockVectorStore{},
 			isNative: true, // Native processing already applied

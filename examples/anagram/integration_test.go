@@ -186,8 +186,8 @@ func TestAnagramFiltering(t *testing.T) {
 	}
 
 	// The result should contain only words with more than one character
-	lines := strings.Split(strings.TrimSpace(result), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(strings.TrimSpace(result), "\n")
+	for line := range lines {
 		if len(line) <= 1 {
 			t.Errorf("Expected no single-character words, got: %s", line)
 		}
@@ -222,8 +222,8 @@ func TestAnagramTransformation(t *testing.T) {
 	}
 
 	// The result should contain key:word format
-	lines := strings.Split(strings.TrimSpace(result), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(strings.TrimSpace(result), "\n")
+	for line := range lines {
 		// Check that line has key:word format
 		parts := strings.Split(line, ":")
 		if len(parts) != 2 {
@@ -331,7 +331,7 @@ func TestAnagramPerformance(t *testing.T) {
 
 	// Create a larger test dataset
 	words := make([]string, 0, 1005)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		words = append(words, fmt.Sprintf("word%d", i))
 	}
 	// Add some anagrams

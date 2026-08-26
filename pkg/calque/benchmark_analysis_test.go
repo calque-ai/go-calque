@@ -121,7 +121,7 @@ func benchmarkMultiHandler(b *testing.B, count int) {
 	})
 
 	flow := calque.NewFlow()
-	for i := 0; i < count; i++ {
+	for range count {
 		flow = flow.Use(handler)
 	}
 
@@ -248,10 +248,8 @@ func BenchmarkMemory_5Handlers(b *testing.B) {
 func BenchmarkGoroutine_Overhead(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			wg.Done()
-		}()
+		wg.Go(func() {
+		})
 		wg.Wait()
 	}
 }
@@ -260,12 +258,10 @@ func BenchmarkGoroutine_WithPipe(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		pr, pw := io.Pipe()
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			pw.Write([]byte("test"))
 			pw.Close()
-			wg.Done()
-		}()
+		})
 		io.ReadAll(pr)
 		wg.Wait()
 	}
@@ -284,13 +280,11 @@ func benchmarkConcurrentFlows(b *testing.B, numFlows int) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var wg sync.WaitGroup
-		for j := 0; j < numFlows; j++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range numFlows {
+			wg.Go(func() {
 				var output string
 				_ = flow.Run(ctx, "test", &output)
-			}()
+			})
 		}
 		wg.Wait()
 	}

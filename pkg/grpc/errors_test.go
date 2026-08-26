@@ -40,7 +40,7 @@ func TestError_Error(t *testing.T) {
 			grpcErr: &Error{
 				calqueErr: calque.NewErr(ctx, "internal error"),
 				Code:      codes.Internal,
-				Details:   []interface{}{"detail1", "detail2"},
+				Details:   []any{"detail1", "detail2"},
 			},
 			expected: "grpc error [Internal]: internal error",
 		},
@@ -146,7 +146,7 @@ func TestWrapError(t *testing.T) {
 		ctx      context.Context
 		err      error
 		message  string
-		details  []interface{}
+		details  []any
 		expected *Error
 	}{
 		{
@@ -162,10 +162,10 @@ func TestWrapError(t *testing.T) {
 			ctx:     ctx,
 			err:     errors.New("test error"),
 			message: "wrapped message",
-			details: []interface{}{"detail1"},
+			details: []any{"detail1"},
 			expected: &Error{
 				Code:    codes.Unknown,
-				Details: []interface{}{"detail1"},
+				Details: []any{"detail1"},
 			},
 		},
 		{
@@ -419,7 +419,7 @@ func TestWrapErrorfSimple(t *testing.T) {
 		ctx      context.Context
 		err      error
 		format   string
-		args     []interface{}
+		args     []any
 		expected string
 	}{
 		{
@@ -427,7 +427,7 @@ func TestWrapErrorfSimple(t *testing.T) {
 			ctx:      ctx,
 			err:      nil,
 			format:   "test %s",
-			args:     []interface{}{"message"},
+			args:     []any{"message"},
 			expected: "",
 		},
 		{
@@ -435,7 +435,7 @@ func TestWrapErrorfSimple(t *testing.T) {
 			ctx:      ctx,
 			err:      errors.New("original error"),
 			format:   "wrapped %s %d",
-			args:     []interface{}{"message", 42},
+			args:     []any{"message", 42},
 			expected: "wrapped message 42: original error",
 		},
 	}

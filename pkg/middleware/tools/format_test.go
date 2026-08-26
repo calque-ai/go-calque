@@ -116,10 +116,10 @@ func TestToolDefinitionStructure(t *testing.T) {
 	td := ToolDefinition{
 		Name:        "test_tool",
 		Description: "A test tool",
-		Parameters: map[string]interface{}{
+		Parameters: map[string]any{
 			"type": "object",
-			"properties": map[string]interface{}{
-				"input": map[string]interface{}{
+			"properties": map[string]any{
+				"input": map[string]any{
 					"type":        "string",
 					"description": "Input parameter",
 				},

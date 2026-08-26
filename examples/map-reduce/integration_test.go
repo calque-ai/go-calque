@@ -306,7 +306,7 @@ func TestConcurrentEvaluation(t *testing.T) {
 	results := make(chan string, numResumes)
 	errors := make(chan error, numResumes)
 
-	for i := 0; i < numResumes; i++ {
+	for i := range numResumes {
 		go func(id int) {
 			resume := fmt.Sprintf("Concurrent Candidate %d\nComputer Science\nUniversity\nSoftware Engineer\n4 years experience", id)
 			var result string
@@ -321,7 +321,7 @@ func TestConcurrentEvaluation(t *testing.T) {
 
 	// Collect results
 	successCount := 0
-	for i := 0; i < numResumes; i++ {
+	for range numResumes {
 		select {
 		case result := <-results:
 			if strings.Contains(result, "candidate_name") {

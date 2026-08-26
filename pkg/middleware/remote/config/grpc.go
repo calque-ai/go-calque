@@ -114,8 +114,8 @@ func (c *GRPCConfig) LoadFromEnv() error {
 	// Load service configurations
 	services := os.Getenv("GRPC_SERVICES")
 	if services != "" {
-		serviceList := strings.Split(services, ",")
-		for _, service := range serviceList {
+		serviceList := strings.SplitSeq(services, ",")
+		for service := range serviceList {
 			service = strings.TrimSpace(service)
 			if helpers.IsEmpty(service) {
 				continue

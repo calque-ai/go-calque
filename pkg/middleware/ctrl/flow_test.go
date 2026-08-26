@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -313,13 +314,7 @@ func TestParallel(t *testing.T) {
 			}
 
 			for _, expectedPart := range tt.expectedParts {
-				found := false
-				for _, part := range parts {
-					if part == expectedPart {
-						found = true
-						break
-					}
-				}
+				found := slices.Contains(parts, expectedPart)
 				if !found {
 					t.Errorf("Parallel() missing expected part %q in output %q", expectedPart, output)
 				}

@@ -119,14 +119,14 @@ func trimToTokenLimit(content []byte, maxTokens int) []byte {
 	// Try to cut at sentence boundary (. ! ?)
 	cutText := text[bestCut:]
 	for _, delimiter := range []string{". ", "! ", "? ", "\n\n", "\n"} {
-		if idx := strings.Index(cutText, delimiter); idx != -1 {
-			return []byte(cutText[idx+len(delimiter):])
+		if _, after, ok := strings.Cut(cutText, delimiter); ok {
+			return []byte(after)
 		}
 	}
 
 	// Fall back to word boundary
-	if spaceIdx := strings.Index(cutText, " "); spaceIdx != -1 {
-		return []byte(cutText[spaceIdx+1:])
+	if _, after, ok := strings.Cut(cutText, " "); ok {
+		return []byte(after)
 	}
 
 	return []byte(cutText)

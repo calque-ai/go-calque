@@ -241,13 +241,13 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 
 	// Apply client configuration
 	if g.config.Temperature != nil {
-		config.Temperature = genai.Ptr(*g.config.Temperature)
+		config.Temperature = new(*g.config.Temperature)
 	}
 	if g.config.TopP != nil {
-		config.TopP = genai.Ptr(*g.config.TopP)
+		config.TopP = new(*g.config.TopP)
 	}
 	if g.config.TopK != nil {
-		config.TopK = genai.Ptr(*g.config.TopK)
+		config.TopK = new(*g.config.TopK)
 	}
 	if g.config.MaxTokens != nil {
 		config.MaxOutputTokens = int32(*g.config.MaxTokens)
@@ -262,13 +262,13 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 		}
 	}
 	if g.config.PresencePenalty != nil {
-		config.PresencePenalty = genai.Ptr(*g.config.PresencePenalty)
+		config.PresencePenalty = new(*g.config.PresencePenalty)
 	}
 	if g.config.FrequencyPenalty != nil {
-		config.FrequencyPenalty = genai.Ptr(*g.config.FrequencyPenalty)
+		config.FrequencyPenalty = new(*g.config.FrequencyPenalty)
 	}
 	if g.config.Seed != nil {
-		config.Seed = genai.Ptr(*g.config.Seed)
+		config.Seed = new(*g.config.Seed)
 	}
 	if g.config.CandidateCount != nil {
 		config.CandidateCount = *g.config.CandidateCount

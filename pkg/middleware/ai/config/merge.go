@@ -15,7 +15,7 @@ func New() *Merger {
 
 // Merge merges the source config into the target config, preserving existing values
 // when source fields are zero/nil values.
-func (m *Merger) Merge(target, source interface{}) {
+func (m *Merger) Merge(target, source any) {
 	if source == nil {
 		return
 	}
@@ -63,6 +63,6 @@ func (m *Merger) Merge(target, source interface{}) {
 }
 
 // Merge is a convenience function that creates a new merger and merges configs
-func Merge(target, source interface{}) {
+func Merge(target, source any) {
 	New().Merge(target, source)
 }

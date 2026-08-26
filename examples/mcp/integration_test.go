@@ -12,14 +12,14 @@ import (
 
 // MockMCPClient provides a mock implementation for testing
 type MockMCPClient struct {
-	tools     map[string]func(interface{}) (string, error)
+	tools     map[string]func(any) (string, error)
 	resources map[string]string
 	prompts   map[string]string
 }
 
 func NewMockMCPClient() *MockMCPClient {
 	return &MockMCPClient{
-		tools:     make(map[string]func(interface{}) (string, error)),
+		tools:     make(map[string]func(any) (string, error)),
 		resources: make(map[string]string),
 		prompts:   make(map[string]string),
 	}
@@ -104,7 +104,7 @@ func TestBasicMCPToolCalling(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register a multiply tool
-	mockClient.tools["multiply"] = func(_ interface{}) (string, error) {
+	mockClient.tools["multiply"] = func(_ any) (string, error) {
 		// Simple mock implementation that returns "42" for any input
 		return "42", nil
 	}
@@ -219,7 +219,7 @@ func TestMCPToolWithProgress(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register a progress tool
-	mockClient.tools["progress_demo"] = func(_ interface{}) (string, error) { //nolint:unparam
+	mockClient.tools["progress_demo"] = func(_ any) (string, error) { //nolint:unparam
 		// Simulate some work
 		time.Sleep(10 * time.Millisecond)
 		return "Completed 5 steps", nil
@@ -251,7 +251,7 @@ func TestMCPConcurrentToolCalls(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register a search tool
-	mockClient.tools["search"] = func(_ interface{}) (string, error) {
+	mockClient.tools["search"] = func(_ any) (string, error) {
 		return "Search results for query", nil
 	}
 
@@ -259,7 +259,7 @@ func TestMCPConcurrentToolCalls(t *testing.T) {
 	const numRequests = 5
 	results := make(chan error, numRequests)
 
-	for i := 0; i < numRequests; i++ {
+	for i := range numRequests {
 		go func(_ int) {
 			flow := calque.NewFlow()
 			flow.Use(mockClient.Tool("search"))
@@ -273,7 +273,7 @@ func TestMCPConcurrentToolCalls(t *testing.T) {
 	}
 
 	// Collect results
-	for i := 0; i < numRequests; i++ {
+	for i := range numRequests {
 		err := <-results
 		if err != nil {
 			t.Errorf("Request %d failed: %v", i, err)
@@ -289,7 +289,7 @@ func TestMCPErrorHandling(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register a tool that returns an error
-	mockClient.tools["error_tool"] = func(_ interface{}) (string, error) {
+	mockClient.tools["error_tool"] = func(_ any) (string, error) {
 		return "", fmt.Errorf("mock error")
 	}
 
@@ -318,11 +318,11 @@ func TestMCPComplexPipeline(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register multiple tools
-	mockClient.tools["search"] = func(_ interface{}) (string, error) {
+	mockClient.tools["search"] = func(_ any) (string, error) {
 		return "search results", nil
 	}
 
-	mockClient.tools["analyze"] = func(_ interface{}) (string, error) {
+	mockClient.tools["analyze"] = func(_ any) (string, error) {
 		return "analysis complete", nil
 	}
 
@@ -405,7 +405,7 @@ func TestMCPPerformanceCharacteristics(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register a fast tool
-	mockClient.tools["fast_tool"] = func(_ interface{}) (string, error) {
+	mockClient.tools["fast_tool"] = func(_ any) (string, error) {
 		return "fast result", nil
 	}
 
@@ -441,7 +441,7 @@ func TestErrorSimulatorTool(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register the error simulator tool
-	mockClient.tools["error_simulator"] = func(input interface{}) (string, error) { //nolint:unparam
+	mockClient.tools["error_simulator"] = func(input any) (string, error) { //nolint:unparam
 		// Parse the input to determine error type and custom message
 		inputStr := fmt.Sprintf("%v", input)
 
@@ -553,7 +553,7 @@ func TestErrorSimulatorToolWithCustomMessage(t *testing.T) {
 	mockClient := NewMockMCPClient()
 
 	// Register the error simulator tool with custom message handling
-	mockClient.tools["error_simulator"] = func(input interface{}) (string, error) { //nolint:unparam
+	mockClient.tools["error_simulator"] = func(input any) (string, error) { //nolint:unparam
 		inputStr := fmt.Sprintf("%v", input)
 
 		if strings.Contains(inputStr, "Database connection timeout") {

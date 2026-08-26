@@ -232,13 +232,11 @@ func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []T
 
 	// Start workers
 	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range jobs {
 				results[i] = executeToolCall(ctx, tools, toolCalls[i])
 			}
-		}()
+		})
 	}
 
 	// Send jobs

@@ -478,12 +478,12 @@ func TestInMemoryStoreConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Test concurrent writes
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 
-			for j := 0; j < numOperations; j++ {
+			for j := range numOperations {
 				key := fmt.Sprintf("key-%d-%d", id, j)
 				value := fmt.Sprintf("value-%d-%d", id, j)
 
@@ -505,12 +505,12 @@ func TestInMemoryStoreConcurrency(t *testing.T) {
 	}
 
 	// Test concurrent reads
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 
-			for j := 0; j < numOperations; j++ {
+			for j := range numOperations {
 				key := fmt.Sprintf("key-%d-%d", id, j)
 				expectedValue := fmt.Sprintf("value-%d-%d", id, j)
 
@@ -529,12 +529,12 @@ func TestInMemoryStoreConcurrency(t *testing.T) {
 	wg.Wait()
 
 	// Test concurrent deletes
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 
-			for j := 0; j < numOperations; j++ {
+			for j := range numOperations {
 				key := fmt.Sprintf("key-%d-%d", id, j)
 
 				err := store.Delete(key)
@@ -558,7 +558,7 @@ func TestInMemoryStoreBackgroundCleanup(t *testing.T) {
 	store := NewInMemoryStore()
 
 	// Add some keys with short TTL
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		key := fmt.Sprintf("key-%d", i)
 		store.Set(key, []byte("value"), 50*time.Millisecond)
 	}
@@ -582,7 +582,7 @@ func TestInMemoryStoreBackgroundCleanup(t *testing.T) {
 	}
 
 	// Verify expired keys are gone
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		key := fmt.Sprintf("key-%d", i)
 		if store.Exists(key) {
 			t.Errorf("Expired key %s still exists after cleanup", key)

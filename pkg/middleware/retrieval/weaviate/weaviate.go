@@ -4,6 +4,7 @@ package weaviate
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 	"time"
 
@@ -173,9 +174,7 @@ func (c *Client) Store(ctx context.Context, documents []retrieval.Document) erro
 
 		// Add metadata if present - flatten metadata fields to top level for filtering
 		if doc.Metadata != nil {
-			for key, value := range doc.Metadata {
-				properties[key] = value
-			}
+			maps.Copy(properties, doc.Metadata)
 		}
 
 		// Create Weaviate object

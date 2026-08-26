@@ -290,11 +290,11 @@ func (m *mockFlowServiceStreamFlowServer) Context() context.Context {
 	return context.Background()
 }
 
-func (m *mockFlowServiceStreamFlowServer) SendMsg(_ interface{}) error {
+func (m *mockFlowServiceStreamFlowServer) SendMsg(_ any) error {
 	return nil
 }
 
-func (m *mockFlowServiceStreamFlowServer) RecvMsg(_ interface{}) error {
+func (m *mockFlowServiceStreamFlowServer) RecvMsg(_ any) error {
 	return nil
 }
 

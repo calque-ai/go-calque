@@ -5,6 +5,7 @@ package observability
 
 import (
 	"context"
+	"maps"
 	"time"
 )
 
@@ -250,11 +251,7 @@ type Labels map[string]string
 //	// Result: {"service": "api", "env": "staging", "version": "v1.0"}
 func (l Labels) Merge(other Labels) Labels {
 	result := make(Labels, len(l)+len(other))
-	for k, v := range l {
-		result[k] = v
-	}
-	for k, v := range other {
-		result[k] = v
-	}
+	maps.Copy(result, l)
+	maps.Copy(result, other)
 	return result
 }

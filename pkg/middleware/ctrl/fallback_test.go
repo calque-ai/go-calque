@@ -409,11 +409,11 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 
 	done := make(chan bool, 10)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			defer func() { done <- true }()
 
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				allowed := cb.Allow()
 				if allowed {
 					if j%2 == 0 {
@@ -427,7 +427,7 @@ func TestCircuitBreakerConcurrency(t *testing.T) {
 		}()
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 

@@ -347,8 +347,8 @@ func TestStandardAdapter_Integration(t *testing.T) {
 		}
 
 		// Should have TEST prefix for all entries
-		lines := strings.Split(strings.TrimSpace(output), "\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(strings.TrimSpace(output), "\n")
+		for line := range lines {
 			if !strings.Contains(line, "[TEST]") {
 				t.Errorf("Expected [TEST] prefix in line: %s", line)
 			}
@@ -538,7 +538,7 @@ func TestStandardAdapter_EdgeCases(t *testing.T) {
 
 		// Create many attributes
 		attrs := make([]Attribute, 100)
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			attrs[i] = Attribute{Key: fmt.Sprintf("key%d", i), Value: i}
 		}
 

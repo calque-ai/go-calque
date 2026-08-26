@@ -760,10 +760,7 @@ func TestFlow_Run_PartialWrite(t *testing.T) {
 		// Write data in small chunks to test streaming
 		input := string(data)
 		for i := 0; i < len(input); i += 2 {
-			end := i + 2
-			if end > len(input) {
-				end = len(input)
-			}
+			end := min(i+2, len(input))
 			_, err := res.Data.Write([]byte(input[i:end]))
 			if err != nil {
 				return err
@@ -800,7 +797,7 @@ func TestFlow_Run_BinaryData(t *testing.T) {
 
 	// Create test binary data
 	binaryInput := make([]byte, 256)
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		binaryInput[i] = byte(i)
 	}
 
@@ -955,7 +952,7 @@ func BenchmarkFlow_Run_HandlerCounts(b *testing.B) {
 	for _, count := range counts {
 		b.Run(fmt.Sprintf("Handlers%d", count), func(b *testing.B) {
 			flow := NewFlow()
-			for i := 0; i < count; i++ {
+			for range count {
 				flow.Use(handler)
 			}
 
@@ -1389,7 +1386,7 @@ func testScenario1LongStreamKeepsUp(t *testing.T) {
 	flow := NewFlow()
 	flow.Use(HandlerFunc(func(_ *Request, res *Response) error {
 		// Simulate streaming: send data in chunks over time
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			_, err := fmt.Fprintf(res.Data, "chunk-%d\n", i)
 			if err != nil {
 				return err
@@ -1448,7 +1445,7 @@ func testScenario2LongStreamSlow(t *testing.T) {
 	flow := NewFlow()
 	flow.Use(HandlerFunc(func(_ *Request, res *Response) error {
 		// Fast producer: send 100 chunks quickly
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			_, err := fmt.Fprintf(res.Data, "data-%d\n", i)
 			if err != nil {
 				return err
@@ -1500,7 +1497,7 @@ func testScenario3LongStreamNilOutput(t *testing.T) {
 	flow := NewFlow()
 	flow.Use(HandlerFunc(func(_ *Request, res *Response) error {
 		// Produce large amounts of data
-		for i := 0; i < 1000; i++ {
+		for i := range 1000 {
 			_, err := fmt.Fprintf(res.Data, "discarded-data-%d\n", i)
 			if err != nil {
 				return err
@@ -1573,7 +1570,7 @@ func testScenario6StreamingIOWriter(t *testing.T) {
 
 	flow := NewFlow()
 	flow.Use(HandlerFunc(func(_ *Request, res *Response) error {
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			_, err := fmt.Fprintf(res.Data, "line-%d\n", i)
 			if err != nil {
 				return err
@@ -1604,7 +1601,7 @@ func testMemoryLeakPreventionNilOutput(t *testing.T) {
 	flow.Use(HandlerFunc(func(_ *Request, res *Response) error {
 		// Simulate large output that would cause OOM if buffered
 		largeData := make([]byte, 1024*1024) // 1MB
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			_, err := res.Data.Write(largeData)
 			if err != nil {
 				return err
@@ -1630,7 +1627,7 @@ func testRealTimeStreamingOutputConverter(t *testing.T) {
 
 	flow := NewFlow()
 	flow.Use(HandlerFunc(func(_ *Request, res *Response) error {
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			_, err := fmt.Fprintf(res.Data, "msg-%d\n", i)
 			if err != nil {
 				return err

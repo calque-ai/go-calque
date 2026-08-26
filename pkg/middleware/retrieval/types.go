@@ -11,8 +11,8 @@ type Document struct {
 	Content  string         `json:"content"`            // Document text content
 	Metadata map[string]any `json:"metadata,omitempty"` // Additional document metadata
 	Score    float64        `json:"score,omitempty"`    // Similarity score (0-1, higher is more similar)
-	Created  time.Time      `json:"created,omitempty"`  // Document creation timestamp
-	Updated  time.Time      `json:"updated,omitempty"`  // Last update timestamp
+	Created  time.Time      `json:"created"`            // Document creation timestamp
+	Updated  time.Time      `json:"updated"`            // Last update timestamp
 }
 
 // SearchResult represents the result of a vector search operation.

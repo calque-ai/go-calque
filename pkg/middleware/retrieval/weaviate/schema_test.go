@@ -51,14 +51,14 @@ func TestValidatePropertyType(t *testing.T) {
 		{
 			name:      "valid text array - []interface{} with strings",
 			key:       "tags",
-			value:     []interface{}{"ai", "ml"},
+			value:     []any{"ai", "ml"},
 			expected:  PropertyTypeTextArray,
 			expectErr: false,
 		},
 		{
 			name:      "invalid text array - []interface{} with non-strings",
 			key:       "tags",
-			value:     []interface{}{"ai", 123},
+			value:     []any{"ai", 123},
 			expected:  PropertyTypeTextArray,
 			expectErr: true,
 		},

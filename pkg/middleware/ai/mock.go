@@ -199,13 +199,13 @@ func (m *MockClient) streamResponse(response string, req *calque.Request, res *c
 
 // simulateStructuredOutput generates mock structured JSON output
 func (m *MockClient) simulateStructuredOutput(schema *ResponseFormat, input string, res *calque.Response) error {
-	var mockJSON map[string]interface{}
+	var mockJSON map[string]any
 
 	// Generate a simple mock JSON response based on the schema type
 	switch schema.Type {
 	case ResponseFormatJSONObject:
 		// Simple JSON object
-		mockJSON = map[string]interface{}{
+		mockJSON = map[string]any{
 			"message": fmt.Sprintf("Mock JSON response to: %s", input),
 			"type":    "mock_response",
 			"input":   input,
@@ -216,14 +216,14 @@ func (m *MockClient) simulateStructuredOutput(schema *ResponseFormat, input stri
 			mockJSON = m.generateMockFromSchema(schema.Schema, input)
 		} else {
 			// Fallback to simple JSON
-			mockJSON = map[string]interface{}{
+			mockJSON = map[string]any{
 				"message": fmt.Sprintf("Mock schema response to: %s", input),
 				"schema":  true,
 			}
 		}
 	default:
 		// Default JSON response
-		mockJSON = map[string]interface{}{
+		mockJSON = map[string]any{
 			"response": fmt.Sprintf("Mock response to: %s", input),
 		}
 	}
@@ -239,8 +239,8 @@ func (m *MockClient) simulateStructuredOutput(schema *ResponseFormat, input stri
 }
 
 // generateMockFromSchema generates mock data based on JSON schema (simplified)
-func (m *MockClient) generateMockFromSchema(schema *jsonschema.Schema, input string) map[string]interface{} {
-	result := make(map[string]interface{})
+func (m *MockClient) generateMockFromSchema(schema *jsonschema.Schema, input string) map[string]any {
+	result := make(map[string]any)
 
 	// Very basic schema interpretation for testing
 	if schema.Properties != nil {
@@ -256,9 +256,9 @@ func (m *MockClient) generateMockFromSchema(schema *jsonschema.Schema, input str
 			case "boolean":
 				result[key] = true
 			case "array":
-				result[key] = []interface{}{"mock_item_1", "mock_item_2"}
+				result[key] = []any{"mock_item_1", "mock_item_2"}
 			case jsonSchemaTypeObject:
-				result[key] = map[string]interface{}{"nested": "mock_value"}
+				result[key] = map[string]any{"nested": "mock_value"}
 			default:
 				result[key] = fmt.Sprintf("mock_%s", key)
 			}
