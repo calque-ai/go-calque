@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 )
 
@@ -57,7 +56,7 @@ func TestNewVertex(t *testing.T) {
 				WithVertexConfig(&VertexConfig{
 					Project:     "config-project",
 					Location:    "europe-west1",
-					Temperature: helpers.PtrOf(float32(0.5)),
+					Temperature: new(float32(0.5)),
 				}),
 			},
 		},
@@ -154,9 +153,9 @@ func TestWithVertexConfig(t *testing.T) {
 	custom := &VertexConfig{
 		Project:     "custom-project",
 		Location:    "asia-east1",
-		Temperature: helpers.PtrOf(float32(0.9)),
-		MaxTokens:   helpers.PtrOf(2000),
-		TopP:        helpers.PtrOf(float32(0.95)),
+		Temperature: new(float32(0.9)),
+		MaxTokens:   new(2000),
+		TopP:        new(float32(0.95)),
 	}
 
 	opt := WithVertexConfig(custom)
@@ -207,10 +206,10 @@ func TestVertexConfig_TuningFieldsPassThrough(t *testing.T) {
 	client, err := NewVertex("gemini-3.6-flash", WithVertexConfig(&VertexConfig{
 		Project:           "test-project",
 		Location:          "us-central1",
-		Temperature:       helpers.PtrOf(float32(0.3)),
-		MaxTokens:         helpers.PtrOf(500),
+		Temperature:       new(float32(0.3)),
+		MaxTokens:         new(500),
 		SystemInstruction: "Be concise",
-		Stream:            helpers.PtrOf(false),
+		Stream:            new(false),
 	}))
 	if err != nil {
 		t.Fatalf("NewVertex() error = %v", err)

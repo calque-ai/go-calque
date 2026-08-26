@@ -1,10 +1,9 @@
 package config
 
 import (
+	"maps"
 	"reflect"
 	"testing"
-
-	"github.com/calque-ai/go-calque/pkg/helpers"
 )
 
 // TestConfig represents a typical AI client config for testing
@@ -15,7 +14,7 @@ type TestConfig struct {
 	Host        string
 	Stream      *bool
 	Stop        []string
-	Options     map[string]interface{}
+	Options     map[string]any
 }
 
 func TestMerge(t *testing.T) {
@@ -30,25 +29,25 @@ func TestMerge(t *testing.T) {
 			name: "partial_config_merge",
 			target: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: helpers.PtrOf(float32(0.7)),
-				MaxTokens:   helpers.PtrOf(1000),
+				Temperature: new(float32(0.7)),
+				MaxTokens:   new(1000),
 				Host:        "default-host",
-				Stream:      helpers.PtrOf(true),
+				Stream:      new(true),
 				Stop:        []string{"default"},
-				Options:     map[string]interface{}{"default": "value"},
+				Options:     map[string]any{"default": "value"},
 			},
 			source: &TestConfig{
-				Temperature: helpers.PtrOf(float32(0.9)),
-				MaxTokens:   helpers.PtrOf(2000),
+				Temperature: new(float32(0.9)),
+				MaxTokens:   new(2000),
 			},
 			expectedResult: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: helpers.PtrOf(float32(0.9)),
-				MaxTokens:   helpers.PtrOf(2000),
+				Temperature: new(float32(0.9)),
+				MaxTokens:   new(2000),
 				Host:        "default-host",
-				Stream:      helpers.PtrOf(true),
+				Stream:      new(true),
 				Stop:        []string{"default"},
-				Options:     map[string]interface{}{"default": "value"},
+				Options:     map[string]any{"default": "value"},
 			},
 			description: "Only specified fields should override, others preserved",
 		},
@@ -56,21 +55,21 @@ func TestMerge(t *testing.T) {
 			name: "empty_fields_preserve_defaults",
 			target: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: helpers.PtrOf(float32(0.7)),
-				MaxTokens:   helpers.PtrOf(1000),
+				Temperature: new(float32(0.7)),
+				MaxTokens:   new(1000),
 				Host:        "default-host",
 			},
 			source: &TestConfig{
-				APIKey:      "",                  // Empty string - should not override
-				Temperature: nil,                 // Nil pointer - should not override
-				MaxTokens:   helpers.PtrOf(2000), // Set value - should override
-				Host:        "",                  // Empty string - should not override
+				APIKey:      "",        // Empty string - should not override
+				Temperature: nil,       // Nil pointer - should not override
+				MaxTokens:   new(2000), // Set value - should override
+				Host:        "",        // Empty string - should not override
 			},
 			expectedResult: &TestConfig{
-				APIKey:      "default-key",               // Preserved
-				Temperature: helpers.PtrOf(float32(0.7)), // Preserved
-				MaxTokens:   helpers.PtrOf(2000),         // Overridden
-				Host:        "default-host",              // Preserved
+				APIKey:      "default-key",     // Preserved
+				Temperature: new(float32(0.7)), // Preserved
+				MaxTokens:   new(2000),         // Overridden
+				Host:        "default-host",    // Preserved
 			},
 			description: "Empty/nil fields should not override defaults",
 		},
@@ -78,26 +77,26 @@ func TestMerge(t *testing.T) {
 			name: "complete_config_override",
 			target: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: helpers.PtrOf(float32(0.7)),
-				MaxTokens:   helpers.PtrOf(1000),
+				Temperature: new(float32(0.7)),
+				MaxTokens:   new(1000),
 			},
 			source: &TestConfig{
 				APIKey:      "new-key",
-				Temperature: helpers.PtrOf(float32(1.0)),
-				MaxTokens:   helpers.PtrOf(3000),
+				Temperature: new(float32(1.0)),
+				MaxTokens:   new(3000),
 				Host:        "new-host",
-				Stream:      helpers.PtrOf(false),
+				Stream:      new(false),
 				Stop:        []string{"new"},
-				Options:     map[string]interface{}{"new": "value"},
+				Options:     map[string]any{"new": "value"},
 			},
 			expectedResult: &TestConfig{
 				APIKey:      "new-key",
-				Temperature: helpers.PtrOf(float32(1.0)),
-				MaxTokens:   helpers.PtrOf(3000),
+				Temperature: new(float32(1.0)),
+				MaxTokens:   new(3000),
 				Host:        "new-host",
-				Stream:      helpers.PtrOf(false),
+				Stream:      new(false),
 				Stop:        []string{"new"},
-				Options:     map[string]interface{}{"new": "value"},
+				Options:     map[string]any{"new": "value"},
 			},
 			description: "All fields should be overridden when provided",
 		},
@@ -105,14 +104,14 @@ func TestMerge(t *testing.T) {
 			name: "nil_source_no_change",
 			target: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: helpers.PtrOf(float32(0.7)),
-				MaxTokens:   helpers.PtrOf(1000),
+				Temperature: new(float32(0.7)),
+				MaxTokens:   new(1000),
 			},
 			source: nil,
 			expectedResult: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: helpers.PtrOf(float32(0.7)),
-				MaxTokens:   helpers.PtrOf(1000),
+				Temperature: new(float32(0.7)),
+				MaxTokens:   new(1000),
 			},
 			description: "Nil source should not modify target",
 		},
@@ -120,21 +119,21 @@ func TestMerge(t *testing.T) {
 			name: "zero_values_override",
 			target: &TestConfig{
 				APIKey:      "default-key",
-				Temperature: helpers.PtrOf(float32(0.7)),
-				MaxTokens:   helpers.PtrOf(1000),
-				Stream:      helpers.PtrOf(true),
+				Temperature: new(float32(0.7)),
+				MaxTokens:   new(1000),
+				Stream:      new(true),
 			},
 			source: &TestConfig{
 				APIKey:      "zero-key",
-				Temperature: helpers.PtrOf(float32(0.0)), // Zero value - should override
-				MaxTokens:   helpers.PtrOf(0),            // Zero value - should override
-				Stream:      helpers.PtrOf(false),        // Zero value - should override
+				Temperature: new(float32(0.0)), // Zero value - should override
+				MaxTokens:   new(0),            // Zero value - should override
+				Stream:      new(false),        // Zero value - should override
 			},
 			expectedResult: &TestConfig{
 				APIKey:      "zero-key",
-				Temperature: helpers.PtrOf(float32(0.0)),
-				MaxTokens:   helpers.PtrOf(0),
-				Stream:      helpers.PtrOf(false),
+				Temperature: new(float32(0.0)),
+				MaxTokens:   new(0),
+				Stream:      new(false),
 			},
 			description: "Zero values should override defaults (not treated as empty)",
 		},
@@ -142,15 +141,15 @@ func TestMerge(t *testing.T) {
 			name: "slice_and_map_merge",
 			target: &TestConfig{
 				Stop:    []string{"default1", "default2"},
-				Options: map[string]interface{}{"default": "value", "keep": "me"},
+				Options: map[string]any{"default": "value", "keep": "me"},
 			},
 			source: &TestConfig{
 				Stop:    []string{"new1", "new2"},
-				Options: map[string]interface{}{"new": "value", "override": "me"},
+				Options: map[string]any{"new": "value", "override": "me"},
 			},
 			expectedResult: &TestConfig{
 				Stop:    []string{"new1", "new2"},
-				Options: map[string]interface{}{"new": "value", "override": "me"},
+				Options: map[string]any{"new": "value", "override": "me"},
 			},
 			description: "Slices and maps should be completely replaced",
 		},
@@ -158,15 +157,15 @@ func TestMerge(t *testing.T) {
 			name: "empty_slice_and_map_preserve",
 			target: &TestConfig{
 				Stop:    []string{"default1", "default2"},
-				Options: map[string]interface{}{"default": "value"},
+				Options: map[string]any{"default": "value"},
 			},
 			source: &TestConfig{
-				Stop:    []string{},               // Empty slice - should not override
-				Options: map[string]interface{}{}, // Empty map - should not override
+				Stop:    []string{},       // Empty slice - should not override
+				Options: map[string]any{}, // Empty map - should not override
 			},
 			expectedResult: &TestConfig{
 				Stop:    []string{"default1", "default2"},
-				Options: map[string]interface{}{"default": "value"},
+				Options: map[string]any{"default": "value"},
 			},
 			description: "Empty slices and maps should not override defaults",
 		},
@@ -174,7 +173,7 @@ func TestMerge(t *testing.T) {
 			name: "nil_slice_and_map_preserve",
 			target: &TestConfig{
 				Stop:    []string{"default1", "default2"},
-				Options: map[string]interface{}{"default": "value"},
+				Options: map[string]any{"default": "value"},
 			},
 			source: &TestConfig{
 				Stop:    nil, // Nil slice - should not override
@@ -182,7 +181,7 @@ func TestMerge(t *testing.T) {
 			},
 			expectedResult: &TestConfig{
 				Stop:    []string{"default1", "default2"},
-				Options: map[string]interface{}{"default": "value"},
+				Options: map[string]any{"default": "value"},
 			},
 			description: "Nil slices and maps should not override defaults",
 		},
@@ -197,10 +196,8 @@ func TestMerge(t *testing.T) {
 				copy(targetCopy.Stop, tt.target.Stop)
 			}
 			if tt.target.Options != nil {
-				targetCopy.Options = make(map[string]interface{})
-				for k, v := range tt.target.Options {
-					targetCopy.Options[k] = v
-				}
+				targetCopy.Options = make(map[string]any)
+				maps.Copy(targetCopy.Options, tt.target.Options)
 			}
 
 			// Perform merge
@@ -226,17 +223,17 @@ func TestConfigMerger(t *testing.T) {
 			name: "merger_instance_works",
 			target: &TestConfig{
 				APIKey:      "default",
-				Temperature: helpers.PtrOf(float32(0.7)),
-				MaxTokens:   helpers.PtrOf(1000),
+				Temperature: new(float32(0.7)),
+				MaxTokens:   new(1000),
 			},
 			source: &TestConfig{
-				Temperature: helpers.PtrOf(float32(0.9)),
-				MaxTokens:   helpers.PtrOf(2000),
+				Temperature: new(float32(0.9)),
+				MaxTokens:   new(2000),
 			},
 			expectedResult: &TestConfig{
 				APIKey:      "default",
-				Temperature: helpers.PtrOf(float32(0.9)),
-				MaxTokens:   helpers.PtrOf(2000),
+				Temperature: new(float32(0.9)),
+				MaxTokens:   new(2000),
 			},
 			description: "Merger instance should work same as package function",
 		},
@@ -251,10 +248,8 @@ func TestConfigMerger(t *testing.T) {
 				copy(targetCopy.Stop, tt.target.Stop)
 			}
 			if tt.target.Options != nil {
-				targetCopy.Options = make(map[string]interface{})
-				for k, v := range tt.target.Options {
-					targetCopy.Options[k] = v
-				}
+				targetCopy.Options = make(map[string]any)
+				maps.Copy(targetCopy.Options, tt.target.Options)
 			}
 
 			merger.Merge(&targetCopy, tt.source)

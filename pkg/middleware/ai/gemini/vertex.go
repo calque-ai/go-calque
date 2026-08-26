@@ -7,7 +7,6 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 )
@@ -25,7 +24,7 @@ const defaultVertexLocation = "us-central1"
 //	cfg := &gemini.VertexConfig{
 //		Project:     "my-gcp-project",
 //		Location:    "us-central1",
-//		Temperature: helpers.PtrOf(float32(0.8)),
+//		Temperature: new(float32(0.8)),
 //	}
 type VertexConfig struct {
 	// Required. GCP project ID. Fallback: GOOGLE_CLOUD_PROJECT env var.
@@ -89,7 +88,7 @@ func (o vertexConfigOption) ApplyVertex(target *VertexConfig) {
 //
 // Example:
 //
-//	cfg := &gemini.VertexConfig{Project: "my-project", Temperature: helpers.PtrOf(float32(0.9))}
+//	cfg := &gemini.VertexConfig{Project: "my-project", Temperature: new(float32(0.9))}
 //	client, _ := gemini.NewVertex("gemini-3.6-flash", gemini.WithVertexConfig(cfg))
 func WithVertexConfig(cfg *VertexConfig) VertexOption {
 	return vertexConfigOption{config: cfg}
@@ -107,7 +106,7 @@ func DefaultVertexConfig() *VertexConfig {
 	return &VertexConfig{
 		Project:     os.Getenv("GOOGLE_CLOUD_PROJECT"),
 		Location:    location,
-		Temperature: helpers.PtrOf(float32(0.7)),
+		Temperature: new(float32(0.7)),
 	}
 }
 
