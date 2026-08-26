@@ -1,12 +1,22 @@
 package gemini
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 )
+
+// requireADC skips tests that construct a real Vertex AI client, which calls
+// out to Application Default Credentials.
+func requireADC(t *testing.T) {
+	t.Helper()
+	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+		t.Skip("GOOGLE_APPLICATION_CREDENTIALS not set, skipping test requiring Vertex AI ADC")
+	}
+}
 
 func TestNewVertex(t *testing.T) {
 	tests := []struct {
@@ -55,6 +65,10 @@ func TestNewVertex(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if !tt.expectError {
+				requireADC(t)
+			}
+
 			if tt.setupEnv != nil {
 				tt.setupEnv(t)
 			}
@@ -188,6 +202,8 @@ func TestWithVertexConfig_MergePreservesExisting(t *testing.T) {
 }
 
 func TestVertexConfig_TuningFieldsPassThrough(t *testing.T) {
+	requireADC(t)
+
 	client, err := NewVertex("gemini-3.6-flash", WithVertexConfig(&VertexConfig{
 		Project:           "test-project",
 		Location:          "us-central1",
