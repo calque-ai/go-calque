@@ -17,6 +17,13 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/prompt"
 )
 
+// sampleCodingQuestions is reused across the conversation-memory examples below.
+var sampleCodingQuestions = []string{
+	"What is Go?",
+	"How do I handle errors in Go?",
+	"Can you show me an example?",
+}
+
 func main() {
 	// Create a mock provider for demonstration
 	// provider := mock.NewMockProvider("").WithStreamDelay(100) // Slower for demo
@@ -52,11 +59,7 @@ func conversationExample(client ai.Client) {
 		Use(convMem.Output("user123")) // Store response with user ID
 
 	// Simulate a conversation
-	inputs := []string{
-		"What is Go?",
-		"How do I handle errors in Go?",
-		"Can you show me an example?",
-	}
+	inputs := sampleCodingQuestions
 
 	// run the pipeline on each simulated conversation input.
 	for i, input := range inputs {
@@ -108,11 +111,7 @@ func badgerConversationExample(client ai.Client) {
 		Use(convMem.Output("user123"))
 
 	// Simulate a conversation
-	inputs := []string{
-		"What is Go?",
-		"How do I handle errors in Go?",
-		"Can you show me an example?",
-	}
+	inputs := sampleCodingQuestions
 
 	for i, input := range inputs {
 		fmt.Printf("\n--- Message %d ---\n", i+1)

@@ -11,6 +11,13 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
+// Message role identifiers for Message.Role.
+const (
+	RoleUser      = "user"
+	RoleAssistant = "assistant"
+	RoleSystem    = "system"
+)
+
 // Message represents a single conversation message.
 //
 // Contains role ("user", "assistant", "system") and raw content bytes.
@@ -160,11 +167,11 @@ func (cm *ConversationMemory) Input(key string) calque.Handler {
 		}
 
 		// Add current user message
-		contextParts = append(contextParts, fmt.Sprintf("user: %s", currentInput))
+		contextParts = append(contextParts, fmt.Sprintf("%s: %s", RoleUser, currentInput))
 
 		// Store current input as user message
 		newMessage := Message{
-			Role:    "user",
+			Role:    RoleUser,
 			Content: []byte(currentInput),
 		}
 		updatedHistory := make([]Message, len(history), len(history)+1)
@@ -218,7 +225,7 @@ func (cm *ConversationMemory) Output(key string) calque.Handler {
 
 			// Add assistant response
 			newMessage := Message{
-				Role:    "assistant",
+				Role:    RoleAssistant,
 				Content: responseBytes,
 			}
 			updatedHistory := make([]Message, len(history), len(history)+1)

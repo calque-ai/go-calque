@@ -80,15 +80,17 @@ func SystemUser(systemMessage string) calque.Handler {
 //	// Input: "Hello"
 //	// Output: "user: Hello"
 func Chat(role string, initialMessage ...string) calque.Handler {
+	const roleKey = "Role"
+
 	if len(initialMessage) == 0 {
 		// Just format as role message
 		return Template("{{.Role}}: {{.Input}}", map[string]any{
-			"Role": role,
+			roleKey: role,
 		})
 	}
 
 	return Template("{{.Role}}: {{.InitialMessage}}\nuser: {{.Input}}", map[string]any{
-		"Role":           role,
+		roleKey:          role,
 		"InitialMessage": initialMessage[0],
 	})
 }

@@ -14,6 +14,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+var mcpServerCmd = []string{"run", "cmd/server/main.go"}
+
 func main() {
 
 	err := godotenv.Load(".env")
@@ -31,7 +33,7 @@ func main() {
 func runBasicExample() {
 	fmt.Println("=== Example 1: Basic MCP Tool Calling ===")
 
-	client, err := mcp.NewStdio("go", []string{"run", "cmd/server/main.go"})
+	client, err := mcp.NewStdio("go", mcpServerCmd)
 	if err != nil {
 		log.Printf("Failed to create MCP client: %v", err)
 		return
@@ -55,7 +57,7 @@ func runBasicExample() {
 func runAutoExample() {
 	fmt.Println("\n=== Example 0: MCP Auto Registry Client ===")
 
-	client, err := mcp.NewStdio("go", []string{"run", "cmd/server/main.go"})
+	client, err := mcp.NewStdio("go", mcpServerCmd)
 	if err != nil {
 		log.Printf("Failed to create MCP client: %v", err)
 		return
@@ -63,7 +65,7 @@ func runAutoExample() {
 	defer client.Close()
 
 	// Create Gemini example client (reads GOOGLE_API_KEY from env)
-	aiClient, err := gemini.New("gemini-2.5-flash")
+	aiClient, err := gemini.New("gemini-3.6-flash")
 	if err != nil {
 		log.Printf("Failed to create Gemini client: %v", err)
 		return
@@ -109,7 +111,7 @@ func runAutoExample() {
 func runRealisticExample() {
 	fmt.Println("\n=== Example 2: Realistic MCP Usage ===")
 
-	client, err := mcp.NewStdio("go", []string{"run", "cmd/server/main.go"})
+	client, err := mcp.NewStdio("go", mcpServerCmd)
 	if err != nil {
 		log.Printf("Failed to create MCP client: %v", err)
 		return
@@ -162,7 +164,7 @@ func runRealisticExample() {
 func runAdvancedExample() {
 	fmt.Println("\n=== Example 3: Advanced MCP Features ===")
 
-	client, err := mcp.NewStdio("go", []string{"run", "cmd/server/main.go"})
+	client, err := mcp.NewStdio("go", mcpServerCmd)
 	if err != nil {
 		log.Printf("Failed to create MCP client: %v", err)
 		return

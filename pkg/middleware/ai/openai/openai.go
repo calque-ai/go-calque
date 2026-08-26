@@ -38,10 +38,16 @@ import (
 	"github.com/openai/openai-go/v2/shared/constant"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
+)
+
+// JSON map keys and values used when formatting tool calls for the agent framework.
+const (
+	fieldType        = "type"
+	fieldName        = "name"
+	toolTypeFunction = "function"
 )
 
 // Client implements the Client interface for OpenAI.
@@ -69,8 +75,8 @@ type Client struct {
 //
 //	config := &openai.Config{
 //		APIKey: "sk-...",
-//		Temperature: helpers.PtrOf(float32(0.8)),
-//		MaxTokens: helpers.PtrOf(1000),
+//		Temperature: new(float32(0.8)),
+//		MaxTokens: new(1000),
 //	}
 type Config struct {
 	// Required. API key for OpenAI authentication
@@ -142,7 +148,7 @@ func (o configOption) Apply(opts *Config) {
 //
 // Example:
 //
-//	config := &openai.Config{Temperature: helpers.PtrOf(float32(0.9))}
+//	config := &openai.Config{Temperature: new(float32(0.9))}
 //	client, _ := openai.New("gpt-4", openai.WithConfig(config))
 func WithConfig(cfg *Config) Option {
 	return configOption{config: cfg}
@@ -159,12 +165,12 @@ func WithConfig(cfg *Config) Option {
 // Example:
 //
 //	config := openai.DefaultConfig()
-//	config.MaxTokens = helpers.PtrOf(2000)
+//	config.MaxTokens = new(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		APIKey:      os.Getenv("OPENAI_API_KEY"),
-		Temperature: helpers.PtrOf(float32(1.0)),
-		Stream:      helpers.PtrOf(true),
+		Temperature: new(float32(1.0)),
+		Stream:      new(true),
 	}
 }
 
@@ -500,7 +506,7 @@ func (c *Client) multimodalToMessages(ctx context.Context, multimodal *ai.Multim
 
 	for _, part := range multimodal.Parts {
 		switch part.Type {
-		case "text":
+		case ai.ContentTypeText:
 			if part.Text != "" {
 				messageParts = append(messageParts, openai.ChatCompletionContentPartUnionParam{
 					OfText: &openai.ChatCompletionContentPartTextParam{
@@ -509,7 +515,7 @@ func (c *Client) multimodalToMessages(ctx context.Context, multimodal *ai.Multim
 					},
 				})
 			}
-		case "image":
+		case ai.ContentTypeImage:
 			var dataURL string
 			var err error
 
@@ -608,12 +614,12 @@ func (c *Client) applyChatConfig(params *openai.ChatCompletionNewParams, schema 
 // setResponseFormat applies the response format to OpenAI parameters
 func (c *Client) setResponseFormat(responseFormat *ai.ResponseFormat, params *openai.ChatCompletionNewParams) {
 	switch responseFormat.Type {
-	case "json_object":
+	case ai.ResponseFormatJSONObject:
 		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
 			OfJSONObject: &shared.ResponseFormatJSONObjectParam{Type: constant.JSONObject("").Default()},
 		}
 
-	case "json_schema":
+	case ai.ResponseFormatJSONSchema:
 		if responseFormat.Schema != nil {
 			c.setJSONSchemaFormat(responseFormat.Schema, params)
 		}
@@ -683,9 +689,9 @@ func (c *Client) writeOpenAIToolCalls(toolCalls []openai.ChatCompletionMessageFu
 
 	for i, call := range toolCalls {
 		formattedToolCalls[i] = map[string]any{
-			"type": "function",
+			fieldType: toolTypeFunction,
 			"function": map[string]any{
-				"name":      call.Function.Name,
+				fieldName:   call.Function.Name,
 				"arguments": call.Function.Arguments,
 			},
 		}

@@ -17,6 +17,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+const (
+	// clientName identifies this package to MCP servers.
+	clientName = "calque-mcp-client"
+	// errUnknownToolError is used when a tool reports an error but includes no
+	// text content explaining what went wrong.
+	errUnknownToolError = "unknown error (no text content in error response)"
+)
+
 // Client provides MCP (Model Context Protocol) integration for calque flows.
 //
 // Connects to MCP servers to access tools, resources, and prompts through
@@ -47,7 +55,7 @@ type Client struct {
 // defaultImplementation provides default client identification
 func defaultImplementation() *mcp.Implementation {
 	return &mcp.Implementation{
-		Name:    "calque-mcp-client",
+		Name:    clientName,
 		Version: "v0.1.0",
 	}
 }
@@ -58,7 +66,7 @@ func newClient(mcpClient *mcp.Client, opts ...Option) *Client {
 		client:            mcpClient,
 		timeout:           0, // No timeout by default
 		implementation:    defaultImplementation(),
-		capabilities:      []string{}, // Empty by default - no required capabilities
+		capabilities:      []string{}, // Empty by default, no required capabilities
 		progressCallbacks: make(map[string][]func(*ProgressNotificationParams)),
 		subscriptions:     make(map[string]func(*ResourceUpdatedNotificationParams)),
 		completionEnabled: false,

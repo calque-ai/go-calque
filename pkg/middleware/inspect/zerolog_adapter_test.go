@@ -18,7 +18,7 @@ func TestZerologAdapter_Log(t *testing.T) {
 		attrs     []Attribute
 		wantLevel string
 		wantMsg   string
-		wantAttrs map[string]interface{}
+		wantAttrs map[string]any
 	}{
 		{
 			name:      "debug level with message only",
@@ -63,7 +63,7 @@ func TestZerologAdapter_Log(t *testing.T) {
 			attrs:     []Attribute{{Key: "user_id", Value: "123"}},
 			wantLevel: "info",
 			wantMsg:   "user action",
-			wantAttrs: map[string]interface{}{"user_id": "123"},
+			wantAttrs: map[string]any{"user_id": "123"},
 		},
 		{
 			name:  "info level with multiple attributes",
@@ -76,7 +76,7 @@ func TestZerologAdapter_Log(t *testing.T) {
 			},
 			wantLevel: "info",
 			wantMsg:   "request processed",
-			wantAttrs: map[string]interface{}{
+			wantAttrs: map[string]any{
 				"method": "POST",
 				"path":   "/api/users",
 				"status": float64(201), // JSON numbers are float64
@@ -94,7 +94,7 @@ func TestZerologAdapter_Log(t *testing.T) {
 			},
 			wantLevel: "error",
 			wantMsg:   "operation failed",
-			wantAttrs: map[string]interface{}{
+			wantAttrs: map[string]any{
 				"error":       "connection timeout",
 				"retry_count": float64(3),
 				"success":     false,
@@ -108,7 +108,7 @@ func TestZerologAdapter_Log(t *testing.T) {
 			attrs:     []Attribute{{Key: "event", Value: "startup"}},
 			wantLevel: "info",
 			wantMsg:   "", // Note: zerolog may omit empty message field entirely
-			wantAttrs: map[string]interface{}{"event": "startup"},
+			wantAttrs: map[string]any{"event": "startup"},
 		},
 		{
 			name:  "special characters in message and attributes",
@@ -120,7 +120,7 @@ func TestZerologAdapter_Log(t *testing.T) {
 			},
 			wantLevel: "warn",
 			wantMsg:   "special chars: \"quotes\" and 'apostrophes'",
-			wantAttrs: map[string]interface{}{
+			wantAttrs: map[string]any{
 				"data":    "value with spaces and symbols!@#$%",
 				"unicode": "测试数据",
 			},
@@ -136,9 +136,9 @@ func TestZerologAdapter_Log(t *testing.T) {
 			},
 			wantLevel: "info",
 			wantMsg:   "complex data",
-			wantAttrs: map[string]interface{}{
-				"slice": []interface{}{"a", "b", "c"},
-				"map": map[string]interface{}{
+			wantAttrs: map[string]any{
+				"slice": []any{"a", "b", "c"},
+				"map": map[string]any{
 					"x": float64(1),
 					"y": float64(2),
 				},
@@ -168,7 +168,7 @@ func TestZerologAdapter_Log(t *testing.T) {
 				t.Fatal("No output generated")
 			}
 
-			var logEntry map[string]interface{}
+			var logEntry map[string]any
 			if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
 				t.Fatalf("Failed to parse JSON output: %v\nOutput: %s", err, output)
 			}
@@ -209,7 +209,7 @@ func TestZerologAdapter_Log(t *testing.T) {
 }
 
 // compareValues compares values in a way that handles JSON unmarshaling differences
-func compareValues(got, want interface{}) bool {
+func compareValues(got, want any) bool {
 	// Handle nil values
 	if got == nil && want == nil {
 		return true
@@ -222,16 +222,16 @@ func compareValues(got, want interface{}) bool {
 }
 
 // compareTypedValues handles different type comparisons
-func compareTypedValues(got, want interface{}) bool {
+func compareTypedValues(got, want any) bool {
 	switch wantVal := want.(type) {
 	case []string:
 		return compareStringSlice(got, wantVal)
-	case []interface{}:
+	case []any:
 		// Skip comparison for complex slice types that can't be compared
 		return true
 	case map[string]int:
 		return compareStringIntMap(got, wantVal)
-	case map[string]interface{}:
+	case map[string]any:
 		// Skip comparison for complex map types that can't be compared
 		return true
 	default:
@@ -241,8 +241,8 @@ func compareTypedValues(got, want interface{}) bool {
 }
 
 // compareStringSlice compares a string slice with JSON unmarshaled interface slice
-func compareStringSlice(got interface{}, wantSlice []string) bool {
-	gotSlice, ok := got.([]interface{})
+func compareStringSlice(got any, wantSlice []string) bool {
+	gotSlice, ok := got.([]any)
 	if !ok {
 		return false
 	}
@@ -260,8 +260,8 @@ func compareStringSlice(got interface{}, wantSlice []string) bool {
 }
 
 // compareStringIntMap compares a string-int map with JSON unmarshaled interface map
-func compareStringIntMap(got interface{}, wantMap map[string]int) bool {
-	gotMap, ok := got.(map[string]interface{})
+func compareStringIntMap(got any, wantMap map[string]int) bool {
+	gotMap, ok := got.(map[string]any)
 	if !ok {
 		return false
 	}
@@ -514,7 +514,7 @@ func TestZerologAdapter_Integration(t *testing.T) {
 		output := buf.String()
 
 		// Parse JSON to verify structure
-		var logEntry map[string]interface{}
+		var logEntry map[string]any
 		if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
 			t.Fatalf("Failed to parse JSON output: %v", err)
 		}

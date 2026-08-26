@@ -13,6 +13,12 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
+// JSON Schema type names used when generating mock structured output.
+const (
+	jsonSchemaTypeString = "string"
+	jsonSchemaTypeObject = "object"
+)
+
 // MockClient implements the Client interface for testing
 type MockClient struct {
 	response         string
@@ -193,31 +199,31 @@ func (m *MockClient) streamResponse(response string, req *calque.Request, res *c
 
 // simulateStructuredOutput generates mock structured JSON output
 func (m *MockClient) simulateStructuredOutput(schema *ResponseFormat, input string, res *calque.Response) error {
-	var mockJSON map[string]interface{}
+	var mockJSON map[string]any
 
 	// Generate a simple mock JSON response based on the schema type
 	switch schema.Type {
-	case "json_object":
+	case ResponseFormatJSONObject:
 		// Simple JSON object
-		mockJSON = map[string]interface{}{
+		mockJSON = map[string]any{
 			"message": fmt.Sprintf("Mock JSON response to: %s", input),
 			"type":    "mock_response",
 			"input":   input,
 		}
-	case "json_schema":
+	case ResponseFormatJSONSchema:
 		// Try to generate a response that matches the schema structure
 		if schema.Schema != nil {
 			mockJSON = m.generateMockFromSchema(schema.Schema, input)
 		} else {
 			// Fallback to simple JSON
-			mockJSON = map[string]interface{}{
+			mockJSON = map[string]any{
 				"message": fmt.Sprintf("Mock schema response to: %s", input),
 				"schema":  true,
 			}
 		}
 	default:
 		// Default JSON response
-		mockJSON = map[string]interface{}{
+		mockJSON = map[string]any{
 			"response": fmt.Sprintf("Mock response to: %s", input),
 		}
 	}
@@ -233,8 +239,8 @@ func (m *MockClient) simulateStructuredOutput(schema *ResponseFormat, input stri
 }
 
 // generateMockFromSchema generates mock data based on JSON schema (simplified)
-func (m *MockClient) generateMockFromSchema(schema *jsonschema.Schema, input string) map[string]interface{} {
-	result := make(map[string]interface{})
+func (m *MockClient) generateMockFromSchema(schema *jsonschema.Schema, input string) map[string]any {
+	result := make(map[string]any)
 
 	// Very basic schema interpretation for testing
 	if schema.Properties != nil {
@@ -243,16 +249,16 @@ func (m *MockClient) generateMockFromSchema(schema *jsonschema.Schema, input str
 			propSchema := pair.Value
 
 			switch propSchema.Type {
-			case "string":
+			case jsonSchemaTypeString:
 				result[key] = fmt.Sprintf("mock_%s_for_%s", key, input)
 			case "integer", "number":
 				result[key] = 42
 			case "boolean":
 				result[key] = true
 			case "array":
-				result[key] = []interface{}{"mock_item_1", "mock_item_2"}
-			case "object":
-				result[key] = map[string]interface{}{"nested": "mock_value"}
+				result[key] = []any{"mock_item_1", "mock_item_2"}
+			case jsonSchemaTypeObject:
+				result[key] = map[string]any{"nested": "mock_value"}
 			default:
 				result[key] = fmt.Sprintf("mock_%s", key)
 			}

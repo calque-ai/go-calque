@@ -19,6 +19,11 @@ import (
 	"github.com/calque-ai/go-calque/pkg/middleware/retrieval"
 )
 
+const (
+	metadataKeyCategory = "category"
+	metadataKeyTopic    = "topic"
+)
+
 func main() {
 	// Create mock vector store and load knowledge base
 	store := mock.New()
@@ -46,8 +51,8 @@ func loadKnowledgeBase(store retrieval.VectorStore) {
 			ID:      "calque-intro",
 			Content: "Calque is a Go framework for building AI-powered data processing pipelines. It provides middleware patterns for composing flows that can process, transform, and analyze data through AI models.",
 			Metadata: map[string]any{
-				"category": "overview",
-				"topic":    "calque",
+				metadataKeyCategory: "overview",
+				metadataKeyTopic:    "calque",
 			},
 			Created: time.Now(),
 		},
@@ -55,8 +60,8 @@ func loadKnowledgeBase(store retrieval.VectorStore) {
 			ID:      "calque-flows",
 			Content: "Flows in Calque are the primary abstraction for data processing. You create a flow using calque.NewFlow() and chain middleware handlers using the Use() method. Flows can be composed into larger pipelines.",
 			Metadata: map[string]any{
-				"category": "concepts",
-				"topic":    "flows",
+				metadataKeyCategory: "concepts",
+				metadataKeyTopic:    "flows",
 			},
 			Created: time.Now(),
 		},
@@ -64,8 +69,8 @@ func loadKnowledgeBase(store retrieval.VectorStore) {
 			ID:      "calque-middleware",
 			Content: "Middleware in Calque processes data as it flows through the pipeline. Types include text transformers, AI agents, logging, branching, and retrieval. Middleware can be streaming or buffered.",
 			Metadata: map[string]any{
-				"category": "concepts",
-				"topic":    "middleware",
+				metadataKeyCategory: "concepts",
+				metadataKeyTopic:    "middleware",
 			},
 			Created: time.Now(),
 		},
@@ -73,8 +78,8 @@ func loadKnowledgeBase(store retrieval.VectorStore) {
 			ID:      "retrieval-search",
 			Content: "The retrieval package provides VectorSearch middleware for semantic search. It supports multiple strategies: StrategyRelevant for score-based ranking, StrategyRecent for timestamp ordering, and StrategyDiverse for MMR-based diversity selection.",
 			Metadata: map[string]any{
-				"category": "retrieval",
-				"topic":    "vector-search",
+				metadataKeyCategory: "retrieval",
+				metadataKeyTopic:    "vector-search",
 			},
 			Created: time.Now(),
 		},
@@ -82,8 +87,8 @@ func loadKnowledgeBase(store retrieval.VectorStore) {
 			ID:      "retrieval-documents",
 			Content: "DocumentLoader middleware loads documents from files and URLs. It supports glob patterns for file paths and can fetch from HTTP/HTTPS endpoints. Documents include content, metadata, and timestamps.",
 			Metadata: map[string]any{
-				"category": "retrieval",
-				"topic":    "document-loader",
+				metadataKeyCategory: "retrieval",
+				metadataKeyTopic:    "document-loader",
 			},
 			Created: time.Now(),
 		},

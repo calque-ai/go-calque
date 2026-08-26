@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 )
 
 // LogLevel represents logging levels (Debug < Info < Warn < Error)
@@ -140,11 +141,11 @@ func (sp *SimplePrinter) Print(_ context.Context, msg string, attrs ...Attribute
 	}
 
 	// Simple attribute formatting: msg key1=value1 key2=value2
-	var attrStr string
+	var attrStr strings.Builder
 	for _, attr := range attrs {
-		attrStr += fmt.Sprintf(" %s=%v", attr.Key, attr.Value)
+		fmt.Fprintf(&attrStr, " %s=%v", attr.Key, attr.Value)
 	}
-	sp.backend.Printf("%s%s", msg, attrStr)
+	sp.backend.Printf("%s%s", msg, attrStr.String())
 }
 
 // LeveledPrinter uses Log() with level checking - structured logging

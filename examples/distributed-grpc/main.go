@@ -259,7 +259,7 @@ type ToolsServiceImpl struct {
 // ExecuteTool implements the tools service method
 func (s *ToolsServiceImpl) ExecuteTool(_ context.Context, req *calquepb.ToolRequest) (*calquepb.ToolResponse, error) {
 	// Simple tool execution
-	result := map[string]interface{}{
+	result := map[string]any{
 		"tool":      req.Name,
 		"arguments": req.Arguments,
 		"result":    fmt.Sprintf("Tool %s executed successfully", req.Name),
@@ -296,7 +296,7 @@ func startDistributedServices(ready chan struct{}) {
 	go startToolsService(":8082", servicesStarted)
 
 	// Wait for all services to start
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		<-servicesStarted
 	}
 

@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/gemini"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
@@ -41,7 +40,7 @@ func example1SimpleLogging() {
 	fmt.Println("=== Example 1: Simple Usage Logging (OpenAI) ===")
 
 	client, err := openai.New("gpt-5-mini", openai.WithConfig(&openai.Config{
-		Temperature: helpers.PtrOf(float32(1.0)),
+		Temperature: new(float32(1.0)),
 	}))
 	if err != nil {
 		log.Printf("Failed to create client: %v", err)
@@ -76,8 +75,8 @@ func example1SimpleLogging() {
 func example2CumulativeTracking() {
 	fmt.Println("=== Example 2: Cumulative Usage Tracking (Gemini) ===")
 
-	client, err := gemini.New("gemini-2.5-flash", gemini.WithConfig(&gemini.Config{
-		Temperature: helpers.PtrOf(float32(0.7)),
+	client, err := gemini.New("gemini-3.6-flash", gemini.WithConfig(&gemini.Config{
+		Temperature: new(float32(0.7)),
 	}))
 	if err != nil {
 		log.Printf("Failed to create client: %v", err)
@@ -134,7 +133,7 @@ func example3CostEstimation() {
 	fmt.Println("=== Example 3: Cost Estimation ===")
 
 	client, err := openai.New("gpt-5-mini", openai.WithConfig(&openai.Config{
-		Temperature: helpers.PtrOf(float32(1.0)),
+		Temperature: new(float32(1.0)),
 	}))
 	if err != nil {
 		log.Printf("Failed to create client: %v", err)

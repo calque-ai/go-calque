@@ -90,7 +90,7 @@ func isMultimodalJSON(data []byte) bool {
 // hasJSONData checks if multimodal input contains embedded data (simple approach)
 func hasJSONData(multimodal MultimodalInput) bool {
 	for _, part := range multimodal.Parts {
-		if part.Type != "text" && part.Data != nil && len(part.Data) > 0 {
+		if part.Type != ContentTypeText && part.Data != nil && len(part.Data) > 0 {
 			return true
 		}
 	}

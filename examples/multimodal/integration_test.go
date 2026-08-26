@@ -286,7 +286,7 @@ func TestMultimodalConcurrency(t *testing.T) {
 	results := make(chan string, numRequests)
 	errors := make(chan error, numRequests)
 
-	for i := 0; i < numRequests; i++ {
+	for i := range numRequests {
 		go func(id int) {
 			var result string
 			err := flow.Run(context.Background(), convert.ToJSON(multimodalInput), &result)
@@ -300,7 +300,7 @@ func TestMultimodalConcurrency(t *testing.T) {
 
 	// Collect results
 	successCount := 0
-	for i := 0; i < numRequests; i++ {
+	for range numRequests {
 		select {
 		case result := <-results:
 			if strings.Contains(result, "Concurrent processing") {

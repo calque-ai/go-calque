@@ -401,12 +401,12 @@ func TestInMemoryStoreConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Test concurrent writes
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 
-			for j := 0; j < numOperations; j++ {
+			for j := range numOperations {
 				key := fmt.Sprintf("key-%d-%d", id, j)
 				value := fmt.Sprintf("value-%d-%d", id, j)
 
@@ -428,12 +428,12 @@ func TestInMemoryStoreConcurrency(t *testing.T) {
 	}
 
 	// Test concurrent reads
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 
-			for j := 0; j < numOperations; j++ {
+			for j := range numOperations {
 				key := fmt.Sprintf("key-%d-%d", id, j)
 				expectedValue := fmt.Sprintf("value-%d-%d", id, j)
 
@@ -452,12 +452,12 @@ func TestInMemoryStoreConcurrency(t *testing.T) {
 	wg.Wait()
 
 	// Test concurrent deletes
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 
-			for j := 0; j < numOperations; j++ {
+			for j := range numOperations {
 				key := fmt.Sprintf("key-%d-%d", id, j)
 
 				err := store.Delete(key)

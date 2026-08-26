@@ -16,7 +16,7 @@ import (
 type Error struct {
 	calqueErr *calque.Error // Embed calque.Error for context metadata
 	Code      codes.Code
-	Details   []interface{}
+	Details   []any
 }
 
 // Error implements the error interface (overrides calque.Error.Error()).
@@ -66,7 +66,7 @@ func (e *Error) LogAttrs() []slog.Attr {
 
 // WrapError wraps a gRPC error with context metadata using calque errors.
 // The error includes trace_id and request_id from context, plus gRPC status code.
-func WrapError(ctx context.Context, err error, message string, details ...interface{}) *Error {
+func WrapError(ctx context.Context, err error, message string, details ...any) *Error {
 	if err == nil {
 		return nil
 	}
@@ -156,7 +156,7 @@ func WrapErrorSimple(ctx context.Context, err error, message string) error {
 }
 
 // WrapErrorfSimple wraps an error with formatted message and context metadata.
-func WrapErrorfSimple(ctx context.Context, err error, format string, args ...interface{}) error {
+func WrapErrorfSimple(ctx context.Context, err error, format string, args ...any) error {
 	if err == nil {
 		return nil
 	}

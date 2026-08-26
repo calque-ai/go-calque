@@ -35,7 +35,7 @@ func WrapError(ctx context.Context, err error, message string) error {
 //
 //	err := helpers.WrapErrorf(ctx, originalErr, "failed to connect to %s service", serviceName)
 //	err := helpers.WrapErrorf(ctx, dbErr, "failed to save user %d data", userID)
-func WrapErrorf(ctx context.Context, err error, format string, args ...interface{}) error {
+func WrapErrorf(ctx context.Context, err error, format string, args ...any) error {
 	if err == nil {
 		return nil
 	}

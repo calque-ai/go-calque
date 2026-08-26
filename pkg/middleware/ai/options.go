@@ -114,7 +114,7 @@ func WithSchema(schemaSource any) AgentOption {
 		reflector := jsonschema.Reflector{}
 		schema := reflector.Reflect(v)
 		resultSchema = &ResponseFormat{
-			Type:   "json_schema",
+			Type:   ResponseFormatJSONSchema,
 			Schema: schema,
 		}
 	}
@@ -131,7 +131,7 @@ func WithSchemaFor[T any]() AgentOption {
 	reflector := jsonschema.Reflector{}
 	schema := reflector.Reflect(zero)
 	return schemaOption{schema: &ResponseFormat{
-		Type:   "json_schema",
+		Type:   ResponseFormatJSONSchema,
 		Schema: schema,
 	}}
 }

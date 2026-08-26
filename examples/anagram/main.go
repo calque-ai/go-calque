@@ -20,9 +20,9 @@ type Anagrams map[string]map[string]struct{}
 func main() {
 	// Sample words for testing
 	words := []string{
-		"listen", "silent", "hello", "world", "act", "cat", "tac",
-		"race", "care", "acre", "programming", "go", "og", "a", "b",
-		"stressed", "desserts", "evil", "live", "vile",
+		"listen", "silent", "hello", "world", "act", "cat", "tac", //nolint:goconst // sample data, not worth extracting to constants
+		"race", "care", "acre", "programming", "go", "og", "a", "b", //nolint:goconst // sample data, not worth extracting to constants
+		"stressed", "desserts", "evil", "live", "vile", //nolint:goconst // sample data, not worth extracting to constants
 	}
 
 	fmt.Println("Anagram Processing Example")
@@ -156,9 +156,9 @@ func accumulateAnagrams() calque.Handler {
 		}
 
 		result := make(Anagrams)
-		lines := strings.Split(string(input), "\n")
+		lines := strings.SplitSeq(string(input), "\n")
 
-		for _, line := range lines {
+		for line := range lines {
 			line = strings.TrimSpace(line)
 			if line == "" {
 				continue
@@ -194,9 +194,9 @@ func accumulateAnagrams() calque.Handler {
 // parseAnagramOutput converts the flow output back to Anagrams
 func parseAnagramOutput(output string) map[string]map[string]struct{} {
 	result := make(Anagrams)
-	lines := strings.Split(output, "\n")
+	lines := strings.SplitSeq(output, "\n")
 
-	for _, line := range lines {
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -226,8 +226,8 @@ func filterValidWords() calque.Handler {
 	return text.Filter(
 		func(s string) bool {
 			// Check if input contains any valid words (>1 char, non-empty)
-			lines := strings.Split(s, "\n")
-			for _, line := range lines {
+			lines := strings.SplitSeq(s, "\n")
+			for line := range lines {
 				word := strings.TrimSpace(line)
 				if len(word) > 1 {
 					return true

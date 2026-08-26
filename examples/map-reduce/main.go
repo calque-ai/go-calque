@@ -85,7 +85,7 @@ func main() {
 	evaluationPipeline := calque.NewFlow().
 		Use(inspect.Head("resume evaluation", 200)).
 		Use(prompt.Template("System: {{.System}}\n\nResume data to evaluate: {{.Input}}", map[string]any{
-			"System": systemPrompt,
+			"System": systemPrompt, //nolint:goconst // example code, single-use template key
 		})).
 		Use(inspect.Head("prompt with data", 1000)).
 		Use(inspect.Timing("AI Response Time", ai.Agent(client))).

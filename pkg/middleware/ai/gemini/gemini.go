@@ -13,13 +13,19 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
-const applicationJSON = "application/json"
+const (
+	applicationJSON        = "application/json"
+	responseTypeJSON       = "json_object"
+	responseTypeJSONSchema = "json_schema"
+	toolCallType           = "function"
+	contentTypeText        = "text"
+	errModelNameRequired   = "model name is required"
+)
 
 // Client implements the Client interface for Google Gemini.
 //
@@ -28,7 +34,7 @@ const applicationJSON = "application/json"
 //
 // Example:
 //
-//	client, _ := gemini.New("gemini-1.5-pro")
+//	client, _ := gemini.New("gemini-3.6-flash")
 //	agent := ai.Agent(client)
 type Client struct {
 	client    *genai.Client
@@ -45,11 +51,12 @@ type Client struct {
 // Example:
 //
 //	config := &gemini.Config{
-//		Temperature: helpers.PtrOf(float32(0.8)),
-//		MaxTokens: helpers.PtrOf(1000),
+//		Temperature: new(float32(0.8)),
+//		MaxTokens: new(1000),
 //	}
 type Config struct {
-	// Required. API key for Google AI/Vertex AI authentication
+	// Required. API key for Google AI Studio authentication.
+	// Not used by NewVertex — Vertex AI authenticates via ADC instead.
 	APIKey string
 
 	// Optional. Controls randomness in token selection (0.0-2.0)
@@ -119,8 +126,8 @@ func (o configOption) Apply(opts *Config) {
 //
 // Example:
 //
-//	config := &gemini.Config{Temperature: helpers.PtrOf(float32(0.9))}
-//	client, _ := gemini.New("gemini-pro", gemini.WithConfig(config))
+//	config := &gemini.Config{Temperature: new(float32(0.9))}
+//	client, _ := gemini.New("gemini-3.6-flash", gemini.WithConfig(config))
 func WithConfig(config *Config) Option {
 	return configOption{config: config}
 }
@@ -136,11 +143,11 @@ func WithConfig(config *Config) Option {
 // Example:
 //
 //	config := gemini.DefaultConfig()
-//	config.MaxTokens = helpers.PtrOf(2000)
+//	config.MaxTokens = new(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		APIKey:      os.Getenv("GOOGLE_API_KEY"),
-		Temperature: helpers.PtrOf(float32(0.7)),
+		Temperature: new(float32(0.7)),
 	}
 }
 
@@ -151,16 +158,16 @@ func DefaultConfig() *Config {
 // Behavior: Initializes authenticated Gemini client
 //
 // Requires GOOGLE_API_KEY environment variable or config.APIKey.
-// Supports all Gemini models: gemini-pro, gemini-1.5-pro, etc.
+// Supports all Gemini models: gemini-3.6-flash, gemini-3.5-flash-lite, etc.
 //
 // Example:
 //
-//	client, err := gemini.New("gemini-1.5-pro")
+//	client, err := gemini.New("gemini-3.6-flash")
 //	if err != nil { log.Fatal(err) }
 func New(model string, opts ...Option) (*Client, error) {
 	ctx := context.Background()
 	if model == "" {
-		return nil, calque.NewErr(ctx, "model name is required")
+		return nil, calque.NewErr(ctx, errModelNameRequired)
 	}
 
 	// Build config from options
@@ -234,13 +241,13 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 
 	// Apply client configuration
 	if g.config.Temperature != nil {
-		config.Temperature = genai.Ptr(*g.config.Temperature)
+		config.Temperature = new(*g.config.Temperature)
 	}
 	if g.config.TopP != nil {
-		config.TopP = genai.Ptr(*g.config.TopP)
+		config.TopP = new(*g.config.TopP)
 	}
 	if g.config.TopK != nil {
-		config.TopK = genai.Ptr(*g.config.TopK)
+		config.TopK = new(*g.config.TopK)
 	}
 	if g.config.MaxTokens != nil {
 		config.MaxOutputTokens = int32(*g.config.MaxTokens)
@@ -255,13 +262,13 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 		}
 	}
 	if g.config.PresencePenalty != nil {
-		config.PresencePenalty = genai.Ptr(*g.config.PresencePenalty)
+		config.PresencePenalty = new(*g.config.PresencePenalty)
 	}
 	if g.config.FrequencyPenalty != nil {
-		config.FrequencyPenalty = genai.Ptr(*g.config.FrequencyPenalty)
+		config.FrequencyPenalty = new(*g.config.FrequencyPenalty)
 	}
 	if g.config.Seed != nil {
-		config.Seed = genai.Ptr(*g.config.Seed)
+		config.Seed = new(*g.config.Seed)
 	}
 	if g.config.CandidateCount != nil {
 		config.CandidateCount = *g.config.CandidateCount
@@ -280,9 +287,9 @@ func (g *Client) buildGenerateConfig(schemaOverride *ai.ResponseFormat) *genai.G
 
 	if responseFormat != nil {
 		switch responseFormat.Type {
-		case "json_object":
+		case responseTypeJSON:
 			config.ResponseMIMEType = applicationJSON
-		case "json_schema":
+		case responseTypeJSONSchema:
 			config.ResponseMIMEType = applicationJSON
 			if responseFormat.Schema != nil {
 				config.ResponseJsonSchema = responseFormat.Schema
@@ -460,8 +467,8 @@ func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calq
 
 		// OpenAI format with type and function fields
 		toolCall := map[string]any{
-			"type": "function",
-			"function": map[string]any{
+			"type": toolCallType,
+			toolCallType: map[string]any{
 				"name":      call.Name,
 				"arguments": argsJSON,
 			},
@@ -507,7 +514,7 @@ func (g *Client) multimodalToParts(ctx context.Context, multimodal *ai.Multimoda
 
 	for _, part := range multimodal.Parts {
 		switch part.Type {
-		case "text":
+		case contentTypeText:
 			if part.Text != "" {
 				parts = append(parts, genai.Part{Text: part.Text})
 			}

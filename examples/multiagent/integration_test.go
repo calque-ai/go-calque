@@ -72,7 +72,7 @@ func TestLoadBalancer(t *testing.T) {
 
 	// Test multiple requests to see load distribution
 	responses := make([]string, 3)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		var result string
 		err := pipeline.Run(context.Background(), "test request", &result)
 		if err != nil {
@@ -269,7 +269,7 @@ func TestMultiAgentConcurrency(t *testing.T) {
 
 	// Create multiple agents
 	agents := make([]calque.Handler, 5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		agents[i] = ai.Agent(ai.NewMockClient(fmt.Sprintf("Response from agent %d", i+1)))
 	}
 

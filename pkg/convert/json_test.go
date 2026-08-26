@@ -497,7 +497,7 @@ func TestJsoninputConverter_ToReader_IoReader(t *testing.T) {
 func TestJsoninputConverter_ToReader_IoReader_LargeData(t *testing.T) {
 	// Test with data larger than buffer sizes to ensure chunked validation works
 	largeObject := make(map[string]any)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		largeObject[fmt.Sprintf("key_%d", i)] = fmt.Sprintf("value_%d", i)
 	}
 

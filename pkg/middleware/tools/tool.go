@@ -6,6 +6,12 @@ import (
 	orderedmap "github.com/pb33f/ordered-map/v2"
 )
 
+const (
+	schemaTypeString = "string" // schemaTypeString represents the JSON Schema type for strings.
+	schemaTypeObject = "object" // schemaTypeObject represents the JSON Schema type for objects.
+	inputParamName   = "input"  // inputParamName is the parameter name used by simple, single-input tools.
+)
+
 // Tool defines a function that can be called by the LLM (OpenAI Function Calling standard).
 // Tools are handlers that extend the calque Handler interface with metadata and schema.
 // Tools can be composed, logged, timed, cached like any other handler.
@@ -87,15 +93,15 @@ func (q *simpleTool) Description() string {
 func (q *simpleTool) ParametersSchema() *jsonschema.Schema {
 	// Simple tools use a basic schema with a single "input" string parameter
 	properties := orderedmap.New[string, *jsonschema.Schema]()
-	properties.Set("input", &jsonschema.Schema{
-		Type:        "string",
+	properties.Set(inputParamName, &jsonschema.Schema{
+		Type:        schemaTypeString,
 		Description: "Input for the " + q.name + " tool",
 	})
 
 	return &jsonschema.Schema{
-		Type:       "object",
+		Type:       schemaTypeObject,
 		Properties: properties,
-		Required:   []string{"input"},
+		Required:   []string{inputParamName},
 	}
 }
 
@@ -150,15 +156,15 @@ func Simple(name, description string, fn func(string) string) Tool {
 func HandlerFunc(name, description string, fn func(*calque.Request, *calque.Response) error) Tool {
 	// HandlerFunc tools use a basic schema with a single "input" string parameter
 	properties := orderedmap.New[string, *jsonschema.Schema]()
-	properties.Set("input", &jsonschema.Schema{
-		Type:        "string",
+	properties.Set(inputParamName, &jsonschema.Schema{
+		Type:        schemaTypeString,
 		Description: "Input for the " + name + " tool",
 	})
 
 	schema := &jsonschema.Schema{
-		Type:       "object",
+		Type:       schemaTypeObject,
 		Properties: properties,
-		Required:   []string{"input"},
+		Required:   []string{inputParamName},
 	}
 
 	return New(name, description, schema, calque.HandlerFunc(fn))

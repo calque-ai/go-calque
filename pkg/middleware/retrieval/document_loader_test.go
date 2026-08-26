@@ -482,7 +482,7 @@ func TestDocumentLoaderConcurrency(t *testing.T) {
 	numFiles := 10
 	sources := make([]string, numFiles)
 
-	for i := 0; i < numFiles; i++ {
+	for i := range numFiles {
 		filename := filepath.Join(tempDir, fmt.Sprintf("concurrent_%d.txt", i))
 		content := fmt.Sprintf("Content for file %d", i)
 		if err := os.WriteFile(filename, []byte(content), 0644); err != nil {

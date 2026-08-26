@@ -106,7 +106,7 @@ func createMCPToolHandler(client *Client, toolName string) calque.Handler {
 			}
 			errorMessage := errorText.String()
 			if errorMessage == "" {
-				errorMessage = "unknown error (no text content in error response)"
+				errorMessage = errUnknownToolError
 			}
 			return client.handleError(calque.NewErr(r.Context, fmt.Sprintf("tool %s returned error: %s", toolName, errorMessage)))
 		}

@@ -12,6 +12,9 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
+// parseErrorToolName marks a ToolCall as a parse failure rather than a real tool invocation.
+const parseErrorToolName = "_parse_error"
+
 // ToolCall represents a parsed tool call from LLM output
 type ToolCall struct {
 	Name      string `json:"name"`
@@ -169,7 +172,7 @@ func parseToolCalls(output []byte) []ToolCall {
 // parseErrorToolCall creates a standardized parse error ToolCall
 func parseErrorToolCall(output []byte, errorMsg string) []ToolCall {
 	return []ToolCall{{
-		Name:      "_parse_error",
+		Name:      parseErrorToolName,
 		Arguments: string(output), // Preserve original malformed content
 		Error:     errorMsg,
 	}}
@@ -229,13 +232,11 @@ func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []T
 
 	// Start workers
 	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range jobs {
 				results[i] = executeToolCall(ctx, tools, toolCalls[i])
 			}
-		}()
+		})
 	}
 
 	// Send jobs

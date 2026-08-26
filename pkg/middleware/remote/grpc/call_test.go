@@ -465,7 +465,7 @@ func TestErrorHandlingConcurrency(t *testing.T) {
 	concurrency := 10
 	done := make(chan bool, concurrency)
 
-	for i := 0; i < concurrency; i++ {
+	for i := range concurrency {
 		go func(_ int) {
 			// Test isRetryableError concurrently
 			err := status.Error(codes.Unavailable, "unavailable")
@@ -476,7 +476,7 @@ func TestErrorHandlingConcurrency(t *testing.T) {
 
 	// Wait for all goroutines to complete
 	successCount := 0
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		select {
 		case result := <-done:
 			if result {

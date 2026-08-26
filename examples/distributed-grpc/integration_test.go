@@ -117,20 +117,20 @@ func TestServiceImplementations(t *testing.T) {
 
 	testCases := []struct {
 		name     string
-		service  func() interface{}
-		request  interface{}
-		validate func(t *testing.T, resp interface{}, err error)
+		service  func() any
+		request  any
+		validate func(t *testing.T, resp any, err error)
 	}{
 		{
 			name: "AI Service Implementation",
-			service: func() interface{} {
+			service: func() any {
 				server := grpcmw.NewServer(":0")
 				return &AIServiceImpl{server: server}
 			},
 			request: &calquepb.AIRequest{
 				Prompt: "test prompt",
 			},
-			validate: func(t *testing.T, resp interface{}, err error) {
+			validate: func(t *testing.T, resp any, err error) {
 				if err != nil {
 					t.Errorf("ProcessAI failed: %v", err)
 				}
@@ -150,7 +150,7 @@ func TestServiceImplementations(t *testing.T) {
 		},
 		{
 			name: "Memory Service Implementation",
-			service: func() interface{} {
+			service: func() any {
 				server := grpcmw.NewServer(":0")
 				return &MemoryServiceImpl{server: server}
 			},
@@ -158,7 +158,7 @@ func TestServiceImplementations(t *testing.T) {
 				Operation: "get",
 				Key:       "test-key",
 			},
-			validate: func(t *testing.T, resp interface{}, err error) {
+			validate: func(t *testing.T, resp any, err error) {
 				if err != nil {
 					t.Errorf("ProcessMemory failed: %v", err)
 				}
@@ -173,7 +173,7 @@ func TestServiceImplementations(t *testing.T) {
 		},
 		{
 			name: "Tools Service Implementation",
-			service: func() interface{} {
+			service: func() any {
 				server := grpcmw.NewServer(":0")
 				return &ToolsServiceImpl{server: server}
 			},
@@ -181,7 +181,7 @@ func TestServiceImplementations(t *testing.T) {
 				Name:      "test-tool",
 				Arguments: "test input",
 			},
-			validate: func(t *testing.T, resp interface{}, err error) {
+			validate: func(t *testing.T, resp any, err error) {
 				if err != nil {
 					t.Errorf("ExecuteTool failed: %v", err)
 				}
@@ -201,7 +201,7 @@ func TestServiceImplementations(t *testing.T) {
 			t.Parallel()
 
 			service := tc.service()
-			var resp interface{}
+			var resp any
 			var err error
 
 			switch s := service.(type) {

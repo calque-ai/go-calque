@@ -17,10 +17,19 @@ import (
 	"github.com/ollama/ollama/api"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
-	"github.com/calque-ai/go-calque/pkg/helpers"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai/config"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
+)
+
+const (
+	// toolTypeFunction is the OpenAI-compatible tool type discriminator used for
+	// both outgoing tool definitions and incoming tool calls.
+	toolTypeFunction = "function"
+	// defaultModel is used when New is called without an explicit model name.
+	defaultModel = "llama3.2"
+	// roleUser is the chat message role for user-authored messages.
+	roleUser = "user"
 )
 
 // Client implements the Client interface for Ollama.
@@ -48,7 +57,7 @@ type Client struct {
 //
 //	config := &ollama.Config{
 //		Host: "http://192.168.1.100:11434",
-//		Temperature: helpers.PtrOf(float32(0.8)),
+//		Temperature: new(float32(0.8)),
 //	}
 type Config struct {
 	// Optional. Ollama server host (defaults to localhost:11434 or OLLAMA_HOST env)
@@ -123,13 +132,13 @@ func WithConfig(cfg *Config) Option {
 // Example:
 //
 //	config := ollama.DefaultConfig()
-//	config.MaxTokens = helpers.PtrOf(2000)
+//	config.MaxTokens = new(2000)
 func DefaultConfig() *Config {
 	return &Config{
 		Host:        "", // Will use ClientFromEnvironment() default
-		Temperature: helpers.PtrOf(float32(0.7)),
+		Temperature: new(float32(0.7)),
 		KeepAlive:   "5m",
-		Stream:      helpers.PtrOf(true), // Ollama streams by default
+		Stream:      new(true), // Ollama streams by default
 	}
 }
 
@@ -149,7 +158,7 @@ func DefaultConfig() *Config {
 func New(model string, opts ...Option) (*Client, error) {
 	ctx := context.Background()
 	if model == "" {
-		model = "llama3.2" // Default model
+		model = defaultModel
 	}
 
 	// Build config from options
@@ -340,7 +349,7 @@ func (o *Client) inputToChatRequest(ctx context.Context, input *ai.ClassifiedInp
 	case ai.TextInput:
 		req.Messages = []api.Message{
 			{
-				Role:    "user",
+				Role:    roleUser,
 				Content: input.Text,
 			},
 		}
@@ -365,17 +374,17 @@ func (o *Client) multimodalToMessage(ctx context.Context, multimodal *ai.Multimo
 		return nil, calque.NewErr(ctx, "multimodal input cannot be nil")
 	}
 
-	message := &api.Message{Role: "user"}
+	message := &api.Message{Role: roleUser}
 	var textParts []string
 	var images []api.ImageData
 
 	for _, part := range multimodal.Parts {
 		switch part.Type {
-		case "text":
+		case ai.ContentTypeText:
 			if part.Text != "" {
 				textParts = append(textParts, part.Text)
 			}
-		case "image":
+		case ai.ContentTypeImage:
 			var data []byte
 			var err error
 
@@ -500,7 +509,7 @@ func (o *Client) convertToOllamaTools(_ context.Context, toolList []tools.Tool) 
 		}
 
 		ollamaTool := api.Tool{
-			Type:     "function",
+			Type:     toolTypeFunction,
 			Function: function,
 		}
 		ollamaTools[i] = ollamaTool
@@ -525,8 +534,8 @@ func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *calque.Respon
 		}
 
 		toolCall := map[string]any{
-			"type": "function",
-			"function": map[string]any{
+			"type": toolTypeFunction,
+			toolTypeFunction: map[string]any{
 				"name":      call.Function.Name,
 				"arguments": argsJSON,
 			},

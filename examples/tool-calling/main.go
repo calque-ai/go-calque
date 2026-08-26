@@ -77,7 +77,8 @@ func runSimpleAgent() {
 	})
 
 	// Create a simple time lookup tool
-	currentTime := tools.Simple("current_time", "Gets the current date and time. Call with empty string or '2006-01-02 15:04:05' format to get current time in default format.", func(jsonArgs string) string {
+	const defaultTimeFormat = "2006-01-02 15:04:05"
+	currentTime := tools.Simple("current_time", "Gets the current date and time. Call with empty string or '"+defaultTimeFormat+"' format to get current time in default format.", func(jsonArgs string) string {
 		// Parse JSON arguments
 		var args struct {
 			Input string `json:"input"`
@@ -88,13 +89,13 @@ func runSimpleAgent() {
 
 		format := args.Input
 		if format == "" {
-			format = "2006-01-02 15:04:05"
+			format = defaultTimeFormat
 		}
 		return time.Now().Format(format)
 	})
 
 	// Create Gemini example client (reads GOOGLE_API_KEY from env)
-	client, err := gemini.New("gemini-2.5-flash")
+	client, err := gemini.New("gemini-3.6-flash")
 	if err != nil {
 		log.Fatal("Failed to create Gemini client:", err)
 	}

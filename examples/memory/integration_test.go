@@ -274,7 +274,7 @@ func TestMemoryConcurrency(t *testing.T) {
 	const messagesPerUser = 3
 	results := make(chan error, numUsers)
 
-	for userID := 0; userID < numUsers; userID++ {
+	for userID := range numUsers {
 		go func(id int) {
 			userKey := fmt.Sprintf("user%d", id)
 
@@ -283,7 +283,7 @@ func TestMemoryConcurrency(t *testing.T) {
 			pipe.Use(convMem.Input(userKey))
 			pipe.Use(convMem.Output(userKey))
 
-			for msgID := 0; msgID < messagesPerUser; msgID++ {
+			for msgID := range messagesPerUser {
 				input := fmt.Sprintf("Message %d from user %d", msgID, id)
 				var result string
 				err := pipe.Run(context.Background(), input, &result)
@@ -297,7 +297,7 @@ func TestMemoryConcurrency(t *testing.T) {
 	}
 
 	// Collect results
-	for i := 0; i < numUsers; i++ {
+	for range numUsers {
 		if err := <-results; err != nil {
 			t.Errorf("Concurrent test failed: %v", err)
 		}
@@ -305,7 +305,7 @@ func TestMemoryConcurrency(t *testing.T) {
 
 	// Verify all conversations were created
 	ctx4 := context.Background()
-	for userID := 0; userID < numUsers; userID++ {
+	for userID := range numUsers {
 		userKey := fmt.Sprintf("user%d", userID)
 		msgCount, exists, err := convMem.Info(ctx4, userKey)
 		if err != nil {

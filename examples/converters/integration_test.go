@@ -186,7 +186,7 @@ func TestConverterPipeline(t *testing.T) {
 	// Test with different input types
 	testCases := []struct {
 		name     string
-		input    interface{}
+		input    any
 		expected string
 	}{
 		{

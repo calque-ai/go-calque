@@ -1122,7 +1122,7 @@ func TestCachingWithNilConfig(t *testing.T) {
 	handler := client.Resource("file:///test.md")
 
 	// Make two requests
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		req := calque.NewRequest(context.Background(), strings.NewReader("test"))
 		var output strings.Builder
 		res := calque.NewResponse(&output)

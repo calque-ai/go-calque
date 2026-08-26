@@ -102,7 +102,7 @@ func TestWrapErrorf(t *testing.T) {
 		ctx      context.Context
 		err      error
 		format   string
-		args     []interface{}
+		args     []any
 		expected string
 		isNil    bool
 	}{
@@ -111,7 +111,7 @@ func TestWrapErrorf(t *testing.T) {
 			ctx:      ctx,
 			err:      errors.New("connection failed"),
 			format:   "failed to connect to %s service",
-			args:     []interface{}{"database"},
+			args:     []any{"database"},
 			expected: "failed to connect to database service: connection failed",
 			isNil:    false,
 		},
@@ -120,7 +120,7 @@ func TestWrapErrorf(t *testing.T) {
 			ctx:      ctx,
 			err:      nil,
 			format:   "failed to connect to %s service",
-			args:     []interface{}{"database"},
+			args:     []any{"database"},
 			expected: "",
 			isNil:    true,
 		},
@@ -129,7 +129,7 @@ func TestWrapErrorf(t *testing.T) {
 			ctx:      ctx,
 			err:      errors.New("not found"),
 			format:   "user %d in organization %s not found",
-			args:     []interface{}{123, "acme"},
+			args:     []any{123, "acme"},
 			expected: "user 123 in organization acme not found: not found",
 			isNil:    false,
 		},
@@ -138,7 +138,7 @@ func TestWrapErrorf(t *testing.T) {
 			ctx:      ctx,
 			err:      errors.New("timeout"),
 			format:   "operation timed out",
-			args:     []interface{}{},
+			args:     []any{},
 			expected: "operation timed out: timeout",
 			isNil:    false,
 		},

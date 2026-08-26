@@ -3,6 +3,8 @@ package observability
 
 import (
 	"context"
+	"maps"
+	"strings"
 	"sync"
 	"time"
 )
@@ -149,11 +151,12 @@ func (p *InMemoryMetricsProvider) Reset() {
 
 // metricsKey builds a key from metric name and labels
 func metricsKey(name string, labels map[string]string) string {
-	key := name
+	var key strings.Builder
+	key.WriteString(name)
 	for k, v := range labels {
-		key += "|" + k + "=" + v
+		key.WriteString("|" + k + "=" + v)
 	}
-	return key
+	return key.String()
 }
 
 // InMemoryTracerProvider stores traces in memory for testing and debugging.
@@ -232,9 +235,7 @@ func (p *InMemoryTracerProvider) StartSpan(ctx context.Context, name string, opt
 	}
 
 	// Copy initial attributes
-	for k, v := range cfg.attributes {
-		span.Attributes[k] = v
-	}
+	maps.Copy(span.Attributes, cfg.attributes)
 
 	return ctx, &inMemorySpan{provider: p, span: span}
 }

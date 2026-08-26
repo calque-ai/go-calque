@@ -26,7 +26,7 @@ var largeTestWords = func() []string {
 	}
 
 	// Duplicate words to create a larger dataset
-	for i := 0; i < 40; i++ {
+	for range 40 {
 		words = append(words, baseWords...)
 	}
 	return words

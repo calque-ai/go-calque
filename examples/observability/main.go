@@ -207,7 +207,7 @@ func runCombinedExample(ctx context.Context) {
 	flow := calque.NewFlow().Use(observedHandler)
 
 	// Execute multiple times
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		var result string
 		err := flow.Run(ctx, fmt.Sprintf("request %d", i+1), &result)
 		if err != nil {

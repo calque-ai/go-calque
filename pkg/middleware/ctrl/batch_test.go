@@ -450,10 +450,8 @@ func benchmarkBatchWithPayload(b *testing.B, payloadSize, batchSize int) {
 	for i := 0; i < b.N; i++ {
 		// Launch concurrent requests to fill the batch
 		var wg sync.WaitGroup
-		for j := 0; j < batchSize; j++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range batchSize {
+			wg.Go(func() {
 
 				var buf bytes.Buffer
 				reader := strings.NewReader(payload)
@@ -461,7 +459,7 @@ func benchmarkBatchWithPayload(b *testing.B, payloadSize, batchSize int) {
 				req := calque.NewRequest(context.Background(), reader)
 				res := calque.NewResponse(&buf)
 				batchHandler.ServeFlow(req, res)
-			}()
+			})
 		}
 		wg.Wait()
 	}

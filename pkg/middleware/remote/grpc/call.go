@@ -18,6 +18,13 @@ import (
 	calquepb "github.com/calque-ai/go-calque/proto"
 )
 
+// Well-known service names dispatched to dedicated typed/streaming handlers.
+const (
+	serviceNameAI     = "ai-service"
+	serviceNameMemory = "memory-service"
+	serviceNameTools  = "tools-service"
+)
+
 // Call creates a handler that calls a registered gRPC service.
 //
 // Input: protobuf message data (streaming)
@@ -276,11 +283,11 @@ func (tch *typedCallHandler[TReq, TResp]) ServeFlow(req *calque.Request, res *ca
 func (tch *typedCallHandler[TReq, TResp]) makeTypedGRPCCall(ctx context.Context, service *Service, reqMsg TReq) (TResp, error) {
 	// Call the appropriate service method based on service name
 	switch tch.serviceName {
-	case "ai-service":
+	case serviceNameAI:
 		return tch.callAIService(ctx, service, reqMsg)
-	case "memory-service":
+	case serviceNameMemory:
 		return tch.callMemoryService(ctx, service, reqMsg)
-	case "tools-service":
+	case serviceNameTools:
 		return tch.callToolsService(ctx, service, reqMsg)
 	default:
 		// Fallback to FlowService for unknown services
@@ -453,11 +460,11 @@ func (sh *streamHandler) ServeFlow(req *calque.Request, res *calque.Response) er
 
 	// Call the appropriate streaming service method based on service name
 	switch sh.serviceName {
-	case "ai-service":
+	case serviceNameAI:
 		return sh.streamAIService(ctx, service, inputStr, res)
-	case "memory-service":
+	case serviceNameMemory:
 		return sh.streamMemoryService(ctx, service, inputStr, res)
-	case "tools-service":
+	case serviceNameTools:
 		return sh.streamToolsService(ctx, service, inputStr, res)
 	default:
 		return grpcerrors.NewErrorSimple(ctx, fmt.Sprintf("streaming not supported for service %s", sh.serviceName))

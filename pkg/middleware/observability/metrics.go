@@ -9,6 +9,12 @@ import (
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
 
+// Default metric namespace/subsystem values.
+const (
+	defaultMetricsNamespace = "calque"
+	defaultMetricsSubsystem = "flow"
+)
+
 // MetricsConfig configures the metrics middleware behavior.
 type MetricsConfig struct {
 	// Namespace prefixes all metric names (e.g., "calque" → "calque_requests_total")
@@ -32,8 +38,8 @@ type MetricsConfig struct {
 // DefaultMetricsConfig returns the default metrics configuration
 func DefaultMetricsConfig() MetricsConfig {
 	return MetricsConfig{
-		Namespace:          "calque",
-		Subsystem:          "flow",
+		Namespace:          defaultMetricsNamespace,
+		Subsystem:          defaultMetricsSubsystem,
 		Labels:             Labels{},
 		RecordRequestSize:  true,
 		RecordResponseSize: true,

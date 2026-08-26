@@ -112,7 +112,7 @@ func TestConcurrentRequests(t *testing.T) {
 	const numRequests = 10
 	results := make(chan error, numRequests)
 
-	for i := 0; i < numRequests; i++ {
+	for i := range numRequests {
 		go func(id int) {
 			request := Request{
 				Message: fmt.Sprintf("Concurrent request %d", id),
@@ -153,7 +153,7 @@ func TestConcurrentRequests(t *testing.T) {
 	}
 
 	// Collect results
-	for i := 0; i < numRequests; i++ {
+	for range numRequests {
 		if err := <-results; err != nil {
 			t.Errorf("Concurrent request failed: %v", err)
 		}
