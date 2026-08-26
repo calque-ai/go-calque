@@ -4,9 +4,8 @@
   <img src=".github/images/go-calque.webp" alt="Go-Calque" width="400">
 
   <p>
-    <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/badge/Pre--release-v0.5.0-orange?style=flat" alt="Pre-release"></a>
-    <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.24+-blue.svg?style=flat" alt="Go Version"></a>
-    <a href="https://goreportcard.com/report/github.com/calque-ai/go-calque"><img src="https://goreportcard.com/badge/github.com/calque-ai/go-calque?style=flat" alt="Go Report Card"></a>
+    <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/badge/Pre--release-v0.6.0-orange?style=flat" alt="Pre-release"></a>
+    <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.26+-blue.svg?style=flat" alt="Go Version"></a>
     <a href="https://pkg.go.dev/github.com/calque-ai/go-calque"><img src="https://pkg.go.dev/badge/github.com/calque-ai/go-calque.svg" alt="Go Reference"></a>
     <a href="https://github.com/calque-ai/go-calque/actions/workflows/ci.yml"><img src="https://github.com/calque-ai/go-calque/workflows/CI/badge.svg" alt="Build Status" height="20"></a>
     <a href="https://codecov.io/gh/calque-ai/go-calque"><img src="https://codecov.io/gh/calque-ai/go-calque/branch/main/graph/badge.svg" alt="Code Coverage"></a>
@@ -117,27 +116,30 @@ flow := calque.NewFlow().
 
 ## Why Go-Calque?
 
-| Challenge               | Raw SDK                    | Go-Calque                                |
-| ----------------------- | -------------------------- | ---------------------------------------- |
-| **Provider switching**  | Rewrite API calls          | Change one line: `ollama.New()` → `openai.New()` |
-| **Conversation memory** | Manual state management    | `convMem.Input()` / `convMem.Output()`   |
-| **Tool calling**        | Parse, match, handle errors| `ai.WithTools(...)` - automatic          |
-| **Structured output**   | Hope AI follows instructions| `ai.WithSchema()` - guaranteed types    |
-| **Retries & fallbacks** | Custom logic               | `ctrl.Retry()`, `ctrl.Fallback()`        |
+| Challenge               | Raw SDK                      | Go-Calque                                        |
+| ----------------------- | ---------------------------- | ------------------------------------------------ |
+| **Provider switching**  | Rewrite API calls            | Change one line: `ollama.New()` → `openai.New()` |
+| **Conversation memory** | Manual state management      | `convMem.Input()` / `convMem.Output()`           |
+| **Tool calling**        | Parse, match, handle errors  | `ai.WithTools(...)` - automatic                  |
+| **Structured output**   | Hope AI follows instructions | `ai.WithSchema()` - guaranteed types             |
+| **Retries & fallbacks** | Custom logic                 | `ctrl.Retry()`, `ctrl.Fallback()`                |
 
 ## Features
 
 ### Core
+
 - **[AI Agents](docs/middleware.md#ai-agents)** - OpenAI, Gemini, Ollama with unified interface
 - **[Tool Calling](docs/middleware.md#tool-integration)** - Auto-discovery and execution of Go functions
 - **[Memory](docs/middleware.md#memory)** - Conversation history with configurable limits
 
 ### Data Processing
+
 - **[RAG & Retrieval](docs/middleware.md#retrieval)** - Vector search, context building, semantic filtering
 - **[Converters](docs/middleware.md#converters)** - JSON, YAML, Protobuf, JSONSchema, SSE
 - **[Flow Control](docs/middleware.md#flow-control)** - Retry, timeout, fallback, parallel, chain
 
 ### Production
+
 - **[Observability](docs/middleware.md#observability)** - Metrics, tracing, health checks, structured logging
 - **[MCP Support](docs/middleware.md#mcp)** - Model Context Protocol client
 - **[Multi-Agent](docs/middleware.md#multi-agent)** - Agent routing and load balancing
@@ -148,43 +150,44 @@ flow := calque.NewFlow().
 
 Go-Calque is built for **production AI workloads** where LLM latency dominates.
 
-| Metric | Value |
-|--------|-------|
-| **Framework Overhead** | <0.02% at 100ms AI latency |
-| **Streaming** | 3x faster than buffered |
-| **Text Processing** | Up to 86% faster than hand-coded |
-| **Memory** | 87% less allocation with streaming |
+| Metric                 | Value                              |
+| ---------------------- | ---------------------------------- |
+| **Framework Overhead** | <0.02% at 100ms AI latency         |
+| **Streaming**          | 3x faster than buffered            |
+| **Text Processing**    | Up to 86% faster than hand-coded   |
+| **Memory**             | 87% less allocation with streaming |
 
 📊 **[See Benchmark Analysis →](docs/BENCHMARK_ANALYSIS_REPORT.md)**
 
 ## Documentation
 
-| Guide | Description |
-|-------|-------------|
-| **[Getting Started](docs/getting-started.md)** | Installation, quickstart, core concepts |
-| **[Middleware Reference](docs/middleware.md)** | All middleware packages and usage |
-| **[Architecture](docs/architecture.md)** | Streaming pipeline deep dive |
-| **[Advanced Topics](docs/advanced.md)** | Custom middleware, concurrency, error handling |
-| **[Recipes & Examples](docs/recipes.md)** | HTTP integration, testing, real-world examples |
-| **[Performance](docs/BENCHMARK_ANALYSIS_REPORT.md)** | Benchmark analysis and optimization |
-| **[Examples](examples/)** | Runnable code examples |
-| **[API Reference](https://pkg.go.dev/github.com/calque-ai/go-calque)** | pkg.go.dev documentation |
+| Guide                                                                  | Description                                    |
+| ---------------------------------------------------------------------- | ---------------------------------------------- |
+| **[Getting Started](docs/getting-started.md)**                         | Installation, quickstart, core concepts        |
+| **[Middleware Reference](docs/middleware.md)**                         | All middleware packages and usage              |
+| **[Architecture](docs/architecture.md)**                               | Streaming pipeline deep dive                   |
+| **[Advanced Topics](docs/advanced.md)**                                | Custom middleware, concurrency, error handling |
+| **[Recipes & Examples](docs/recipes.md)**                              | HTTP integration, testing, real-world examples |
+| **[Performance](docs/BENCHMARK_ANALYSIS_REPORT.md)**                   | Benchmark analysis and optimization            |
+| **[Examples](examples/)**                                              | Runnable code examples                         |
+| **[API Reference](https://pkg.go.dev/github.com/calque-ai/go-calque)** | pkg.go.dev documentation                       |
 
 ## Examples
 
-| Example | Description |
-|---------|-------------|
-| [basics](examples/basics/) | Core flow concepts |
-| [ai-clients](examples/ai-clients/) | OpenAI, Ollama, Gemini |
+| Example                                    | Description               |
+| ------------------------------------------ | ------------------------- |
+| [basics](examples/basics/)                 | Core flow concepts        |
+| [ai-clients](examples/ai-clients/)         | OpenAI, Ollama, Gemini    |
 | [streaming-chat](examples/streaming-chat/) | SSE streaming with memory |
-| [tool-calling](examples/tool-calling/) | Function calling with AI |
-| [memory](examples/memory/) | Conversation memory |
-| [retrieval](examples/retrieval/) | RAG/vector search |
-| [mcp](examples/mcp/) | Model Context Protocol |
+| [tool-calling](examples/tool-calling/)     | Function calling with AI  |
+| [memory](examples/memory/)                 | Conversation memory       |
+| [retrieval](examples/retrieval/)           | RAG/vector search         |
+| [mcp](examples/mcp/)                       | Model Context Protocol    |
 
 ## Roadmap
 
 ### Middleware
+
 - ✅ Tool Calling - Function execution for AI agents
 - ✅ Information Retrieval - Vector search, context building, semantic filtering
 - ✅ Multi-Agent - Agent routing, load balancing, conditional routing
@@ -194,6 +197,7 @@ Go-Calque is built for **production AI workloads** where LLM latency dominates.
 - 🔲 Guardrails & Safety - Input filtering, output validation
 
 ### Framework
+
 - 🔲 Vector-based semantic memory
 - 🔲 Planning & reflection capabilities
 - 🔲 Anthropic/Claude support
