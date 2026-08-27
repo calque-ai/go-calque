@@ -62,7 +62,7 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 	// Determine which formatter to use
 	formatter := agentOpts.ToolResultFormatter
 	if formatter == nil {
-		formatter = defaultToolResultFormatter
+		formatter = defaultToolResultFormatter(agentOpts)
 	}
 
 	// Determine which client to use for tool formatting
@@ -139,27 +139,36 @@ func addToolInformation() calque.Handler {
 	})
 }
 
-// defaultToolResultFormatter is the default formatter that synthesizes a natural language answer
-// from tool execution results using an LLM call
-func defaultToolResultFormatter(client Client, originalInput []byte) calque.Handler {
-	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
-		var toolResults []byte
-		err := calque.Read(r, &toolResults)
-		if err != nil {
-			return err
-		}
+// defaultToolResultFormatter returns the default formatter that synthesizes a natural
+// language answer from tool execution results using an LLM call. The synthesis call
+// reuses Schema and UsageHandler from agentOpts, so response-format constraints and
+// token usage reporting apply to the synthesis request too, not just the initial
+// tool-detection request.
+func defaultToolResultFormatter(agentOpts *AgentOptions) ToolResultFormatterFunc {
+	return func(client Client, originalInput []byte) calque.Handler {
+		return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
+			var toolResults []byte
+			err := calque.Read(r, &toolResults)
+			if err != nil {
+				return err
+			}
 
-		// Create synthesis prompt combining original question with tool results
-		synthesisPrompt := fmt.Sprintf(`Original question: %s
+			// Create synthesis prompt combining original question with tool results
+			synthesisPrompt := fmt.Sprintf(`Original question: %s
 
 Tool execution results:
 %s
 
 Please provide a complete answer to the original question using the tool results above. Be concise and direct.`,
-			string(originalInput), string(toolResults))
+				string(originalInput), string(toolResults))
 
-		// Make LLM call without tools for synthesis
-		req := calque.NewRequest(r.Context, strings.NewReader(synthesisPrompt))
-		return client.Chat(req, w, &AgentOptions{})
-	})
+			// Make LLM call without tools for synthesis
+			req := calque.NewRequest(r.Context, strings.NewReader(synthesisPrompt))
+			synthesisOpts := &AgentOptions{
+				Schema:       agentOpts.Schema,
+				UsageHandler: agentOpts.UsageHandler,
+			}
+			return client.Chat(req, w, synthesisOpts)
+		})
+	}
 }
