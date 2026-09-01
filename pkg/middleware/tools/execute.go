@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
@@ -26,6 +28,7 @@ type ToolCall struct {
 // OpenAIToolCall represents a tool call in OpenAI format
 type OpenAIToolCall struct {
 	Type     string `json:"type"`
+	ID       string `json:"id,omitempty"`
 	Function struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
@@ -34,16 +37,38 @@ type OpenAIToolCall struct {
 
 // ToolResult represents the result of executing a tool
 type ToolResult struct {
-	ToolCall ToolCall `json:"tool_call"`
-	Result   []byte   `json:"result"`
-	Error    string   `json:"error,omitempty"`
+	ToolCall      ToolCall           `json:"tool_call"`
+	Result        []byte             `json:"result"`
+	Error         string             `json:"error,omitempty"`
+	InputRequired *InputRequiredInfo `json:"input_required,omitempty"`
+}
+
+// InputRequiredInfo describes what a tool needs before it can complete.
+// Populated when a tool returns ErrInputRequired instead of a normal error.
+type InputRequiredInfo struct {
+	Question          string `json:"question"`
+	ContinuationToken string `json:"continuation_token,omitempty"`
+}
+
+// ErrInputRequired signals that a tool needs more information to complete,
+// distinct from a normal failure. Return it from a Tool's ServeFlow to
+// surface Question (and an optional ContinuationToken) on the ToolResult
+// instead of treating the call as an error.
+type ErrInputRequired struct {
+	Question          string
+	ContinuationToken string
+}
+
+func (e *ErrInputRequired) Error() string {
+	return fmt.Sprintf("input required: %s", e.Question)
 }
 
 // ToolResultJSON represents a tool result for JSON output with proper result formatting
 type ToolResultJSON struct {
-	ToolCall ToolCall        `json:"tool_call"`
-	Result   json.RawMessage `json:"result"`
-	Error    string          `json:"error,omitempty"`
+	ToolCall      ToolCall           `json:"tool_call"`
+	Result        json.RawMessage    `json:"result"`
+	Error         string             `json:"error,omitempty"`
+	InputRequired *InputRequiredInfo `json:"input_required,omitempty"`
 }
 
 // RawToolOutput represents the raw JSON output structure when RawOutput is enabled
@@ -60,6 +85,8 @@ type Config struct {
 	IncludeOriginalOutput bool
 	// RawOutput - if true, returns JSON-marshaled results instead of formatted text
 	RawOutput bool
+	// ToolTimeout - per-tool execution timeout (0 = no timeout)
+	ToolTimeout time.Duration
 }
 
 // Execute parses LLM output for tool calls and executes them using tools from Registry.
@@ -116,25 +143,9 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 		return calque.NewErr(ctx, "no tool calls found in input - use tools.Detect() to handle inputs without tools")
 	}
 
-	// Execute tool calls with configuration
-	results := executeToolCallsWithConfig(ctx, tools, toolCalls, config)
-
-	// Check for errors in tool execution
-	hasErrors := false
-	var firstError string
-	for _, result := range results {
-		if result.Error != "" {
-			hasErrors = true
-			if firstError == "" {
-				firstError = result.Error
-			}
-		}
-	}
-
-	// Handle errors always fail on tool execution errors
-	if hasErrors {
-		return calque.NewErr(ctx, fmt.Sprintf("tool execution failed: %s", firstError))
-	}
+	// Execute tool calls with configuration. Per-result errors are reported
+	// in the output rather than aborting, the caller decides what to do.
+	results := ExecuteToolCalls(ctx, tools, toolCalls, config)
 
 	// Format results based on configuration
 	var output []byte
@@ -203,20 +214,27 @@ func parseJSONToolCalls(output []byte) []ToolCall {
 			return parseErrorToolCall(output, fmt.Sprintf("Tool call %d missing function name - invalid OpenAI format", i))
 		}
 
+		id := openaiCall.ID
+		if id == "" {
+			id = fmt.Sprintf("call_%d", i)
+		}
+
 		toolCalls[i] = ToolCall{
 			Name:      openaiCall.Function.Name,
 			Arguments: openaiCall.Function.Arguments,
-			ID:        fmt.Sprintf("call_%d", i),
+			ID:        id,
 		}
 	}
 
 	return toolCalls
 }
 
-// executeToolCallsWithConfig executes multiple tool calls with configuration
-func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []ToolCall, config Config) []ToolResult {
+// ExecuteToolCalls executes multiple tool calls with configuration, returning
+// structured results. Individual tool errors are reported per-result, not
+// returned as a function error - callers decide how to handle failures.
+func ExecuteToolCalls(ctx context.Context, tools []Tool, toolCalls []ToolCall, config Config) []ToolResult {
 	if len(toolCalls) == 1 { // Single tool call execute directly
-		return []ToolResult{executeToolCall(ctx, tools, toolCalls[0])}
+		return []ToolResult{executeToolCall(ctx, tools, toolCalls[0], config)}
 	}
 
 	results := make([]ToolResult, len(toolCalls))
@@ -234,7 +252,7 @@ func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []T
 	for w := 0; w < workers; w++ {
 		wg.Go(func() {
 			for i := range jobs {
-				results[i] = executeToolCall(ctx, tools, toolCalls[i])
+				results[i] = executeToolCall(ctx, tools, toolCalls[i], config)
 			}
 		})
 	}
@@ -249,8 +267,8 @@ func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []T
 	return results
 }
 
-// executeToolCall executes a single tool call
-func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolResult {
+// executeToolCall executes a single tool call, optionally bounded by config.ToolTimeout.
+func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall, config Config) ToolResult {
 	// If the tool call already has an error (e.g., from parsing), return it immediately
 	if toolCall.Error != "" {
 		return ToolResult{
@@ -275,13 +293,39 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 		}
 	}
 
-	// Execute the tool with panic recovery
+	if config.ToolTimeout <= 0 {
+		return invokeTool(ctx, tool, toolCall)
+	}
+
+	// Bound wall-clock time even for tools that ignore ctx.Done(). Run the
+	// tool in a goroutine and give up waiting once the timeout fires. The
+	// goroutine may keep running unobserved in the background. Go cannot
+	// forcibly cancel it.
+	ctx, cancel := context.WithTimeout(ctx, config.ToolTimeout)
+	defer cancel()
+
+	done := make(chan ToolResult, 1)
+	go func() { done <- invokeTool(ctx, tool, toolCall) }()
+
+	select {
+	case result := <-done:
+		return result
+	case <-ctx.Done():
+		return ToolResult{
+			ToolCall: toolCall,
+			Error:    fmt.Sprintf("Tool execution timed out after %s", config.ToolTimeout),
+		}
+	}
+}
+
+// invokeTool runs a single tool's ServeFlow with panic recovery and
+// classifies the outcome into a ToolResult.
+func invokeTool(ctx context.Context, tool Tool, toolCall ToolCall) ToolResult {
 	var result bytes.Buffer
 	args := strings.NewReader(toolCall.Arguments)
 	req := calque.NewRequest(ctx, args)
 	res := calque.NewResponse(&result)
 
-	// Execute tool with panic recovery
 	var err error
 	func() {
 		defer func() {
@@ -291,6 +335,16 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 		}()
 		err = tool.ServeFlow(req, res)
 	}()
+
+	if inputRequired, ok := errors.AsType[*ErrInputRequired](err); ok {
+		return ToolResult{
+			ToolCall: toolCall,
+			InputRequired: &InputRequiredInfo{
+				Question:          inputRequired.Question,
+				ContinuationToken: inputRequired.ContinuationToken,
+			},
+		}
+	}
 
 	if err != nil {
 		return ToolResult{
@@ -316,9 +370,10 @@ func formatRawOutput(ctx context.Context, results []ToolResult, inputBytes []byt
 		}
 
 		jsonResults[i] = ToolResultJSON{
-			ToolCall: result.ToolCall,
-			Result:   resultJSON,
-			Error:    result.Error,
+			ToolCall:      result.ToolCall,
+			Result:        resultJSON,
+			Error:         result.Error,
+			InputRequired: result.InputRequired,
 		}
 	}
 
@@ -368,9 +423,12 @@ func formatToolResults(results []ToolResult, originalOutput []byte) string {
 			fmt.Fprintf(&output, "Arguments: %s\n", result.ToolCall.Arguments)
 		}
 
-		if result.Error != "" {
+		switch {
+		case result.InputRequired != nil:
+			fmt.Fprintf(&output, "Input required: %s\n", result.InputRequired.Question)
+		case result.Error != "":
 			fmt.Fprintf(&output, "Error: %s\n", result.Error)
-		} else {
+		default:
 			fmt.Fprintf(&output, "Result: %s\n", string(result.Result))
 		}
 		output.WriteString("\n")

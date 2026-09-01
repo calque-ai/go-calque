@@ -50,10 +50,10 @@ func TestExecute(t *testing.T) {
 		isError  bool
 	}{
 		{
-			name:    "no tool calls - pass through",
-			tools:   []Tool{calc, search},
-			input:   "This is just regular text with no tool calls.",
-			isError: true, // Should error execute assumes tool calls were detected already.
+			name:     "malformed input - not JSON tool call format",
+			tools:    []Tool{calc, search},
+			input:    "This is just regular text with no tool calls.",
+			contains: []string{"Error: Failed to parse tool call JSON"},
 		},
 		{
 			name:     "JSON tool call format",
@@ -68,16 +68,34 @@ func TestExecute(t *testing.T) {
 			contains: []string{"Tool execution results", "calculator", "4", "search", "search results for: golang tutorials"},
 		},
 		{
-			name:    "unknown tool",
-			tools:   []Tool{calc},
-			input:   `{"tool_calls": [{"type": "function", "function": {"name": "unknown_tool", "arguments": "some args"}}]}`,
-			isError: true, // Should error because tool not found
+			name:     "unknown tool",
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "unknown_tool", "arguments": "some args"}}]}`,
+			contains: []string{"Error: Tool 'unknown_tool' not found"},
 		},
 		{
 			name:    "no tools in context",
 			tools:   []Tool{},
 			input:   `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
 			isError: true, // Should error because if there are no tools available why are we running execute tools?
+		},
+		{
+			name:     "empty tool name is treated as a parse error",
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "", "arguments": "2+2"}}]}`,
+			contains: []string{"invalid OpenAI format"},
+		},
+		{
+			name:     "tool call requesting another tool call as arguments (injection-style payload)",
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"tool_calls\":[{\"type\":\"function\",\"function\":{\"name\":\"calculator\",\"arguments\":\"2+2\"}}]}"}}]}`,
+			contains: []string{"Tool execution results", "calculator"},
+		},
+		{
+			name:     "oversized arguments payload does not crash execution",
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "` + strings.Repeat("9", 100000) + `"}}]}`,
+			contains: []string{"Tool execution results", "calculator"},
 		},
 	}
 
@@ -146,9 +164,9 @@ func TestExecuteWithOptions(t *testing.T) {
 			config: Config{
 				MaxConcurrentTools: 1,
 			},
-			tools:       []Tool{errorTool},
-			input:       `{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
-			expectError: true, // Should always error on tool failure now
+			tools:    []Tool{errorTool},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
+			contains: []string{"Error: Tool execution error: tool execution failed"},
 		},
 		{
 			name: "include original output",
@@ -299,6 +317,45 @@ func TestParseToolCalls(t *testing.T) {
 	}
 }
 
+func TestExecuteToolCallTimeout(t *testing.T) {
+	hungTool := Simple("hung", "Never returns in time", func(_ string) string {
+		time.Sleep(200 * time.Millisecond)
+		return "too late"
+	})
+
+	ctx := context.Background()
+	result := executeToolCall(ctx, []Tool{hungTool}, ToolCall{Name: "hung", Arguments: "test"}, Config{ToolTimeout: 20 * time.Millisecond})
+
+	if result.Error == "" {
+		t.Fatal("expected timeout error, got none")
+	}
+	if !strings.Contains(result.Error, "timed out") {
+		t.Errorf("expected timeout error, got: %s", result.Error)
+	}
+}
+
+func TestExecuteToolCallInputRequired(t *testing.T) {
+	askTool := HandlerFunc("ask", "Needs more info", func(_ *calque.Request, _ *calque.Response) error {
+		return &ErrInputRequired{Question: "which city?", ContinuationToken: "tok_123"}
+	})
+
+	ctx := context.Background()
+	result := executeToolCall(ctx, []Tool{askTool}, ToolCall{Name: "ask", Arguments: "test"}, Config{})
+
+	if result.Error != "" {
+		t.Errorf("expected no Error, got: %s", result.Error)
+	}
+	if result.InputRequired == nil {
+		t.Fatal("expected InputRequired to be set")
+	}
+	if result.InputRequired.Question != "which city?" {
+		t.Errorf("InputRequired.Question = %q, want %q", result.InputRequired.Question, "which city?")
+	}
+	if result.InputRequired.ContinuationToken != "tok_123" {
+		t.Errorf("InputRequired.ContinuationToken = %q, want %q", result.InputRequired.ContinuationToken, "tok_123")
+	}
+}
+
 func TestExecuteToolCall(t *testing.T) {
 	calc := createMockCalculator()
 	errorTool := createErrorTool()
@@ -331,7 +388,7 @@ func TestExecuteToolCall(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			result := executeToolCall(ctx, tools, tt.toolCall)
+			result := executeToolCall(ctx, tools, tt.toolCall, Config{})
 
 			if tt.expectError {
 				if result.Error == "" {
@@ -478,7 +535,7 @@ func TestExecuteToolCallsConcurrency(t *testing.T) {
 						errChan <- fmt.Errorf("panic: %v", r)
 					}
 				}()
-				results := executeToolCallsWithConfig(ctx, tools, toolCalls, tt.config)
+				results := ExecuteToolCalls(ctx, tools, toolCalls, tt.config)
 				done <- results
 			}()
 

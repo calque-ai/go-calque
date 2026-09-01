@@ -690,6 +690,7 @@ func (c *Client) writeOpenAIToolCalls(toolCalls []openai.ChatCompletionMessageFu
 	for i, call := range toolCalls {
 		formattedToolCalls[i] = map[string]any{
 			fieldType: toolTypeFunction,
+			"id":      call.ID,
 			"function": map[string]any{
 				fieldName:   call.Function.Name,
 				"arguments": call.Function.Arguments,
