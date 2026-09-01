@@ -86,8 +86,9 @@ func TestAgent(t *testing.T) {
 			input: "Search for something",
 			llmResponses: []string{
 				`{"tool_calls": [{"type": "function", "function": {"name": "unknown_tool", "arguments": "something"}}]}`,
+				"I couldn't find that tool.",
 			},
-			expectError: true,
+			contains: []string{"I couldn't find that tool."},
 		},
 	}
 
@@ -147,8 +148,9 @@ func TestAgentWithToolsConfig(t *testing.T) {
 			input: "Use error tool",
 			llmResponses: []string{
 				`{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
+				"The tool failed, so I can't complete that.",
 			},
-			expectError: true, // Should always fail on tool error now
+			contains: []string{"The tool failed, so I can't complete that."},
 		},
 		{
 			name:         "basic tool execution",

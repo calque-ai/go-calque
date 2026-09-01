@@ -241,45 +241,37 @@ func TestAgentWithTools(t *testing.T) {
 		return "Weather in " + input + ": Sunny, 72°F, Humidity: 45%"
 	})
 
-	// Create mock client that will use tools
-	mockClient := ai.NewMockClientWithResponses([]string{
-		`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"15+8\"}"}}]}`,
-		`{"tool_calls": [{"type": "function", "function": {"name": "current_time", "arguments": "{\"input\": \"\"}"}}]}`,
-		`{"tool_calls": [{"type": "function", "function": {"name": "weather", "arguments": "{\"input\": \"New York\"}"}}]}`,
-		`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"5+3\"}"}}]}`,
-	})
-
-	// Create agent with tools
-	agent := ai.Agent(mockClient, ai.WithTools(calculator, currentTime, weatherTool))
-
 	testCases := []struct {
-		name     string
-		input    string
-		expected []string
+		name         string
+		input        string
+		llmResponses []string
+		expected     []string
 	}{
 		{
 			name:  "Mathematical calculation request",
 			input: "What is 15 + 8? Also, what time is it?",
-			expected: []string{
-				"tool_calls",
-				"calculator",
-				"current_time",
+			llmResponses: []string{
+				`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"15+8\"}"}}]}`,
+				"15 + 8 is 23.00, and the time is 2024-01-15 14:30:25.",
 			},
+			expected: []string{"23.00", "2024-01-15 14:30:25"},
 		},
 		{
 			name:  "Weather and time request",
 			input: "What's the weather like in New York and what time is it?",
-			expected: []string{
-				"tool_calls",
-				"weather",
-				"current_time",
+			llmResponses: []string{
+				`{"tool_calls": [{"type": "function", "function": {"name": "weather", "arguments": "{\"input\": \"New York\"}"}}]}`,
+				"It's sunny in New York, and the time is 2024-01-15 14:30:25.",
 			},
+			expected: []string{"sunny", "2024-01-15 14:30:25"},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
+			mockClient := ai.NewMockClientWithResponses(tc.llmResponses)
+			agent := ai.Agent(mockClient, ai.WithTools(calculator, currentTime, weatherTool))
 
 			var result string
 			err := calque.NewFlow().Use(agent).Run(ctx, tc.input, &result)
@@ -287,10 +279,12 @@ func TestAgentWithTools(t *testing.T) {
 				t.Fatalf("Agent execution failed: %v", err)
 			}
 
-			// The mock client returns tool calls, not executed results
-			// Just verify that we get a tool call response
-			if !strings.Contains(result, "tool_calls") {
-				t.Errorf("Expected tool calls in result, got: %s", result)
+			// The loop should execute the requested tool and let the model
+			// answer in its own words using the real tool result.
+			for _, expected := range tc.expected {
+				if !strings.Contains(result, expected) {
+					t.Errorf("Expected result to contain %q, got: %s", expected, result)
+				}
 			}
 		})
 	}
@@ -516,8 +510,7 @@ func TestToolConfiguration(t *testing.T) {
 			// Create mock client
 			mockClient := ai.NewMockClientWithResponses([]string{
 				`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"5+3\"}"}}]}`,
-				`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"5+3\"}"}}]}`,
-				`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"5+3\"}"}}]}`,
+				"5+3 is 8.00.",
 			})
 
 			// Create agent with configured tools
@@ -530,13 +523,10 @@ func TestToolConfiguration(t *testing.T) {
 				t.Fatalf("Agent execution failed: %v", err)
 			}
 
-			// Verify tool calls are present
-			if !strings.Contains(result, "tool_calls") {
-				t.Errorf("Expected tool calls in result, got: %s", result)
-			}
-
-			if !strings.Contains(result, "calculator") {
-				t.Errorf("Expected calculator tool call, got: %s", result)
+			// The loop should execute the tool and return the model's answer
+			// using the real result, regardless of concurrency configuration.
+			if !strings.Contains(result, "8.00") {
+				t.Errorf("Expected result to contain the calculated value, got: %s", result)
 			}
 		})
 	}

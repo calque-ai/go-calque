@@ -136,7 +136,7 @@ func ExecuteWithOptions(config Config) calque.Handler {
 // executeFromBytes executes tools directly from input bytes
 func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools []Tool, config Config) error {
 	// Parse tool calls from input
-	toolCalls := parseToolCalls(inputBytes)
+	toolCalls := ParseToolCalls(inputBytes)
 
 	// Error if no tools found since Execute assumes tools are present
 	if len(toolCalls) == 0 {
@@ -175,7 +175,7 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 }
 
 // ParseToolCalls extracts tool calls from LLM output using JSON parsing (OpenAI standard)
-func parseToolCalls(output []byte) []ToolCall {
+func ParseToolCalls(output []byte) []ToolCall {
 	// Only JSON format supported (OpenAI standard)
 	return parseJSONToolCalls(output)
 }
@@ -450,8 +450,8 @@ func formatToolResultsWithOriginal(results []ToolResult, originalOutput []byte) 
 	return output.String()
 }
 
-// hasToolCalls detects if the initial chunk contains tool call patterns
-func hasToolCalls(data []byte) bool {
+// HasToolCalls detects if data contains tool call patterns
+func HasToolCalls(data []byte) bool {
 	content := string(data)
 
 	// JSON format (OpenAI standard) - high confidence pattern

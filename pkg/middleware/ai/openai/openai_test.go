@@ -276,7 +276,7 @@ func TestInputToMessages(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			messages, err := client.inputToMessages(ctx, tt.input)
+			messages, err := client.inputToMessages(ctx, tt.input, nil)
 
 			if tt.expectError {
 				if err == nil {
@@ -439,7 +439,7 @@ func TestBuildChatParams(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			params, err := client.buildChatParams(ctx, tt.input, tt.schema, tt.tools)
+			params, err := client.buildChatParams(ctx, tt.input, tt.schema, tt.tools, nil)
 
 			if tt.expectError {
 				if err == nil {
@@ -830,7 +830,7 @@ func TestChat_Method(t *testing.T) {
 
 			// Test message conversion
 			ctx := context.Background()
-			messages, err := client.inputToMessages(ctx, input)
+			messages, err := client.inputToMessages(ctx, input, nil)
 			if err != nil {
 				t.Errorf("%s: inputToMessages() error = %v", tt.description, err)
 				return
@@ -841,7 +841,7 @@ func TestChat_Method(t *testing.T) {
 			}
 
 			// Test params building
-			params, err := client.buildChatParams(ctx, input, ai.GetSchema(opts), ai.GetTools(opts))
+			params, err := client.buildChatParams(ctx, input, ai.GetSchema(opts), ai.GetTools(opts), ai.GetHistory(opts))
 			if err != nil {
 				t.Errorf("%s: buildChatParams() error = %v", tt.description, err)
 				return

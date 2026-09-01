@@ -112,3 +112,11 @@ func GetTools(opts *AgentOptions) []tools.Tool {
 	}
 	return nil
 }
+
+// GetHistory extracts conversation history from AgentOptions, returns nil if none
+func GetHistory(opts *AgentOptions) []Message {
+	if opts != nil {
+		return opts.History
+	}
+	return nil
+}

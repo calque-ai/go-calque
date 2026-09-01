@@ -34,6 +34,7 @@ import (
 
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/option"
+	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/openai/openai-go/v2/shared"
 	"github.com/openai/openai-go/v2/shared/constant"
 
@@ -240,7 +241,7 @@ func (c *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Build request parameters
-	params, err := c.buildChatParams(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts))
+	params, err := c.buildChatParams(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts), ai.GetHistory(opts))
 	if err != nil {
 		return err
 	}
@@ -250,9 +251,9 @@ func (c *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 }
 
 // buildChatParams creates OpenAI chat completion parameters
-func (c *Client) buildChatParams(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, toolList []tools.Tool) (openai.ChatCompletionNewParams, error) {
+func (c *Client) buildChatParams(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, toolList []tools.Tool, history []ai.Message) (openai.ChatCompletionNewParams, error) {
 	// Convert input to messages
-	messages, err := c.inputToMessages(ctx, input)
+	messages, err := c.inputToMessages(ctx, input, history)
 	if err != nil {
 		return openai.ChatCompletionNewParams{}, err
 	}
@@ -480,8 +481,14 @@ func (c *Client) convertToFunctionToolCalls(toolCalls []openai.ChatCompletionMes
 	return functionToolCalls
 }
 
-// inputToMessages converts classified input to OpenAI message format
-func (c *Client) inputToMessages(ctx context.Context, input *ai.ClassifiedInput) ([]openai.ChatCompletionMessageParamUnion, error) {
+// inputToMessages converts classified input to OpenAI message format.
+// If history is non-empty, it is round-tripped as the full message list
+// instead of building a single user message from input.
+func (c *Client) inputToMessages(ctx context.Context, input *ai.ClassifiedInput, history []ai.Message) ([]openai.ChatCompletionMessageParamUnion, error) {
+	if len(history) > 0 {
+		return historyToMessages(history), nil
+	}
+
 	switch input.Type {
 	case ai.TextInput:
 		return []openai.ChatCompletionMessageParamUnion{
@@ -493,6 +500,51 @@ func (c *Client) inputToMessages(ctx context.Context, input *ai.ClassifiedInput)
 
 	default:
 		return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported input type: %d", input.Type))
+	}
+}
+
+// historyToMessages converts agent conversation history to OpenAI message format.
+func historyToMessages(history []ai.Message) []openai.ChatCompletionMessageParamUnion {
+	messages := make([]openai.ChatCompletionMessageParamUnion, len(history))
+	for i, msg := range history {
+		switch msg.Role {
+		case ai.RoleUser:
+			messages[i] = openai.UserMessage(msg.Content)
+		case ai.RoleSystem:
+			messages[i] = openai.SystemMessage(msg.Content)
+		case ai.RoleTool:
+			messages[i] = openai.ToolMessage(msg.Content, msg.ToolCallID)
+		case ai.RoleAssistant:
+			messages[i] = assistantMessage(msg)
+		}
+	}
+	return messages
+}
+
+// assistantMessage builds an assistant message, attaching tool calls when present.
+func assistantMessage(msg ai.Message) openai.ChatCompletionMessageParamUnion {
+	if len(msg.ToolCalls) == 0 {
+		return openai.AssistantMessage(msg.Content)
+	}
+
+	toolCalls := make([]openai.ChatCompletionMessageToolCallUnionParam, len(msg.ToolCalls))
+	for i, call := range msg.ToolCalls {
+		toolCalls[i] = openai.ChatCompletionMessageToolCallUnionParam{
+			OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+				ID: call.ID,
+				Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+					Name:      call.Name,
+					Arguments: call.Arguments,
+				},
+			},
+		}
+	}
+
+	return openai.ChatCompletionMessageParamUnion{
+		OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+			Content:   openai.ChatCompletionAssistantMessageParamContentUnion{OfString: param.NewOpt(msg.Content)},
+			ToolCalls: toolCalls,
+		},
 	}
 }
 
