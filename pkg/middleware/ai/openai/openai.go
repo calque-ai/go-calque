@@ -486,7 +486,7 @@ func (c *Client) convertToFunctionToolCalls(toolCalls []openai.ChatCompletionMes
 // instead of building a single user message from input.
 func (c *Client) inputToMessages(ctx context.Context, input *ai.ClassifiedInput, history []ai.Message) ([]openai.ChatCompletionMessageParamUnion, error) {
 	if len(history) > 0 {
-		return historyToMessages(history), nil
+		return c.historyToMessages(ctx, history)
 	}
 
 	switch input.Type {
@@ -504,11 +504,19 @@ func (c *Client) inputToMessages(ctx context.Context, input *ai.ClassifiedInput,
 }
 
 // historyToMessages converts agent conversation history to OpenAI message format.
-func historyToMessages(history []ai.Message) []openai.ChatCompletionMessageParamUnion {
+func (c *Client) historyToMessages(ctx context.Context, history []ai.Message) ([]openai.ChatCompletionMessageParamUnion, error) {
 	messages := make([]openai.ChatCompletionMessageParamUnion, len(history))
 	for i, msg := range history {
 		switch msg.Role {
 		case ai.RoleUser:
+			if msg.Multimodal != nil {
+				userMsgs, err := c.multimodalToMessages(ctx, msg.Multimodal)
+				if err != nil {
+					return nil, err
+				}
+				messages[i] = userMsgs[0]
+				continue
+			}
 			messages[i] = openai.UserMessage(msg.Content)
 		case ai.RoleSystem:
 			messages[i] = openai.SystemMessage(msg.Content)
@@ -518,7 +526,7 @@ func historyToMessages(history []ai.Message) []openai.ChatCompletionMessageParam
 			messages[i] = assistantMessage(msg)
 		}
 	}
-	return messages
+	return messages, nil
 }
 
 // assistantMessage builds an assistant message, attaching tool calls when present.

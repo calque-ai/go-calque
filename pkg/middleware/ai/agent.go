@@ -83,12 +83,7 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 		maxIterations = defaultMaxIterations
 	}
 
-	toolList := tools.GetTools(r.Context)
-	if len(toolList) == 0 {
-		toolList = agentOpts.Tools
-	}
-
-	final, err := runAgentLoop(client, agentOpts, r, string(input), toolList, maxIterations)
+	final, err := runAgentLoop(formatterClient, agentOpts, r, string(input), maxIterations)
 	if err != nil {
 		return calque.WrapErr(r.Context, err, "agent failed")
 	}
@@ -99,26 +94,50 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 
 // runAgentLoop drives the LLM<->tool round trips and returns the final
 // assistant response bytes once the model stops requesting tools (or the
-// iteration cap forces a final answer).
-func runAgentLoop(client Client, agentOpts *AgentOptions, r *calque.Request, input string, toolList []tools.Tool, maxIterations int) ([]byte, error) {
-	history := []Message{{Role: RoleUser, Content: input}}
+// iteration cap forces a final answer). client is the resolved
+// formatterClient - the same client used for every turn, including the
+// forced final answer, so a caller-configured formatter client is honored
+// throughout the loop rather than only for the closing formatter call.
+//
+// maxIterations is the true cap on total LLM calls: the final iteration
+// always omits Tools, so a model that would otherwise keep requesting tools
+// is forced to answer directly instead of the loop making one more
+// uncounted call beyond the configured budget.
+func runAgentLoop(client Client, agentOpts *AgentOptions, r *calque.Request, input string, maxIterations int) ([]byte, error) {
+	history := []Message{{Role: RoleUser, Content: input, Multimodal: agentOpts.MultimodalData}}
+	toolList := agentOpts.Tools
 
-	for range maxIterations {
-		response, err := callChat(client, r, &AgentOptions{
-			History:      history,
-			Tools:        toolList,
-			ToolsConfig:  agentOpts.ToolsConfig,
-			UsageHandler: agentOpts.UsageHandler,
-		})
+	for i := range maxIterations {
+		lastIteration := i == maxIterations-1
+
+		// Clone agentOpts per turn so every current and future field is
+		// carried through by default; only History (and Tools/ToolsConfig/
+		// MultimodalData on the final iteration) are overridden explicitly.
+		turnOpts := *agentOpts
+		turnOpts.History = history
+		if lastIteration {
+			turnOpts.Tools = nil
+			turnOpts.ToolsConfig = nil
+			turnOpts.MultimodalData = nil
+		}
+
+		response, err := callChat(client, r, &turnOpts)
 		if err != nil {
 			return nil, err
 		}
 
-		if !tools.HasToolCalls(response) {
+		if lastIteration || !tools.HasToolCalls(response) {
 			return response, nil
 		}
 
 		calls := tools.ParseToolCalls(response)
+		// Content is intentionally left empty here: the shared tool_calls
+		// JSON convention every Client emits (see e.g. openai.go's
+		// writeOpenAIToolCalls) has no field for prose accompanying a tool
+		// call, so there is currently nothing to preserve. If a provider
+		// ever needs to return reasoning text alongside tool_calls, the
+		// wire convention itself needs a "content" field before this can
+		// round-trip it.
 		history = append(history, Message{Role: RoleAssistant, ToolCalls: calls})
 
 		results := tools.ExecuteToolCalls(r.Context, toolList, calls, *agentOpts.ToolsConfig)
@@ -131,13 +150,8 @@ func runAgentLoop(client Client, agentOpts *AgentOptions, r *calque.Request, inp
 		}
 	}
 
-	// MaxIterations reached with the model still mid tool-chain - force a
-	// final answer instead of erroring, with no further tools available.
-	return callChat(client, r, &AgentOptions{
-		History:      history,
-		Schema:       agentOpts.Schema,
-		UsageHandler: agentOpts.UsageHandler,
-	})
+	// Unreachable: the loop always returns on its last iteration above.
+	return nil, calque.NewErr(r.Context, "agent loop exited without a response")
 }
 
 // toolResultContent renders a ToolResult as the content of a tool-role

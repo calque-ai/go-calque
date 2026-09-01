@@ -276,6 +276,122 @@ func TestAgentWithSchema(t *testing.T) {
 	}
 }
 
+// TestAgentWithSchemaAndTools pins that Schema is still passed to the LLM on
+// every loop iteration when tools are used, not just on the rare path where
+// MaxIterations is exhausted - the common case is the model calling a tool
+// once and then answering directly within the iteration budget.
+func TestAgentWithSchemaAndTools(t *testing.T) {
+	calc := tools.Simple("calculator", "Math Calculator", func(_ string) string { return "4" })
+
+	client := NewMockClientWithResponses([]string{
+		`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+		`{"name": "answer", "value": 4}`,
+	})
+
+	schema := &ResponseFormat{Type: ResponseFormatJSONObject}
+	agent := Agent(client, WithTools(calc), WithSchema(schema))
+
+	var buf bytes.Buffer
+	req := calque.NewRequest(context.Background(), strings.NewReader("What is 2+2?"))
+	res := calque.NewResponse(&buf)
+	if err := agent.ServeFlow(req, res); err != nil {
+		t.Fatalf("agent error = %v", err)
+	}
+
+	if !strings.Contains(buf.String(), `"value": 4`) {
+		t.Errorf("expected structured output to survive tool-calling loop, got: %s", buf.String())
+	}
+
+	// The normal exit (model stops requesting tools within budget) must
+	// still pass Schema through to the client, not just on the forced
+	// MaxIterations-exhaustion path.
+	if client.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", client.CallCount())
+	}
+	for i := range 2 {
+		opts := client.OptionsAt(i)
+		if opts == nil || opts.Schema == nil {
+			t.Errorf("call %d: expected Schema to be set, got nil", i)
+		}
+	}
+}
+
+// TestAgentWithMultimodalDataAndTools pins that MultimodalData survives into
+// the tool-calling loop's first turn instead of being silently dropped the
+// moment tools are configured.
+func TestAgentWithMultimodalDataAndTools(t *testing.T) {
+	calc := tools.Simple("calculator", "Math Calculator", func(_ string) string { return "4" })
+
+	client := NewMockClientWithResponses([]string{
+		`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+		"It's 4, and the image shows a cat.",
+	})
+
+	multimodal := Multimodal(Text("What is 2+2? Also, describe this image."), ImageData([]byte("fake-image-bytes"), "image/png"))
+	agent := Agent(client, WithTools(calc), WithMultimodalData(&multimodal))
+
+	var buf bytes.Buffer
+	req := calque.NewRequest(context.Background(), strings.NewReader(`{"parts":[]}`))
+	res := calque.NewResponse(&buf)
+	if err := agent.ServeFlow(req, res); err != nil {
+		t.Fatalf("agent error = %v", err)
+	}
+
+	firstTurnHistory := client.HistoryAt(0)
+	if len(firstTurnHistory) == 0 {
+		t.Fatal("expected first turn to have history")
+	}
+	if firstTurnHistory[0].Multimodal == nil {
+		t.Fatal("expected first user message to carry MultimodalData, got nil")
+	}
+	if len(firstTurnHistory[0].Multimodal.Parts) != 2 {
+		t.Errorf("expected 2 multimodal parts preserved, got %d", len(firstTurnHistory[0].Multimodal.Parts))
+	}
+}
+
+// TestAgentToolFormatterClientUsedThroughoutLoop pins that a caller-supplied
+// ToolFormatterClient is actually used for every LLM call in the loop, not
+// just ignored in favor of the original client.
+func TestAgentToolFormatterClientUsedThroughoutLoop(t *testing.T) {
+	calc := tools.Simple("calculator", "Math Calculator", func(_ string) string { return "4" })
+
+	// The primary client should never be called once a formatter client is
+	// configured - every turn should route through formatterClient instead.
+	primaryClient := NewMockClientWithError("primary client should not be called")
+
+	formatterClient := NewMockClientWithResponses([]string{
+		`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+		"The answer is 4.",
+	})
+
+	agent := Agent(primaryClient, WithTools(calc), WithToolResultFormatter(
+		func(_ Client, _ []byte) calque.Handler {
+			return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
+				var final []byte
+				if err := calque.Read(r, &final); err != nil {
+					return err
+				}
+				return calque.Write(w, final)
+			})
+		},
+		formatterClient,
+	))
+
+	var buf bytes.Buffer
+	req := calque.NewRequest(context.Background(), strings.NewReader("What is 2+2?"))
+	res := calque.NewResponse(&buf)
+	if err := agent.ServeFlow(req, res); err != nil {
+		t.Fatalf("agent error = %v (primary client should never be invoked)", err)
+	}
+
+	if !strings.Contains(buf.String(), "The answer is 4.") {
+		t.Errorf("expected answer from formatterClient, got: %s", buf.String())
+	}
+	if formatterClient.CallCount() != 2 {
+		t.Errorf("expected formatterClient to be called twice, got %d", formatterClient.CallCount())
+	}
+}
+
 func TestAgentWithClientError(t *testing.T) {
 	calc := tools.Simple("calculator", "Math Calculator", func(s string) string { return s })
 

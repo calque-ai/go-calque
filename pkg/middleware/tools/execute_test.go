@@ -317,6 +317,37 @@ func TestParseToolCalls(t *testing.T) {
 	}
 }
 
+// TestParseToolCallsGeneratedIDsAreUnique pins that fallback IDs are unique
+// per call rather than a positional index, since a positional index (e.g.
+// "call_0") collides across separate turns of the same multi-shot
+// conversation when re-parsed on each loop iteration.
+func TestParseToolCallsGeneratedIDsAreUnique(t *testing.T) {
+	turn1 := ParseToolCalls([]byte(`{"tool_calls": [{"type": "function", "function": {"name": "lookup_city_id", "arguments": "{}"}}]}`))
+	turn2 := ParseToolCalls([]byte(`{"tool_calls": [{"type": "function", "function": {"name": "get_weather_by_id", "arguments": "{}"}}]}`))
+
+	if len(turn1) != 1 || len(turn2) != 1 {
+		t.Fatalf("expected one call per turn, got %d and %d", len(turn1), len(turn2))
+	}
+	if turn1[0].ID == "" || turn2[0].ID == "" {
+		t.Fatal("expected non-empty generated IDs")
+	}
+	if turn1[0].ID == turn2[0].ID {
+		t.Errorf("expected distinct IDs across turns, both got %q", turn1[0].ID)
+	}
+
+	// Also confirm IDs are unique within a single batch of multiple calls.
+	batch := ParseToolCalls([]byte(`{"tool_calls": [
+		{"type": "function", "function": {"name": "a", "arguments": "{}"}},
+		{"type": "function", "function": {"name": "b", "arguments": "{}"}}
+	]}`))
+	if len(batch) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(batch))
+	}
+	if batch[0].ID == batch[1].ID {
+		t.Errorf("expected distinct IDs within one batch, both got %q", batch[0].ID)
+	}
+}
+
 func TestExecuteToolCallTimeout(t *testing.T) {
 	hungTool := Simple("hung", "Never returns in time", func(_ string) string {
 		time.Sleep(200 * time.Millisecond)

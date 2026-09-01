@@ -29,7 +29,9 @@ type MockClient struct {
 	errorMessage     string
 	simulateTools    bool // Whether to simulate tool calls
 	toolCalls        []MockToolCall
-	simulateJSONMode bool // Whether to simulate structured JSON output
+	simulateJSONMode bool            // Whether to simulate structured JSON output
+	historyLog       [][]Message     // History received on each Chat() call, in order
+	optsLog          []*AgentOptions // AgentOptions received on each Chat() call, in order
 }
 
 // MockToolCall represents a simulated tool call for testing
@@ -87,9 +89,13 @@ func (m *MockClient) Chat(req *calque.Request, res *calque.Response, opts *Agent
 	var toolList []tools.Tool
 	var schema *ResponseFormat
 
+	m.optsLog = append(m.optsLog, opts)
 	if opts != nil {
 		toolList = opts.Tools
 		schema = opts.Schema
+		m.historyLog = append(m.historyLog, opts.History)
+	} else {
+		m.historyLog = append(m.historyLog, nil)
 	}
 	// Check if we should return an error (for testing error handling)
 	if m.shouldError {
@@ -299,4 +305,46 @@ func (m *MockClient) getNextResponse(input string) string {
 // Reset resets the call count (useful for testing)
 func (m *MockClient) Reset() {
 	m.callCount = 0
+	m.historyLog = nil
+	m.optsLog = nil
+}
+
+// HistoryAt returns the AgentOptions.History the client received on its
+// callIndex-th Chat() invocation (0-indexed), or nil if there was no such
+// call or no history was set. Use this to assert that a caller (e.g. the
+// ai.Agent tool-calling loop) actually threads conversation history through
+// to the client on each turn, rather than dropping it.
+func (m *MockClient) HistoryAt(callIndex int) []Message {
+	if callIndex < 0 || callIndex >= len(m.historyLog) {
+		return nil
+	}
+	return m.historyLog[callIndex]
+}
+
+// OptionsAt returns the *AgentOptions the client received on its
+// callIndex-th Chat() invocation (0-indexed), or nil if there was no such
+// call. Use this to assert that fields like Schema or Tools were actually
+// passed through on a given turn.
+func (m *MockClient) OptionsAt(callIndex int) *AgentOptions {
+	if callIndex < 0 || callIndex >= len(m.optsLog) {
+		return nil
+	}
+	return m.optsLog[callIndex]
+}
+
+// CallCount returns the number of times Chat() has been invoked.
+func (m *MockClient) CallCount() int {
+	return len(m.historyLog)
+}
+
+// HistoryContainsToolResult reports whether history has a RoleTool message
+// whose Content contains the given substring - useful for asserting that a
+// prior turn's tool result was actually fed back to the model.
+func HistoryContainsToolResult(history []Message, contains string) bool {
+	for _, msg := range history {
+		if msg.Role == RoleTool && strings.Contains(msg.Content, contains) {
+			return true
+		}
+	}
+	return false
 }

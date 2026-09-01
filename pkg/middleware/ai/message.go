@@ -17,9 +17,15 @@ const (
 //
 // ToolCalls is set on an assistant message that requested tools; ToolCallID
 // is set on a tool message and must match the ToolCall.ID it answers.
+// Multimodal is set on a user message carrying non-text content (images,
+// audio, video) alongside or instead of Content; io.Reader-backed parts are
+// read once when the message is first sent to a provider, so Multimodal
+// should only be set on the initial user turn, not reconstructed on
+// subsequent loop iterations.
 type Message struct {
 	Role       Role
 	Content    string
 	ToolCalls  []tools.ToolCall
 	ToolCallID string
+	Multimodal *MultimodalInput
 }

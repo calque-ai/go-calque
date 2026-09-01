@@ -24,10 +24,9 @@ import (
 //
 //	// These handlers will execute sequentially with context propagation
 //	flow.Use(ctrl.Chain(
-//	    tools.Registry(calc, search),  // Adds tools to context
-//	    addToolInformation(),          // Uses tools from context
-//	    llm.Chat(provider),           // LLM processing
-//	    tools.Detect(...),            // Uses tools from context
+//	    tools.Registry(calc, search),      // Adds tools to context
+//	    llm.Chat(provider),                // LLM processing
+//	    tools.Detect(tools.Execute(), ...), // Uses tools from context
 //	))
 //
 // Note: The chain itself runs as a single handler in the parallel flow,

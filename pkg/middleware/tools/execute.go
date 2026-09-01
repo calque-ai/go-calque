@@ -3,6 +3,8 @@ package tools
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -85,7 +87,13 @@ type Config struct {
 	IncludeOriginalOutput bool
 	// RawOutput - if true, returns JSON-marshaled results instead of formatted text
 	RawOutput bool
-	// ToolTimeout - per-tool execution timeout (0 = no timeout)
+	// ToolTimeout per-tool execution timeout (0 = no timeout). The caller
+	// stops waiting and gets a timeout error once this elapses, but if a
+	// tool ignores ctx.Done() (e.g. a blocking call with no context-aware
+	// I/O), its goroutine keeps running in the background, Go has no way
+	// to forcibly cancel it. For ToolTimeout to actually bound the tool's
+	// own resource usage, not just how long the caller waits, tools should
+	// respect ctx cancellation in any blocking work they perform.
 	ToolTimeout time.Duration
 }
 
@@ -95,8 +103,13 @@ type Config struct {
 // Output: formatted tool results
 // Behavior: BUFFERED - reads entire input to parse and execute tools
 //
-// This middleware assumes tool calls are present and will error if none are found.
-// Use tools.Detect() to conditionally route inputs with/without tool calls.
+// This middleware errors only if no tool calls are found in the input or no
+// tools are registered - use tools.Detect() to conditionally route inputs
+// with/without tool calls. Once tool calls are found, individual tool
+// failures do not error the handler: each failing call's error is reported
+// inline in the formatted output (or as ToolResult.Error/RawOutput JSON) so
+// callers - including the ai.Agent loop - can inspect or react to it instead
+// of the whole request aborting.
 //
 // Example:
 //
@@ -111,8 +124,9 @@ func Execute() calque.Handler {
 	})
 }
 
-// ExecuteWithOptions creates an Execute middleware with custom configuration
-// This assumes tool calls are present in the input and will error if none are found
+// ExecuteWithOptions creates an Execute middleware with custom configuration.
+// This assumes tool calls are present in the input and will error if none are
+// found (or if no tools are registered) - see Execute for full error semantics.
 func ExecuteWithOptions(config Config) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		tools := GetTools(r.Context)
@@ -216,7 +230,7 @@ func parseJSONToolCalls(output []byte) []ToolCall {
 
 		id := openaiCall.ID
 		if id == "" {
-			id = fmt.Sprintf("call_%d", i)
+			id = generateToolCallID()
 		}
 
 		toolCalls[i] = ToolCall{
@@ -227,6 +241,19 @@ func parseJSONToolCalls(output []byte) []ToolCall {
 	}
 
 	return toolCalls
+}
+
+// generateToolCallID returns a random ID for a tool call whose provider
+// didn't supply one, unique enough to avoid collisions across turns of the
+// same multi-shot conversation (unlike a per-response positional index).
+func generateToolCallID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand failure is exceedingly rare; fall back to a
+		// timestamp-based ID rather than risk a collision on empty output.
+		return fmt.Sprintf("call_%d", time.Now().UnixNano())
+	}
+	return "call_" + hex.EncodeToString(b[:])
 }
 
 // ExecuteToolCalls executes multiple tool calls with configuration, returning

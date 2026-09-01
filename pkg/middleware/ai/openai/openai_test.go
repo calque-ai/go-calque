@@ -575,6 +575,43 @@ func TestMultimodalToMessages(t *testing.T) {
 	}
 }
 
+// TestHistoryToMessagesWithMultimodal pins that a RoleUser history message
+// carrying Multimodal data is converted into a real multi-part user message,
+// not silently dropped or flattened to plain text, once history round-trips
+// through the agent tool-calling loop.
+func TestHistoryToMessagesWithMultimodal(t *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: DefaultConfig(),
+	}
+
+	history := []ai.Message{
+		{
+			Role: ai.RoleUser,
+			Multimodal: &ai.MultimodalInput{
+				Parts: []ai.ContentPart{
+					{Type: "text", Text: "What's in this image?"},
+					{Type: "image", Data: []byte("test-image-data"), MimeType: "image/png"},
+				},
+			},
+		},
+	}
+
+	messages, err := client.historyToMessages(context.Background(), history)
+	if err != nil {
+		t.Fatalf("historyToMessages() error = %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(messages))
+	}
+	if messages[0].OfUser == nil {
+		t.Fatal("expected a user message, got none")
+	}
+	if len(messages[0].OfUser.Content.OfArrayOfContentParts) != 2 {
+		t.Errorf("expected 2 content parts (text + image), got %d", len(messages[0].OfUser.Content.OfArrayOfContentParts))
+	}
+}
+
 // TestEnhancedConvertToOpenAITools tests tool conversion with more scenarios
 func TestEnhancedConvertToOpenAITools(t *testing.T) {
 	client := &Client{

@@ -321,35 +321,123 @@ func TestAgentMultiShotToolChain(t *testing.T) {
 	if !strings.Contains(result, "sunny") {
 		t.Errorf("Expected final answer to use the second tool's result, got: %s", result)
 	}
+
+	// Pin the actual history threading, not just the final text: turn 2 and
+	// turn 3 must have seen turn 1's tool result, and turn 3 must have seen
+	// turn 2's, or this test would pass even if history were silently dropped
+	// (as it currently is for the Gemini and Ollama clients).
+	if mockClient.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM calls, got %d", mockClient.CallCount())
+	}
+	if !ai.HistoryContainsToolResult(mockClient.HistoryAt(1), "NYC-001") {
+		t.Error("turn 2 history missing turn 1's tool result (lookup_city_id)")
+	}
+	if !ai.HistoryContainsToolResult(mockClient.HistoryAt(2), "sunny") {
+		t.Error("turn 3 history missing turn 2's tool result (get_weather_by_id)")
+	}
 }
 
-// TestAgentMaxIterations tests that the loop stops at MaxIterations and still
-// returns a formatted answer via a final call, rather than erroring, when the
-// model keeps requesting tools indefinitely.
+// TestAgentMaxIterations pins that MaxIterations is the true cap on total LLM
+// calls (not calls-before-one-more-uncounted-forced-call), across the
+// meaningful boundary values: the tightest possible cap (1, zero tool-calling
+// rounds), one tool-calling round before the forced final (2), and a cap with
+// headroom (4) where the model still exhausts it. In every case a model that
+// keeps requesting tools indefinitely must still get exactly maxIterations
+// calls and a real final answer with no tools offered on the last call.
 func TestAgentMaxIterations(t *testing.T) {
 	t.Parallel()
 
 	alwaysAskAgain := tools.Simple("always_ask_again", "A tool that never satisfies the model", func(_ string) string {
 		return "keep going"
 	})
-
 	toolCallResponse := `{"tool_calls": [{"type": "function", "function": {"name": "always_ask_again", "arguments": "{}"}}]}`
-	mockClient := ai.NewMockClientWithResponses([]string{
-		toolCallResponse,
-		toolCallResponse,
-		"I'll stop here and answer directly.",
-	})
+	finalAnswer := "I'll stop here and answer directly."
 
-	agent := ai.Agent(mockClient, ai.WithTools(alwaysAskAgain), ai.WithMaxIterations(2))
-
-	var result string
-	err := calque.NewFlow().Use(agent).Run(context.Background(), "Keep calling the tool forever", &result)
-	if err != nil {
-		t.Fatalf("Agent execution failed: %v", err)
+	tests := []struct {
+		name          string
+		maxIterations int
+		responses     []string // one response per expected LLM call
+	}{
+		{
+			name:          "cap of 1 - zero tool-calling rounds, immediate forced answer",
+			maxIterations: 1,
+			responses:     []string{finalAnswer},
+		},
+		{
+			name:          "cap of 2 - one tool-calling round then forced answer",
+			maxIterations: 2,
+			responses:     []string{toolCallResponse, finalAnswer},
+		},
+		{
+			name:          "cap of 4 - three tool-calling rounds then forced answer",
+			maxIterations: 4,
+			responses:     []string{toolCallResponse, toolCallResponse, toolCallResponse, finalAnswer},
+		},
 	}
 
-	if !strings.Contains(result, "I'll stop here and answer directly.") {
-		t.Errorf("Expected forced final answer after MaxIterations, got: %s", result)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := ai.NewMockClientWithResponses(tt.responses)
+			agent := ai.Agent(mockClient, ai.WithTools(alwaysAskAgain), ai.WithMaxIterations(tt.maxIterations))
+
+			var result string
+			err := calque.NewFlow().Use(agent).Run(context.Background(), "Keep calling the tool forever", &result)
+			if err != nil {
+				t.Fatalf("Agent execution failed: %v", err)
+			}
+
+			if !strings.Contains(result, finalAnswer) {
+				t.Errorf("expected forced final answer, got: %s", result)
+			}
+			if mockClient.CallCount() != tt.maxIterations {
+				t.Errorf("expected exactly %d LLM calls, got %d", tt.maxIterations, mockClient.CallCount())
+			}
+			if opts := mockClient.OptionsAt(tt.maxIterations - 1); opts != nil && len(opts.Tools) != 0 {
+				t.Errorf("expected no tools offered on the final call, got %d", len(opts.Tools))
+			}
+		})
+	}
+}
+
+// TestAgentMaxIterationsDefaultsWhenUnsetOrInvalid pins that MaxIterations
+// falls back to the package default instead of looping zero times or
+// panicking when left unset (0) or given an invalid negative value.
+func TestAgentMaxIterationsDefaultsWhenUnsetOrInvalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		maxIterations int // 0 means "don't call WithMaxIterations at all"
+	}{
+		{name: "unset"},
+		{name: "explicit zero", maxIterations: 0},
+		{name: "negative", maxIterations: -1},
+	}
+
+	calc := tools.Simple("calculator", "Math Calculator", func(_ string) string { return "4" })
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := ai.NewMockClientWithResponses([]string{
+				`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+				"The answer is 4.",
+			})
+
+			opts := []ai.AgentOption{ai.WithTools(calc)}
+			if tt.name != "unset" {
+				opts = append(opts, ai.WithMaxIterations(tt.maxIterations))
+			}
+			agent := ai.Agent(mockClient, opts...)
+
+			var result string
+			err := calque.NewFlow().Use(agent).Run(context.Background(), "What is 2+2?", &result)
+			if err != nil {
+				t.Fatalf("Agent execution failed: %v", err)
+			}
+			if !strings.Contains(result, "The answer is 4.") {
+				t.Errorf("expected the model's natural answer, got: %s", result)
+			}
+		})
 	}
 }
 
