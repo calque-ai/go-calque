@@ -55,6 +55,11 @@ func main() {
 	// Example 3: OpenAI Agent
 	fmt.Println("Example 3: OpenAI Agent with Tools")
 	runOpenAIAgent()
+	fmt.Println()
+
+	// Example 4: Multi-shot tool chaining
+	fmt.Println("Example 4: OpenAI Agent with Multi-Shot Tool Chaining")
+	runMultiShotAgent()
 }
 
 // Example 1: Simple agent with basic tools
@@ -254,6 +259,67 @@ func runOpenAIAgent() {
 	err = flow.Run(ctx, input, &result)
 	if err != nil {
 		log.Printf("OpenAI agent error: %v", err)
+		return
+	}
+
+	fmt.Printf("Input: %s\n", input)
+	fmt.Printf("Result: %s\n", result)
+}
+
+// Example 4: multi-shot tool chaining - the weather tool requires a city ID
+// that only the lookup tool can provide, so the model must call lookup_city_id,
+// see its result, then call get_weather_by_id in a second round before
+// answering. This can only work with a true multi-turn loop: a single-shot
+// agent has no way to feed the first tool's result back for a second call.
+func runMultiShotAgent() {
+	cityIDs := map[string]string{
+		"new york": "NYC-001",
+		"london":   "LON-001",
+		"tokyo":    "TOK-001",
+	}
+
+	lookupCityID := tools.Simple("lookup_city_id", "Looks up the internal city ID for a city name. Must be called before get_weather_by_id.", func(jsonArgs string) string {
+		var args struct {
+			City string `json:"city"`
+		}
+		if err := json.Unmarshal([]byte(jsonArgs), &args); err != nil {
+			return fmt.Sprintf("Error parsing arguments: %v", err)
+		}
+
+		id, ok := cityIDs[strings.ToLower(args.City)]
+		if !ok {
+			return fmt.Sprintf("Error: unknown city %q", args.City)
+		}
+		return id
+	})
+
+	getWeatherByID := tools.Simple("get_weather_by_id", "Gets current weather using a city ID returned by lookup_city_id.", func(jsonArgs string) string {
+		var args struct {
+			CityID string `json:"city_id"`
+		}
+		if err := json.Unmarshal([]byte(jsonArgs), &args); err != nil {
+			return fmt.Sprintf("Error parsing arguments: %v", err)
+		}
+
+		weather := []string{"sunny", "cloudy", "rainy"}
+		idx := len(args.CityID) % len(weather)
+		return fmt.Sprintf("Weather for %s: %s, 65°F", args.CityID, weather[idx])
+	})
+
+	client, err := openai.New("gpt-4o-mini")
+	if err != nil {
+		log.Fatal("Failed to create OpenAI client:", err)
+	}
+
+	agent := ai.Agent(client, ai.WithTools(lookupCityID, getWeatherByID))
+
+	ctx := context.Background()
+	input := "What's the weather in New York? You'll need to look up its city ID first."
+
+	var result string
+	err = calque.NewFlow().Use(agent).Run(ctx, input, &result)
+	if err != nil {
+		log.Printf("Multi-shot agent error: %v", err)
 		return
 	}
 

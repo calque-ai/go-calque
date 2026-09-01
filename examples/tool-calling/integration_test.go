@@ -290,6 +290,69 @@ func TestAgentWithTools(t *testing.T) {
 	}
 }
 
+// TestAgentMultiShotToolChain tests that the agent loop can call a second,
+// dependent tool using the first tool's result - something a single-shot
+// agent could never do, since it never fed tool results back to the model.
+func TestAgentMultiShotToolChain(t *testing.T) {
+	t.Parallel()
+
+	lookupCityID := tools.Simple("lookup_city_id", "Looks up the internal city ID for a city name", func(_ string) string {
+		return "NYC-001"
+	})
+
+	getWeatherByID := tools.Simple("get_weather_by_id", "Gets current weather using a city ID", func(_ string) string {
+		return "Weather for NYC-001: sunny, 65°F"
+	})
+
+	mockClient := ai.NewMockClientWithResponses([]string{
+		`{"tool_calls": [{"type": "function", "function": {"name": "lookup_city_id", "arguments": "{\"city\": \"New York\"}"}}]}`,
+		`{"tool_calls": [{"type": "function", "function": {"name": "get_weather_by_id", "arguments": "{\"city_id\": \"NYC-001\"}"}}]}`,
+		"The weather in New York is sunny, 65°F.",
+	})
+
+	agent := ai.Agent(mockClient, ai.WithTools(lookupCityID, getWeatherByID))
+
+	var result string
+	err := calque.NewFlow().Use(agent).Run(context.Background(), "What's the weather in New York?", &result)
+	if err != nil {
+		t.Fatalf("Agent execution failed: %v", err)
+	}
+
+	if !strings.Contains(result, "sunny") {
+		t.Errorf("Expected final answer to use the second tool's result, got: %s", result)
+	}
+}
+
+// TestAgentMaxIterations tests that the loop stops at MaxIterations and still
+// returns a formatted answer via a final call, rather than erroring, when the
+// model keeps requesting tools indefinitely.
+func TestAgentMaxIterations(t *testing.T) {
+	t.Parallel()
+
+	alwaysAskAgain := tools.Simple("always_ask_again", "A tool that never satisfies the model", func(_ string) string {
+		return "keep going"
+	})
+
+	toolCallResponse := `{"tool_calls": [{"type": "function", "function": {"name": "always_ask_again", "arguments": "{}"}}]}`
+	mockClient := ai.NewMockClientWithResponses([]string{
+		toolCallResponse,
+		toolCallResponse,
+		"I'll stop here and answer directly.",
+	})
+
+	agent := ai.Agent(mockClient, ai.WithTools(alwaysAskAgain), ai.WithMaxIterations(2))
+
+	var result string
+	err := calque.NewFlow().Use(agent).Run(context.Background(), "Keep calling the tool forever", &result)
+	if err != nil {
+		t.Fatalf("Agent execution failed: %v", err)
+	}
+
+	if !strings.Contains(result, "I'll stop here and answer directly.") {
+		t.Errorf("Expected forced final answer after MaxIterations, got: %s", result)
+	}
+}
+
 // TestToolErrorHandling tests error handling in tools with various error scenarios
 func TestToolErrorHandling(t *testing.T) {
 	t.Parallel()
