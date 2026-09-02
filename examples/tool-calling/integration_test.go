@@ -533,6 +533,35 @@ func TestAgentMaxIterations(t *testing.T) {
 	}
 }
 
+// TestAgentMaxIterationsModelIgnoresToolsDisabled pins that the loop errors
+// instead of returning raw tool-call JSON as if it were a real answer, when
+// a model ignores ToolsDisabled on the forced-final call and requests a tool
+// anyway. ToolsDisabled is only a request to the Client - some providers
+// (e.g. Ollama) have no way to enforce it - so the loop can't assume the
+// last response is always prose.
+func TestAgentMaxIterationsModelIgnoresToolsDisabled(t *testing.T) {
+	t.Parallel()
+
+	stubborn := tools.Simple("stubborn", "A tool the model keeps calling even when asked not to", func(_ string) string {
+		return "keep going"
+	})
+	toolCallResponse := `{"tool_calls": [{"type": "function", "function": {"name": "stubborn", "arguments": "{}"}}]}`
+
+	// Every response, including the forced-final call, requests the tool -
+	// simulating a model/provider that doesn't honor ToolsDisabled.
+	mockClient := ai.NewMockClientWithResponses([]string{toolCallResponse, toolCallResponse})
+	agent := ai.Agent(mockClient, ai.WithTools(stubborn), ai.WithMaxIterations(2))
+
+	var result string
+	err := calque.NewFlow().Use(agent).Run(context.Background(), "Keep calling the tool forever", &result)
+	if err == nil {
+		t.Fatalf("expected an error, got a result instead: %s", result)
+	}
+	if !strings.Contains(err.Error(), "MaxIterations") {
+		t.Errorf("expected error to mention MaxIterations, got: %v", err)
+	}
+}
+
 // TestAgentMaxIterationsDefaultsWhenUnsetOrInvalid pins that MaxIterations
 // falls back to the package default instead of looping zero times or
 // panicking when left unset (0) or given an invalid negative value.

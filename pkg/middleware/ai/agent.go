@@ -177,7 +177,15 @@ func runAgentLoop(client Client, agentOpts *AgentOptions, r *calque.Request, inp
 			return nil, err
 		}
 
-		if lastIteration || !tools.HasToolCalls(response) {
+		if lastIteration {
+			// ToolsDisabled is only a request; some providers can't enforce it.
+			if tools.HasToolCalls(response) {
+				return nil, calque.NewErr(r.Context, "agent reached MaxIterations but model still requested tool calls")
+			}
+			return response, nil
+		}
+
+		if !tools.HasToolCalls(response) {
 			return response, nil
 		}
 
