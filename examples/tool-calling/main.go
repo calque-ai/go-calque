@@ -36,7 +36,7 @@ func main() {
 	fmt.Println("=== Tool Calling Examples ===")
 	fmt.Println("Prerequisites:")
 	fmt.Println("1. Install Ollama: https://ollama.ai/")
-	fmt.Println("2. Pull a model: ollama pull llama3.2:1b")
+	fmt.Println("2. Pull a model: ollama pull qwen3.5:2b-mlx or any other model you prefer")
 	fmt.Println("3. Make sure Ollama is running: ollama serve")
 	fmt.Println("4. Set GOOGLE_API_KEY in your .env file for Gemini examples")
 	fmt.Println("5. Set OPENAI_API_KEY in your .env file for OpenAI examples")
@@ -73,6 +73,15 @@ func main() {
 		log.Fatal("Failed to create Gemini client:", err)
 	}
 	runMultiShotAgent("Gemini", geminiClient)
+	fmt.Println()
+
+	// Example 6: Multi-shot tool chaining, same scenario against Ollama
+	fmt.Println("Example 6: Ollama Agent with Multi-Shot Tool Chaining")
+	ollamaClient, err := ollama.New("qwen3.5:2b-mlx")
+	if err != nil {
+		log.Fatal("Failed to create Ollama client:", err)
+	}
+	runMultiShotAgent("Ollama", ollamaClient)
 }
 
 // Example 1: Simple agent with basic tools
@@ -165,7 +174,7 @@ func runConfiguredAgent() {
 		IncludeOriginalOutput: true, // Include LLM output with tool results
 	}
 
-	client, err := ollama.New("llama3.2:1b")
+	client, err := ollama.New("qwen3.5:2b-mlx")
 	if err != nil {
 		log.Fatal("Failed to create Ollama client:", err)
 	}
@@ -293,32 +302,35 @@ func runMultiShotAgent(label string, client ai.Client) {
 		"tokyo":    "TOK-001",
 	}
 
+	// tools.Simple always declares its parameter schema as a single "input"
+	// string field, regardless of what a closure's local variable is named -
+	// the model is only ever told about "input", so parsing must match.
 	lookupCityID := tools.Simple("lookup_city_id", "Looks up the internal city ID for a city name. Must be called before get_weather_by_id.", func(jsonArgs string) string {
 		var args struct {
-			City string `json:"city"`
+			Input string `json:"input"`
 		}
 		if err := json.Unmarshal([]byte(jsonArgs), &args); err != nil {
 			return fmt.Sprintf("Error parsing arguments: %v", err)
 		}
 
-		id, ok := cityIDs[strings.ToLower(args.City)]
+		id, ok := cityIDs[strings.ToLower(args.Input)]
 		if !ok {
-			return fmt.Sprintf("Error: unknown city %q", args.City)
+			return fmt.Sprintf("Error: unknown city %q", args.Input)
 		}
 		return id
 	})
 
 	getWeatherByID := tools.Simple("get_weather_by_id", "Gets current weather using a city ID returned by lookup_city_id.", func(jsonArgs string) string {
 		var args struct {
-			CityID string `json:"city_id"`
+			Input string `json:"input"`
 		}
 		if err := json.Unmarshal([]byte(jsonArgs), &args); err != nil {
 			return fmt.Sprintf("Error parsing arguments: %v", err)
 		}
 
 		weather := []string{"sunny", "cloudy", "rainy"}
-		idx := len(args.CityID) % len(weather)
-		return fmt.Sprintf("Weather for %s: %s, 65°F", args.CityID, weather[idx])
+		idx := len(args.Input) % len(weather)
+		return fmt.Sprintf("Weather for %s: %s, 65°F", args.Input, weather[idx])
 	})
 
 	var callCount int

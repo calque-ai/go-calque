@@ -219,7 +219,7 @@ func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Build request configuration based on input type
-	config, err := o.buildRequestConfig(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts))
+	config, err := o.buildRequestConfig(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts), ai.GetHistory(opts), ai.GetToolsDisabled(opts))
 	if err != nil {
 		return err
 	}
@@ -228,10 +228,12 @@ func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	return o.executeRequest(config, r, w, opts)
 }
 
-// buildRequestConfig creates configuration for the request
-func (o *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool) (*RequestConfig, error) {
-	// Create chat request based on input type
-	chatRequest, err := o.inputToChatRequest(ctx, input)
+// buildRequestConfig creates configuration for the request.
+// If history is non-empty, it is round-tripped as the full message list
+// instead of building a single message from input.
+func (o *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, toolList []tools.Tool, history []ai.Message, toolsDisabled bool) (*RequestConfig, error) {
+	// Create chat request based on input type or history
+	chatRequest, err := o.inputToChatRequest(ctx, input, history)
 	if err != nil {
 		return nil, err
 	}
@@ -239,9 +241,13 @@ func (o *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInp
 	// Apply configuration
 	o.applyChatConfig(chatRequest, schema)
 
-	// Add tools if provided
-	if len(tools) > 0 {
-		chatRequest.Tools = o.convertToOllamaTools(ctx, tools)
+	// ToolsDisabled has no Ollama-side "declared but disabled" mechanism
+	// (unlike OpenAI's tool_choice:"none" or Gemini's FunctionCallingConfigModeNone) -
+	// Ollama's API has no such field. Omitting Tools is the only option, and
+	// matches Ollama's own documented multi-turn tool-calling loop (no
+	// forcing mechanism exists at all).
+	if len(toolList) > 0 && !toolsDisabled {
+		chatRequest.Tools = o.convertToOllamaTools(ctx, toolList)
 	}
 
 	return &RequestConfig{
@@ -338,34 +344,115 @@ func (o *Client) executeRequest(config *RequestConfig, r *calque.Request, w *cal
 	return nil
 }
 
-// inputToChatRequest converts classified input to Ollama ChatRequest
-func (o *Client) inputToChatRequest(ctx context.Context, input *ai.ClassifiedInput) (*api.ChatRequest, error) {
+// inputToChatRequest converts classified input (or, once populated, agent
+// history) into an Ollama ChatRequest. If history is non-empty, it is
+// round-tripped in full instead of building a single message from input -
+// the raw request body is unused once History is populated, matching
+// openai.Client.inputToMessages/gemini.Client.inputToContents.
+func (o *Client) inputToChatRequest(ctx context.Context, input *ai.ClassifiedInput, history []ai.Message) (*api.ChatRequest, error) {
 	req := &api.ChatRequest{
 		Model:   o.model,
 		Options: make(map[string]any),
 	}
 
+	var messages []api.Message
+	var err error
+	if len(history) > 0 {
+		messages, err = o.historyToMessages(ctx, history)
+	} else {
+		messages, err = o.inputToMessages(ctx, input)
+	}
+	if err != nil {
+		return nil, err
+	}
+	req.Messages = messages
+
+	return req, nil
+}
+
+// inputToMessages converts classified input to Ollama's message format for
+// a single turn, used when there is no conversation history to round-trip.
+func (o *Client) inputToMessages(ctx context.Context, input *ai.ClassifiedInput) ([]api.Message, error) {
 	switch input.Type {
 	case ai.TextInput:
-		req.Messages = []api.Message{
+		return []api.Message{
 			{
 				Role:    roleUser,
 				Content: input.Text,
 			},
-		}
+		}, nil
 
 	case ai.MultimodalJSONInput, ai.MultimodalStreamingInput:
 		message, err := o.multimodalToMessage(ctx, input.Multimodal)
 		if err != nil {
 			return nil, err
 		}
-		req.Messages = []api.Message{*message}
+		return []api.Message{*message}, nil
 
 	default:
 		return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported input type: %d", input.Type))
 	}
+}
 
-	return req, nil
+// historyToMessages converts agent conversation history to Ollama's native
+// message format. Ollama's Message.Role is a free-form string that matches
+// ai.Role's values directly - no per-provider remapping needed (unlike
+// Gemini, which has no inline system turn and falls back to "user").
+func (o *Client) historyToMessages(ctx context.Context, history []ai.Message) ([]api.Message, error) {
+	messages := make([]api.Message, len(history))
+	for i, msg := range history {
+		switch msg.Role {
+		case ai.RoleUser:
+			if msg.Multimodal != nil {
+				m, err := o.multimodalToMessage(ctx, msg.Multimodal)
+				if err != nil {
+					return nil, err
+				}
+				messages[i] = *m
+				continue
+			}
+			messages[i] = api.Message{Role: string(ai.RoleUser), Content: msg.Content}
+		case ai.RoleSystem:
+			messages[i] = api.Message{Role: string(ai.RoleSystem), Content: msg.Content}
+		case ai.RoleTool:
+			messages[i] = api.Message{
+				Role:       string(ai.RoleTool),
+				Content:    msg.Content,
+				ToolName:   msg.ToolName,
+				ToolCallID: msg.ToolCallID,
+			}
+		case ai.RoleAssistant:
+			messages[i] = assistantMessage(msg)
+		default:
+			return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported message role: %s", msg.Role))
+		}
+	}
+	return messages, nil
+}
+
+// assistantMessage builds an assistant api.Message, attaching tool calls when present.
+func assistantMessage(msg ai.Message) api.Message {
+	out := api.Message{Role: string(ai.RoleAssistant), Content: msg.Content}
+	if len(msg.ToolCalls) == 0 {
+		return out
+	}
+
+	toolCalls := make([]api.ToolCall, len(msg.ToolCalls))
+	for i, call := range msg.ToolCalls {
+		var args api.ToolCallFunctionArguments
+		if call.Arguments != "" {
+			_ = json.Unmarshal([]byte(call.Arguments), &args)
+		}
+		toolCalls[i] = api.ToolCall{
+			ID: call.ID,
+			Function: api.ToolCallFunction{
+				Name:      call.Name,
+				Arguments: args,
+			},
+		}
+	}
+	out.ToolCalls = toolCalls
+	return out
 }
 
 // multimodalToMessage converts multimodal input to Ollama Message with images
@@ -533,8 +620,12 @@ func (o *Client) writeOllamaToolCalls(toolCalls []api.ToolCall, w *calque.Respon
 			}
 		}
 
+		// ID is included when Ollama supplies one, otherwise the shared
+		// tool-call parser (tools.parseJSONToolCalls) generates one on the
+		// receiving end.
 		toolCall := map[string]any{
 			"type": toolTypeFunction,
+			"id":   call.ID,
 			toolTypeFunction: map[string]any{
 				"name":      call.Function.Name,
 				"arguments": argsJSON,

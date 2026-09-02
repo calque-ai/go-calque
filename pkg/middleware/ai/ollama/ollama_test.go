@@ -213,7 +213,7 @@ func TestInputToChatRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			req, err := client.inputToChatRequest(ctx, tt.input)
+			req, err := client.inputToChatRequest(ctx, tt.input, nil)
 
 			if tt.expectError {
 				if err == nil {
@@ -234,6 +234,347 @@ func TestInputToChatRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestHistoryToMessages pins how each ai.Message role maps to Ollama's
+// native []api.Message representation, since this is the mechanism that
+// lets the multi-shot tool-calling loop in ai.runAgentLoop drive Ollama.
+func TestHistoryToMessages(t *testing.T) {
+	client := &Client{}
+
+	tests := []struct {
+		name      string
+		history   []ai.Message
+		expectErr bool
+		checkFunc func(t *testing.T, messages []api.Message)
+	}{
+		{
+			name:      "user message",
+			history:   []ai.Message{{Role: ai.RoleUser, Content: "What's the weather?"}},
+			checkFunc: checkUserTextMessage,
+		},
+		{
+			name: "user message with multimodal image",
+			history: []ai.Message{
+				{
+					Role: ai.RoleUser,
+					Multimodal: &ai.MultimodalInput{
+						Parts: []ai.ContentPart{
+							{Type: "text", Text: "What's in this image?"},
+							{Type: "image", Data: []byte("test-image-data"), MimeType: "image/png"},
+						},
+					},
+				},
+			},
+			checkFunc: checkUserMultimodalMessage,
+		},
+		{
+			name:      "system message",
+			history:   []ai.Message{{Role: ai.RoleSystem, Content: "Answer concisely."}},
+			checkFunc: checkSystemMessage,
+		},
+		{
+			name:      "assistant message without tool calls",
+			history:   []ai.Message{{Role: ai.RoleAssistant, Content: "Sure, one moment."}},
+			checkFunc: checkAssistantTextMessage,
+		},
+		{
+			name: "assistant message with tool calls",
+			history: []ai.Message{
+				{
+					Role:      ai.RoleAssistant,
+					ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "get_weather", Arguments: `{"city":"nyc"}`}},
+				},
+			},
+			checkFunc: checkAssistantToolCallMessage,
+		},
+		{
+			name:      "tool result message",
+			history:   []ai.Message{{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"}},
+			checkFunc: checkToolResultMessage,
+		},
+		{
+			name: "full tool-calling round trip",
+			history: []ai.Message{
+				{Role: ai.RoleUser, Content: "What's the weather in NYC?"},
+				{Role: ai.RoleAssistant, ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "get_weather", Arguments: `{"city":"nyc"}`}}},
+				{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"},
+			},
+			checkFunc: checkFullToolRoundTrip,
+		},
+		{
+			name:      "unsupported role",
+			history:   []ai.Message{{Role: ai.Role("bogus"), Content: "x"}},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			messages, err := client.historyToMessages(context.Background(), tt.history)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Fatal("expected error, got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("historyToMessages() error = %v", err)
+			}
+			if tt.checkFunc != nil {
+				tt.checkFunc(t, messages)
+			}
+		})
+	}
+}
+
+func checkUserTextMessage(t *testing.T, messages []api.Message) {
+	t.Helper()
+	if len(messages) != 1 {
+		t.Fatalf("len(messages) = %d, want 1", len(messages))
+	}
+	if messages[0].Role != "user" {
+		t.Errorf("role = %v, want user", messages[0].Role)
+	}
+	if messages[0].Content != "What's the weather?" {
+		t.Errorf("content = %v, want \"What's the weather?\"", messages[0].Content)
+	}
+}
+
+func checkUserMultimodalMessage(t *testing.T, messages []api.Message) {
+	t.Helper()
+	if len(messages) != 1 {
+		t.Fatalf("len(messages) = %d, want 1", len(messages))
+	}
+	if messages[0].Content != "What's in this image?" {
+		t.Errorf("content = %v, want \"What's in this image?\"", messages[0].Content)
+	}
+	if len(messages[0].Images) != 1 {
+		t.Fatalf("len(images) = %d, want 1", len(messages[0].Images))
+	}
+}
+
+func checkSystemMessage(t *testing.T, messages []api.Message) {
+	t.Helper()
+	if messages[0].Role != "system" {
+		t.Errorf("role = %v, want system", messages[0].Role)
+	}
+	if messages[0].Content != "Answer concisely." {
+		t.Errorf("content = %v, want 'Answer concisely.'", messages[0].Content)
+	}
+}
+
+func checkAssistantTextMessage(t *testing.T, messages []api.Message) {
+	t.Helper()
+	if messages[0].Role != "assistant" {
+		t.Errorf("role = %v, want assistant", messages[0].Role)
+	}
+	if messages[0].Content != "Sure, one moment." {
+		t.Errorf("content = %v, want 'Sure, one moment.'", messages[0].Content)
+	}
+	if len(messages[0].ToolCalls) != 0 {
+		t.Errorf("ToolCalls = %+v, want none", messages[0].ToolCalls)
+	}
+}
+
+func checkAssistantToolCallMessage(t *testing.T, messages []api.Message) {
+	t.Helper()
+	if messages[0].Role != "assistant" {
+		t.Errorf("role = %v, want assistant", messages[0].Role)
+	}
+	if len(messages[0].ToolCalls) != 1 {
+		t.Fatalf("len(ToolCalls) = %d, want 1", len(messages[0].ToolCalls))
+	}
+	call := messages[0].ToolCalls[0]
+	if call.ID != "call_1" || call.Function.Name != "get_weather" {
+		t.Errorf("ToolCall = %+v, want ID=call_1 Name=get_weather", call)
+	}
+	city, ok := call.Function.Arguments.Get("city")
+	if !ok || city != "nyc" {
+		t.Errorf("Arguments[city] = %v, ok=%v, want nyc, true", city, ok)
+	}
+}
+
+func checkToolResultMessage(t *testing.T, messages []api.Message) {
+	t.Helper()
+	if messages[0].Role != "tool" {
+		t.Errorf("role = %v, want tool", messages[0].Role)
+	}
+	if messages[0].ToolCallID != "call_1" {
+		t.Errorf("ToolCallID = %v, want call_1", messages[0].ToolCallID)
+	}
+	if messages[0].ToolName != "get_weather" {
+		t.Errorf("ToolName = %v, want get_weather", messages[0].ToolName)
+	}
+	if messages[0].Content != "72F and sunny" {
+		t.Errorf("content = %v, want '72F and sunny'", messages[0].Content)
+	}
+}
+
+func checkFullToolRoundTrip(t *testing.T, messages []api.Message) {
+	t.Helper()
+	if len(messages) != 3 {
+		t.Fatalf("len(messages) = %d, want 3", len(messages))
+	}
+	wantRoles := []string{"user", "assistant", "tool"}
+	for i, want := range wantRoles {
+		if messages[i].Role != want {
+			t.Errorf("messages[%d].Role = %v, want %v", i, messages[i].Role, want)
+		}
+	}
+}
+
+// TestAssistantMessage tests the standalone assistantMessage helper directly.
+func TestAssistantMessage(t *testing.T) {
+	tests := []struct {
+		name      string
+		msg       ai.Message
+		checkFunc func(t *testing.T, m api.Message)
+	}{
+		{
+			name: "no tool calls",
+			msg:  ai.Message{Role: ai.RoleAssistant, Content: "hello"},
+			checkFunc: func(t *testing.T, m api.Message) {
+				t.Helper()
+				if m.Content != "hello" {
+					t.Errorf("content = %v, want hello", m.Content)
+				}
+				if len(m.ToolCalls) != 0 {
+					t.Errorf("ToolCalls = %+v, want none", m.ToolCalls)
+				}
+			},
+		},
+		{
+			name: "single tool call",
+			msg: ai.Message{
+				Role:      ai.RoleAssistant,
+				ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "calculator", Arguments: `{"input":"2+2"}`}},
+			},
+			checkFunc: func(t *testing.T, m api.Message) {
+				t.Helper()
+				if len(m.ToolCalls) != 1 {
+					t.Fatalf("len(ToolCalls) = %d, want 1", len(m.ToolCalls))
+				}
+				input, ok := m.ToolCalls[0].Function.Arguments.Get("input")
+				if !ok || input != "2+2" {
+					t.Errorf("Arguments[input] = %v, ok=%v, want 2+2, true", input, ok)
+				}
+			},
+		},
+		{
+			name: "multiple tool calls preserve order",
+			msg: ai.Message{
+				Role: ai.RoleAssistant,
+				ToolCalls: []tools.ToolCall{
+					{ID: "call_1", Name: "first", Arguments: `{}`},
+					{ID: "call_2", Name: "second", Arguments: `{}`},
+				},
+			},
+			checkFunc: func(t *testing.T, m api.Message) {
+				t.Helper()
+				if len(m.ToolCalls) != 2 {
+					t.Fatalf("len(ToolCalls) = %d, want 2", len(m.ToolCalls))
+				}
+				if m.ToolCalls[0].Function.Name != "first" || m.ToolCalls[1].Function.Name != "second" {
+					t.Errorf("ToolCalls order = %+v, want [first, second]", m.ToolCalls)
+				}
+			},
+		},
+		{
+			name: "malformed arguments JSON does not panic",
+			msg: ai.Message{
+				Role:      ai.RoleAssistant,
+				ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "broken", Arguments: `not json`}},
+			},
+			checkFunc: func(t *testing.T, m api.Message) {
+				t.Helper()
+				if len(m.ToolCalls) != 1 {
+					t.Fatalf("len(ToolCalls) = %d, want 1", len(m.ToolCalls))
+				}
+				if m.ToolCalls[0].Function.Arguments.Len() != 0 {
+					t.Errorf("Arguments.Len() = %d, want 0 for malformed JSON", m.ToolCalls[0].Function.Arguments.Len())
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.checkFunc(t, assistantMessage(tt.msg))
+		})
+	}
+}
+
+// TestBuildRequestConfig pins that ToolsDisabled omits Tools entirely -
+// Ollama has no OpenAI-style tool_choice/Gemini-style
+// FunctionCallingConfigModeNone mechanism to keep tools declared but
+// disabled, confirmed via SDK source and official docs, so omitting Tools
+// is the only option available.
+func TestBuildRequestConfig(t *testing.T) {
+	client := &Client{
+		model:  "test-model",
+		config: DefaultConfig(),
+	}
+
+	tool := tools.Simple("calculator", "Performs calculations", func(_ string) string { return "42" })
+	input := &ai.ClassifiedInput{Type: ai.TextInput, Text: "Hello"}
+	ctx := context.Background()
+
+	t.Run("tools enabled", func(t *testing.T) {
+		config, err := client.buildRequestConfig(ctx, input, nil, []tools.Tool{tool}, nil, false)
+		if err != nil {
+			t.Fatalf("buildRequestConfig() error = %v", err)
+		}
+		if len(config.ChatRequest.Tools) != 1 {
+			t.Errorf("Tools = %d entries, want 1", len(config.ChatRequest.Tools))
+		}
+	})
+
+	t.Run("tools disabled omits Tools entirely (Ollama has no declared-but-disabled mechanism)", func(t *testing.T) {
+		config, err := client.buildRequestConfig(ctx, input, nil, []tools.Tool{tool}, nil, true)
+		if err != nil {
+			t.Fatalf("buildRequestConfig() error = %v", err)
+		}
+		if len(config.ChatRequest.Tools) != 0 {
+			t.Errorf("Tools = %d entries, want 0", len(config.ChatRequest.Tools))
+		}
+	})
+
+	t.Run("no tools and disabled", func(t *testing.T) {
+		config, err := client.buildRequestConfig(ctx, input, nil, nil, nil, true)
+		if err != nil {
+			t.Fatalf("buildRequestConfig() error = %v", err)
+		}
+		if len(config.ChatRequest.Tools) != 0 {
+			t.Errorf("Tools = %d entries, want 0", len(config.ChatRequest.Tools))
+		}
+	})
+
+	t.Run("schema applies", func(t *testing.T) {
+		schema := &ai.ResponseFormat{Type: "json_object"}
+		config, err := client.buildRequestConfig(ctx, input, schema, nil, nil, false)
+		if err != nil {
+			t.Fatalf("buildRequestConfig() error = %v", err)
+		}
+		if config.ChatRequest.Format == nil {
+			t.Error("Format should be set from schema")
+		}
+	})
+
+	t.Run("history builds messages and tools still apply", func(t *testing.T) {
+		history := []ai.Message{{Role: ai.RoleUser, Content: "hi"}}
+		config, err := client.buildRequestConfig(ctx, input, nil, []tools.Tool{tool}, history, false)
+		if err != nil {
+			t.Fatalf("buildRequestConfig() error = %v", err)
+		}
+		if len(config.ChatRequest.Messages) != 1 || config.ChatRequest.Messages[0].Content != "hi" {
+			t.Errorf("Messages = %+v, want built from history", config.ChatRequest.Messages)
+		}
+		if len(config.ChatRequest.Tools) != 1 {
+			t.Errorf("Tools = %d entries, want 1", len(config.ChatRequest.Tools))
+		}
+	})
 }
 
 func TestApplyChatConfig(t *testing.T) {
@@ -383,6 +724,7 @@ func TestWriteOllamaToolCalls(t *testing.T) {
 
 	toolCalls := []api.ToolCall{
 		{
+			ID: "call_abc",
 			Function: api.ToolCallFunction{
 				Name:      "calculator",
 				Arguments: makeToolArgs(map[string]any{"input": "2+2"}),
@@ -409,8 +751,16 @@ func TestWriteOllamaToolCalls(t *testing.T) {
 	}
 
 	// Check structure
-	if _, ok := jsonResult["tool_calls"]; !ok {
-		t.Error("writeOllamaToolCalls() should include tool_calls field")
+	toolCallsRaw, ok := jsonResult["tool_calls"].([]any)
+	if !ok || len(toolCallsRaw) != 1 {
+		t.Fatalf("writeOllamaToolCalls() tool_calls = %v, want a 1-element array", jsonResult["tool_calls"])
+	}
+	entry, ok := toolCallsRaw[0].(map[string]any)
+	if !ok {
+		t.Fatalf("tool_calls[0] = %v, want an object", toolCallsRaw[0])
+	}
+	if entry["id"] != "call_abc" {
+		t.Errorf("tool_calls[0][\"id\"] = %v, want call_abc", entry["id"])
 	}
 
 	// Verify it contains expected tool call structure
@@ -420,6 +770,41 @@ func TestWriteOllamaToolCalls(t *testing.T) {
 
 	if !strings.Contains(result, "2+2") {
 		t.Error("writeOllamaToolCalls() should contain tool arguments")
+	}
+}
+
+// TestWriteOllamaToolCallsEmptyID pins that an unset ToolCall.ID round-trips
+// as an empty string without erroring - the shared tools.parseJSONToolCalls
+// generates a real ID downstream in that case, this function's job is just
+// to pass through whatever Ollama supplied.
+func TestWriteOllamaToolCallsEmptyID(t *testing.T) {
+	client := &Client{}
+
+	toolCalls := []api.ToolCall{
+		{
+			Function: api.ToolCallFunction{
+				Name:      "calculator",
+				Arguments: makeToolArgs(map[string]any{"input": "2+2"}),
+			},
+		},
+	}
+
+	var response strings.Builder
+	w := calque.NewResponse(&response)
+
+	if err := client.writeOllamaToolCalls(toolCalls, w); err != nil {
+		t.Fatalf("writeOllamaToolCalls() error = %v", err)
+	}
+
+	var jsonResult map[string]any
+	if err := json.Unmarshal([]byte(response.String()), &jsonResult); err != nil {
+		t.Fatalf("writeOllamaToolCalls() produced invalid JSON: %v", err)
+	}
+
+	toolCallsRaw := jsonResult["tool_calls"].([]any)
+	entry := toolCallsRaw[0].(map[string]any)
+	if entry["id"] != "" {
+		t.Errorf("tool_calls[0][\"id\"] = %v, want empty string", entry["id"])
 	}
 }
 
@@ -557,6 +942,56 @@ func TestChatIntegration(t *testing.T) {
 				t.Errorf("Chat() = %q, want %q", result, tt.expected)
 			}
 		})
+	}
+}
+
+// TestChatIntegrationWithHistory pins that AgentOptions.History reaches
+// Ollama as the full message list, end-to-end through Chat - not just
+// historyToMessages in isolation. Uses a dedicated mock server that captures
+// the decoded request, since createMockOllamaServer's response lookup is
+// keyed on a single-turn input and doesn't fit a history-shape assertion.
+func TestChatIntegrationWithHistory(t *testing.T) {
+	var captured api.ChatRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Errorf("failed to decode request: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_ = json.NewEncoder(w).Encode(api.ChatResponse{
+			Message: api.Message{Role: "assistant", Content: "72F and sunny"},
+		})
+	}))
+	defer server.Close()
+
+	client, err := New("test-model", WithConfig(&Config{Host: server.URL}))
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	history := []ai.Message{
+		{Role: ai.RoleUser, Content: "What's the weather in NYC?"},
+		{Role: ai.RoleAssistant, ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "get_weather", Arguments: `{"city":"nyc"}`}}},
+		{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"},
+	}
+
+	req := calque.NewRequest(context.Background(), strings.NewReader(""))
+	var response strings.Builder
+	res := calque.NewResponse(&response)
+
+	if err := client.Chat(req, res, &ai.AgentOptions{History: history}); err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+
+	if len(captured.Messages) != len(history) {
+		t.Fatalf("server received %d messages, want %d", len(captured.Messages), len(history))
+	}
+	wantRoles := []string{"user", "assistant", "tool"}
+	for i, want := range wantRoles {
+		if captured.Messages[i].Role != want {
+			t.Errorf("Messages[%d].Role = %v, want %v", i, captured.Messages[i].Role, want)
+		}
 	}
 }
 
