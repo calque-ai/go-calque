@@ -51,6 +51,35 @@ type ToolResult struct {
 	InputRequired *InputRequiredInfo `json:"input_required,omitempty"`
 }
 
+// Outcome identifies which of ToolResult's mutually exclusive states applies.
+type Outcome int
+
+const (
+	// OutcomeResult means the tool completed normally; Result holds its output.
+	OutcomeResult Outcome = iota
+	// OutcomeError means the tool failed; Error holds the message.
+	OutcomeError
+	// OutcomeInputRequired means the tool needs more information before it
+	// can complete; InputRequired holds the question.
+	OutcomeInputRequired
+)
+
+// Outcome reports which of InputRequired/Error/Result should be surfaced for
+// this result - InputRequired takes precedence over Error, which takes
+// precedence over Result. The single source of truth for that precedence,
+// shared by every caller that renders a ToolResult (e.g. ai.Agent's loop and
+// this package's own output formatters) so it can't drift between them.
+func (r ToolResult) Outcome() Outcome {
+	switch {
+	case r.InputRequired != nil:
+		return OutcomeInputRequired
+	case r.Error != "":
+		return OutcomeError
+	default:
+		return OutcomeResult
+	}
+}
+
 // InputRequiredInfo describes what a tool needs before it can complete.
 // Populated when a tool returns ErrInputRequired instead of a normal error.
 type InputRequiredInfo struct {
@@ -283,7 +312,7 @@ func ExecuteToolCalls(ctx context.Context, tools []Tool, toolCalls []ToolCall, c
 	var wg sync.WaitGroup
 
 	// Start workers
-	for w := 0; w < workers; w++ {
+	for range workers {
 		wg.Go(func() {
 			for i := range jobs {
 				results[i] = executeToolCall(ctx, tools, toolCalls[i], config)
@@ -457,10 +486,10 @@ func formatToolResults(results []ToolResult, originalOutput []byte) string {
 			fmt.Fprintf(&output, "Arguments: %s\n", result.ToolCall.Arguments)
 		}
 
-		switch {
-		case result.InputRequired != nil:
+		switch result.Outcome() {
+		case OutcomeInputRequired:
 			fmt.Fprintf(&output, "Input required: %s\n", result.InputRequired.Question)
-		case result.Error != "":
+		case OutcomeError:
 			fmt.Fprintf(&output, "Error: %s\n", result.Error)
 		default:
 			fmt.Fprintf(&output, "Result: %s\n", string(result.Result))

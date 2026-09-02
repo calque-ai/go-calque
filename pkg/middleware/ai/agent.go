@@ -99,10 +99,10 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 // forced final answer, so a caller-configured formatter client is honored
 // throughout the loop rather than only for the closing formatter call.
 //
-// maxIterations is the true cap on total LLM calls: the final iteration
-// always omits Tools, so a model that would otherwise keep requesting tools
-// is forced to answer directly instead of the loop making one more
-// uncounted call beyond the configured budget.
+// maxIterations is the true cap on total LLM calls: the final iteration sets
+// ToolsDisabled instead of clearing Tools, so a model that would otherwise
+// keep requesting tools is forced to answer directly instead of the loop
+// making one more uncounted call beyond the configured budget.
 func runAgentLoop(client Client, agentOpts *AgentOptions, r *calque.Request, input string, maxIterations int) ([]byte, error) {
 	history := []Message{{Role: RoleUser, Content: input, Multimodal: agentOpts.MultimodalData}}
 	toolList := agentOpts.Tools
@@ -164,10 +164,10 @@ func runAgentLoop(client Client, agentOpts *AgentOptions, r *calque.Request, inp
 // message, surfacing errors and input-required questions to the model
 // instead of aborting the loop.
 func toolResultContent(result tools.ToolResult) string {
-	switch {
-	case result.InputRequired != nil:
+	switch result.Outcome() {
+	case tools.OutcomeInputRequired:
 		return "Input required: " + result.InputRequired.Question
-	case result.Error != "":
+	case tools.OutcomeError:
 		return result.Error
 	default:
 		return string(result.Result)

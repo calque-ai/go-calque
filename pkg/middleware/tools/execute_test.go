@@ -387,6 +387,53 @@ func TestExecuteToolCallInputRequired(t *testing.T) {
 	}
 }
 
+// TestToolResultOutcome pins the precedence order (InputRequired > Error >
+// Result) that every caller rendering a ToolResult relies on - both this
+// package's own formatToolResults and ai.Agent's toolResultContent derive
+// their formatting from this single method so the order can't drift between
+// the two packages.
+func TestToolResultOutcome(t *testing.T) {
+	tests := []struct {
+		name   string
+		result ToolResult
+		want   Outcome
+	}{
+		{
+			name:   "result only",
+			result: ToolResult{Result: []byte("42")},
+			want:   OutcomeResult,
+		},
+		{
+			name:   "error only",
+			result: ToolResult{Error: "boom"},
+			want:   OutcomeError,
+		},
+		{
+			name:   "input required only",
+			result: ToolResult{InputRequired: &InputRequiredInfo{Question: "which city?"}},
+			want:   OutcomeInputRequired,
+		},
+		{
+			name:   "input required takes precedence over error",
+			result: ToolResult{Error: "boom", InputRequired: &InputRequiredInfo{Question: "which city?"}},
+			want:   OutcomeInputRequired,
+		},
+		{
+			name:   "error takes precedence over result",
+			result: ToolResult{Error: "boom", Result: []byte("42")},
+			want:   OutcomeError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.result.Outcome(); got != tt.want {
+				t.Errorf("Outcome() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExecuteToolCall(t *testing.T) {
 	calc := createMockCalculator()
 	errorTool := createErrorTool()

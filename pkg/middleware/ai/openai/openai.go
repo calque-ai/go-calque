@@ -533,6 +533,8 @@ func (c *Client) historyToMessages(ctx context.Context, history []ai.Message) ([
 			messages[i] = openai.ToolMessage(msg.Content, msg.ToolCallID)
 		case ai.RoleAssistant:
 			messages[i] = assistantMessage(msg)
+		default:
+			return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported message role: %s", msg.Role))
 		}
 	}
 	return messages, nil

@@ -665,6 +665,23 @@ func TestHistoryToMessagesWithMultimodal(t *testing.T) {
 	}
 }
 
+// TestHistoryToMessagesUnsupportedRole pins that an unrecognized ai.Role
+// errors instead of silently producing a zero-value message in the list -
+// matching gemini.Client.messageToContent and ollama.Client.historyToMessages,
+// which both reject unsupported roles the same way.
+func TestHistoryToMessagesUnsupportedRole(t *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: DefaultConfig(),
+	}
+
+	history := []ai.Message{{Role: ai.Role("bogus"), Content: "x"}}
+
+	if _, err := client.historyToMessages(context.Background(), history); err == nil {
+		t.Fatal("expected error for unsupported role, got none")
+	}
+}
+
 // TestEnhancedConvertToOpenAITools tests tool conversion with more scenarios
 func TestEnhancedConvertToOpenAITools(t *testing.T) {
 	client := &Client{

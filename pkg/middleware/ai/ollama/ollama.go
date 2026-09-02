@@ -230,7 +230,10 @@ func (o *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 
 // buildRequestConfig creates configuration for the request.
 // If history is non-empty, it is round-tripped as the full message list
-// instead of building a single message from input.
+// instead of building a single message from input. Unlike OpenAI's
+// tool_choice:"none" or Gemini's FunctionCallingConfigModeNone, Ollama has no
+// "declared but disabled" mechanism, so ToolsDisabled omits Tools entirely -
+// the only option its API offers.
 func (o *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, toolList []tools.Tool, history []ai.Message, toolsDisabled bool) (*RequestConfig, error) {
 	// Create chat request based on input type or history
 	chatRequest, err := o.inputToChatRequest(ctx, input, history)
@@ -241,11 +244,6 @@ func (o *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInp
 	// Apply configuration
 	o.applyChatConfig(chatRequest, schema)
 
-	// ToolsDisabled has no Ollama-side "declared but disabled" mechanism
-	// (unlike OpenAI's tool_choice:"none" or Gemini's FunctionCallingConfigModeNone) -
-	// Ollama's API has no such field. Omitting Tools is the only option, and
-	// matches Ollama's own documented multi-turn tool-calling loop (no
-	// forcing mechanism exists at all).
 	if len(toolList) > 0 && !toolsDisabled {
 		chatRequest.Tools = o.convertToOllamaTools(ctx, toolList)
 	}

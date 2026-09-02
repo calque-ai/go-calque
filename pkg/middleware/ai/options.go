@@ -37,13 +37,8 @@ type AgentOptions struct {
 	UsageHandler        func(*UsageMetadata)
 	History             []Message
 	MaxIterations       int
-	// ToolsDisabled tells a Client to keep Tools declared (so a provider
-	// that requires declared tools to make sense of prior FunctionCall/
-	// ToolCall history stays consistent) but refuse to call any of them,
-	// forcing a plain-text answer. Set by the agent loop on its forced-final
-	// iteration instead of clearing Tools outright, since some providers
-	// (e.g. Gemini) misbehave when tool declarations vanish mid-conversation
-	// while history still references a prior call.
+	// ToolsDisabled asks a Client to keep Tools declared but refuse to call
+	// them, forcing a text answer. See runAgentLoop for why.
 	ToolsDisabled bool
 }
 
