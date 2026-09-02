@@ -4,6 +4,9 @@
 package ai
 
 import (
+	"context"
+	"io"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
@@ -92,6 +95,44 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 	return formatter(formatterClient, input).ServeFlow(req, w)
 }
 
+// materializeMultimodal reads any Reader-backed ContentPart into Data and
+// returns a copy safe to store in History and replay across loop iterations.
+// A raw io.Reader can only be read once; agentOpts.MultimodalData ends up in
+// History[0] for the life of the loop, and every provider's historyToXxx
+// re-reads it on every turn, so a Reader left in place would silently yield
+// empty content from the second turn onward. Returns input unchanged (including
+// nil) if there are no Reader-backed parts to materialize.
+func materializeMultimodal(ctx context.Context, input *MultimodalInput) (*MultimodalInput, error) {
+	if input == nil {
+		return nil, nil
+	}
+
+	hasReader := false
+	for _, part := range input.Parts {
+		if part.Reader != nil {
+			hasReader = true
+			break
+		}
+	}
+	if !hasReader {
+		return input, nil
+	}
+
+	parts := make([]ContentPart, len(input.Parts))
+	for i, part := range input.Parts {
+		if part.Reader != nil {
+			data, err := io.ReadAll(part.Reader)
+			if err != nil {
+				return nil, calque.WrapErr(ctx, err, "failed to read multimodal content")
+			}
+			part.Data = data
+			part.Reader = nil
+		}
+		parts[i] = part
+	}
+	return &MultimodalInput{Parts: parts}, nil
+}
+
 // runAgentLoop drives the LLM<->tool round trips and returns the final
 // assistant response bytes once the model stops requesting tools (or the
 // iteration cap forces a final answer). client is the resolved
@@ -104,7 +145,12 @@ func runToolCallingAgent(client Client, agentOpts *AgentOptions, r *calque.Reque
 // keep requesting tools is forced to answer directly instead of the loop
 // making one more uncounted call beyond the configured budget.
 func runAgentLoop(client Client, agentOpts *AgentOptions, r *calque.Request, input string, maxIterations int) ([]byte, error) {
-	history := []Message{{Role: RoleUser, Content: input, Multimodal: agentOpts.MultimodalData}}
+	multimodal, err := materializeMultimodal(r.Context, agentOpts.MultimodalData)
+	if err != nil {
+		return nil, err
+	}
+
+	history := []Message{{Role: RoleUser, Content: input, Multimodal: multimodal}}
 	toolList := agentOpts.Tools
 
 	for i := range maxIterations {

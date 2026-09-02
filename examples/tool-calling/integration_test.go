@@ -1,14 +1,25 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/ollama/ollama/api"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
@@ -334,6 +345,120 @@ func TestAgentMultiShotToolChain(t *testing.T) {
 	}
 	if !ai.HistoryContainsToolResult(mockClient.HistoryAt(2), "sunny") {
 		t.Error("turn 3 history missing turn 2's tool result (get_weather_by_id)")
+	}
+}
+
+// TestOllamaMultimodalSurvivesToolLoop is a live integration test proving a
+// Reader-backed multimodal image part reaches Ollama intact on every loop
+// turn, not just the first. Before the fix, AgentOptions.MultimodalData was
+// stored directly in History[0] and every provider's historyToXxx re-reads
+// it on every turn; an io.Reader can only be read once, so turn 2+ silently
+// got empty image data (with this model/server, Ollama then rejects the
+// malformed request outright rather than accepting empty image data, so the
+// bug surfaces as an agent error rather than only as an empty-bytes
+// mismatch). This test uses a forwarding proxy in front of the real local
+// Ollama server and inspects the raw bytes it actually received on each
+// turn, rather than relying on the model correctly describing the image
+// (which depends on vision quality, not on whether the bug is fixed).
+//
+// Requires a local Ollama server (ollama serve) with a tool+vision capable
+// model pulled (ollama pull qwen3.5:2b-mlx) - skipped under `go test -short`.
+func TestOllamaMultimodalSurvivesToolLoop(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping live Ollama integration test")
+	}
+
+	imageBytes, err := os.ReadFile(filepath.Join("..", "multimodal", "image.jpg"))
+	if err != nil {
+		t.Fatalf("failed to read test image: %v", err)
+	}
+
+	// A forwarding proxy in front of the real local Ollama server, capturing
+	// each outgoing /api/chat request body so we can inspect exactly what
+	// bytes were sent on every turn, independent of how well the model
+	// describes the image.
+	var mu sync.Mutex
+	var captured []api.ChatRequest
+	const target = "http://localhost:11434"
+
+	captureServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "failed to read body", http.StatusBadRequest)
+			return
+		}
+		if r.URL.Path == "/api/chat" {
+			var req api.ChatRequest
+			if err := json.Unmarshal(body, &req); err == nil {
+				mu.Lock()
+				captured = append(captured, req)
+				mu.Unlock()
+			}
+		}
+
+		// Forward to the real Ollama server.
+		fwd, err := http.NewRequestWithContext(r.Context(), r.Method, target+r.URL.Path, bytes.NewReader(body))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		fwd.Header = r.Header.Clone()
+
+		resp, err := http.DefaultClient.Do(fwd)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+
+		for k, vals := range resp.Header {
+			for _, v := range vals {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+	defer captureServer.Close()
+
+	client, err := ollama.New("qwen3.5:2b-mlx", ollama.WithConfig(&ollama.Config{Host: captureServer.URL}))
+	if err != nil {
+		t.Fatalf("failed to create ollama client: %v", err)
+	}
+
+	// A trivial tool unrelated to the image, just to force a second LLM
+	// call - so History[0] (carrying the image) gets walked again.
+	echoTool := tools.Simple("echo", "Echoes back its input string.", func(input string) string {
+		return "echoed: " + input
+	})
+
+	multimodal := ai.Multimodal(
+		ai.Text("Call the echo tool with the word 'hello', then describe this image."),
+		ai.Image(bytes.NewReader(imageBytes), "image/jpeg"),
+	)
+	agent := ai.Agent(client, ai.WithTools(echoTool), ai.WithMultimodalData(&multimodal))
+
+	req := calque.NewRequest(context.Background(), strings.NewReader(`{"parts":[]}`))
+	out := calque.NewWriter[[]byte]()
+	res := calque.NewResponse(out)
+	if err := agent.ServeFlow(req, res); err != nil {
+		t.Fatalf("agent error = %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(captured) < 2 {
+		t.Fatalf("expected at least 2 LLM calls (tool round trip), got %d", len(captured))
+	}
+
+	for i, req := range captured {
+		if len(req.Messages) == 0 || len(req.Messages[0].Images) == 0 {
+			t.Fatalf("call %d: expected History[0] to carry the image, got none", i)
+		}
+		got := []byte(req.Messages[0].Images[0])
+		if !bytes.Equal(got, imageBytes) {
+			t.Errorf("call %d: image bytes sent to Ollama do not match the source file (len(got)=%d, len(want)=%d)", i, len(got), len(imageBytes))
+		}
 	}
 }
 

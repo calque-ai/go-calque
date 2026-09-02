@@ -316,6 +316,73 @@ func TestAgentWithSchemaAndTools(t *testing.T) {
 	}
 }
 
+// TestMaterializeMultimodal pins that materializeMultimodal converts any
+// Reader-backed part to Data (so it can be safely stored in History and
+// replayed across loop iterations - an io.Reader can only be read once, but
+// a provider's historyToXxx re-reads Multimodal every time it walks
+// History), while passing through nil and already-Data-only input unchanged.
+func TestMaterializeMultimodal(t *testing.T) {
+	t.Run("nil input", func(t *testing.T) {
+		got, err := materializeMultimodal(context.Background(), nil)
+		if err != nil {
+			t.Fatalf("materializeMultimodal() error = %v", err)
+		}
+		if got != nil {
+			t.Errorf("expected nil, got %+v", got)
+		}
+	})
+
+	t.Run("no Reader-backed parts passes through unchanged", func(t *testing.T) {
+		input := &MultimodalInput{Parts: []ContentPart{
+			{Type: ContentTypeText, Text: "hello"},
+			{Type: ContentTypeImage, Data: []byte("bytes"), MimeType: "image/png"},
+		}}
+		got, err := materializeMultimodal(context.Background(), input)
+		if err != nil {
+			t.Fatalf("materializeMultimodal() error = %v", err)
+		}
+		if got != input {
+			t.Error("expected the same *MultimodalInput to be returned when nothing needs materializing")
+		}
+	})
+
+	t.Run("Reader-backed part is read into Data", func(t *testing.T) {
+		input := &MultimodalInput{Parts: []ContentPart{
+			{Type: ContentTypeText, Text: "describe this"},
+			{Type: ContentTypeImage, Reader: strings.NewReader("image-bytes"), MimeType: "image/png"},
+		}}
+		got, err := materializeMultimodal(context.Background(), input)
+		if err != nil {
+			t.Fatalf("materializeMultimodal() error = %v", err)
+		}
+		if len(got.Parts) != 2 {
+			t.Fatalf("expected 2 parts, got %d", len(got.Parts))
+		}
+		imgPart := got.Parts[1]
+		if imgPart.Reader != nil {
+			t.Error("expected Reader to be cleared after materializing")
+		}
+		if string(imgPart.Data) != "image-bytes" {
+			t.Errorf("Data = %q, want %q", imgPart.Data, "image-bytes")
+		}
+
+		// The materialized copy must be safe to read again - proving the
+		// original Reader was only consumed once, not on every access.
+		if string(imgPart.Data) != "image-bytes" {
+			t.Error("Data should be replayable, but reading it again gave different content")
+		}
+	})
+
+	t.Run("read error is propagated", func(t *testing.T) {
+		input := &MultimodalInput{Parts: []ContentPart{
+			{Type: ContentTypeImage, Reader: &errorReader{err: fmt.Errorf("simulated read error")}, MimeType: "image/png"},
+		}}
+		if _, err := materializeMultimodal(context.Background(), input); err == nil {
+			t.Error("expected an error from a failing Reader, got none")
+		}
+	})
+}
+
 // TestAgentWithMultimodalDataAndTools pins that MultimodalData survives into
 // the tool-calling loop's first turn instead of being silently dropped the
 // moment tools are configured.
@@ -346,6 +413,79 @@ func TestAgentWithMultimodalDataAndTools(t *testing.T) {
 	}
 	if len(firstTurnHistory[0].Multimodal.Parts) != 2 {
 		t.Errorf("expected 2 multimodal parts preserved, got %d", len(firstTurnHistory[0].Multimodal.Parts))
+	}
+}
+
+// singleReadReader is an io.Reader that errors if Read is called again after
+// it has already returned io.EOF once - used to prove a Reader-backed
+// multimodal part is only ever read once by the agent loop, not re-read on
+// every iteration (which would silently yield empty content from the second
+// loop turn onward, since a real io.Reader can't be replayed).
+type singleReadReader struct {
+	r    io.Reader
+	done bool
+}
+
+func (s *singleReadReader) Read(p []byte) (int, error) {
+	if s.done {
+		return 0, fmt.Errorf("Read called again after EOF - Reader was consumed more than once")
+	}
+	n, err := s.r.Read(p)
+	if err == io.EOF {
+		s.done = true
+	}
+	return n, err
+}
+
+// TestAgentMultimodalReaderConsumedOnce pins that a Reader-backed
+// MultimodalData part is read exactly once by the agent loop, even across
+// multiple tool-calling iterations - the root cause this guards against:
+// history[0] (carrying MultimodalData) is walked again by every provider's
+// historyToXxx on every subsequent loop turn, and a raw io.Reader can only
+// be read once, so without materializing it into Data up front, turn 2+
+// would silently see empty multimodal content.
+func TestAgentMultimodalReaderConsumedOnce(t *testing.T) {
+	calc := tools.Simple("calculator", "Math Calculator", func(_ string) string { return "4" })
+
+	// Two tool-calling rounds force the loop to build history spanning 3
+	// LLM calls, so history[0] (with the Reader-backed part) is present and
+	// would be re-walked on every one of those calls if not materialized.
+	client := NewMockClientWithResponses([]string{
+		`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+		`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+		"It's 4, and the image shows a cat.",
+	})
+
+	imageReader := &singleReadReader{r: strings.NewReader("fake-image-bytes")}
+	multimodal := Multimodal(Text("What is 2+2? Also, describe this image."), Image(imageReader, "image/png"))
+	agent := Agent(client, WithTools(calc), WithMultimodalData(&multimodal))
+
+	var buf bytes.Buffer
+	req := calque.NewRequest(context.Background(), strings.NewReader(`{"parts":[]}`))
+	res := calque.NewResponse(&buf)
+	if err := agent.ServeFlow(req, res); err != nil {
+		t.Fatalf("agent error = %v (a re-read Reader would surface as this error)", err)
+	}
+
+	if client.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM calls, got %d", client.CallCount())
+	}
+
+	// The image content must survive into every turn's history, not just
+	// the first - proving it was materialized to Data rather than left as
+	// a Reader that goes empty after the first read.
+	for i := range 3 {
+		history := client.HistoryAt(i)
+		if len(history) == 0 || history[0].Multimodal == nil {
+			t.Fatalf("call %d: expected history[0] to carry Multimodal data", i)
+		}
+		imgPart := history[0].Multimodal.Parts[1]
+		if imgPart.Reader != nil {
+			t.Errorf("call %d: expected Reader to be cleared after materializing, got non-nil", i)
+		}
+		if string(imgPart.Data) != "fake-image-bytes" {
+			t.Errorf("call %d: image Data = %q, want %q", i, imgPart.Data, "fake-image-bytes")
+		}
 	}
 }
 
