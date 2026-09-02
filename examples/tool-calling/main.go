@@ -36,7 +36,7 @@ func main() {
 	fmt.Println("=== Tool Calling Examples ===")
 	fmt.Println("Prerequisites:")
 	fmt.Println("1. Install Ollama: https://ollama.ai/")
-	fmt.Println("2. Pull a model: ollama pull llama3.2:1b")
+	fmt.Println("2. Pull a model: ollama pull qwen3.5:2b-mlx or any other model you prefer")
 	fmt.Println("3. Make sure Ollama is running: ollama serve")
 	fmt.Println("4. Set GOOGLE_API_KEY in your .env file for Gemini examples")
 	fmt.Println("5. Set OPENAI_API_KEY in your .env file for OpenAI examples")
@@ -55,6 +55,33 @@ func main() {
 	// Example 3: OpenAI Agent
 	fmt.Println("Example 3: OpenAI Agent with Tools")
 	runOpenAIAgent()
+	fmt.Println()
+
+	// Example 4: Multi-shot tool chaining
+	fmt.Println("Example 4: OpenAI Agent with Multi-Shot Tool Chaining")
+	openaiClient, err := openai.New("gpt-4o-mini")
+	if err != nil {
+		log.Fatal("Failed to create OpenAI client:", err)
+	}
+	runMultiShotAgent("OpenAI", openaiClient)
+	fmt.Println()
+
+	// Example 5: Multi-shot tool chaining, same scenario against Gemini
+	fmt.Println("Example 5: Gemini Agent with Multi-Shot Tool Chaining")
+	geminiClient, err := gemini.New("gemini-3.6-flash")
+	if err != nil {
+		log.Fatal("Failed to create Gemini client:", err)
+	}
+	runMultiShotAgent("Gemini", geminiClient)
+	fmt.Println()
+
+	// Example 6: Multi-shot tool chaining, same scenario against Ollama
+	fmt.Println("Example 6: Ollama Agent with Multi-Shot Tool Chaining")
+	ollamaClient, err := ollama.New("qwen3.5:2b-mlx")
+	if err != nil {
+		log.Fatal("Failed to create Ollama client:", err)
+	}
+	runMultiShotAgent("Ollama", ollamaClient)
 }
 
 // Example 1: Simple agent with basic tools
@@ -147,7 +174,7 @@ func runConfiguredAgent() {
 		IncludeOriginalOutput: true, // Include LLM output with tool results
 	}
 
-	client, err := ollama.New("llama3.2:1b")
+	client, err := ollama.New("qwen3.5:2b-mlx")
 	if err != nil {
 		log.Fatal("Failed to create Ollama client:", err)
 	}
@@ -259,6 +286,80 @@ func runOpenAIAgent() {
 
 	fmt.Printf("Input: %s\n", input)
 	fmt.Printf("Result: %s\n", result)
+}
+
+// Example 4/5: multi-shot tool chaining - the weather tool requires a city ID
+// that only the lookup tool can provide, so the model must call lookup_city_id,
+// see its result, then call get_weather_by_id in a second round before
+// answering. This can only work with a true multi-turn loop: a single-shot
+// agent has no way to feed the first tool's result back for a second call.
+// Run against different clients to confirm each provider drives the same
+// multi-turn history threading correctly.
+func runMultiShotAgent(label string, client ai.Client) {
+	cityIDs := map[string]string{
+		"new york": "NYC-001",
+		"london":   "LON-001",
+		"tokyo":    "TOK-001",
+	}
+
+	// tools.Simple always declares its parameter schema as a single "input"
+	// string field, regardless of what a closure's local variable is named -
+	// the model is only ever told about "input", so parsing must match.
+	lookupCityID := tools.Simple("lookup_city_id", "Looks up the internal city ID for a city name. Must be called before get_weather_by_id.", func(jsonArgs string) string {
+		var args struct {
+			Input string `json:"input"`
+		}
+		if err := json.Unmarshal([]byte(jsonArgs), &args); err != nil {
+			return fmt.Sprintf("Error parsing arguments: %v", err)
+		}
+
+		id, ok := cityIDs[strings.ToLower(args.Input)]
+		if !ok {
+			return fmt.Sprintf("Error: unknown city %q", args.Input)
+		}
+		return id
+	})
+
+	getWeatherByID := tools.Simple("get_weather_by_id", "Gets current weather using a city ID returned by lookup_city_id.", func(jsonArgs string) string {
+		var args struct {
+			Input string `json:"input"`
+		}
+		if err := json.Unmarshal([]byte(jsonArgs), &args); err != nil {
+			return fmt.Sprintf("Error parsing arguments: %v", err)
+		}
+
+		weather := []string{"sunny", "cloudy", "rainy"}
+		idx := len(args.Input) % len(weather)
+		return fmt.Sprintf("Weather for %s: %s, 65°F", args.Input, weather[idx])
+	})
+
+	var callCount int
+	var totalTokens ai.UsageMetadata
+	agent := ai.Agent(client, ai.WithTools(lookupCityID, getWeatherByID),
+		ai.WithUsageHandler(func(usage *ai.UsageMetadata) {
+			callCount++
+			totalTokens.PromptTokens += usage.PromptTokens
+			totalTokens.CompletionTokens += usage.CompletionTokens
+			totalTokens.TotalTokens += usage.TotalTokens
+			fmt.Printf("[%s] LLM call %d: %d prompt + %d completion = %d tokens\n",
+				label, callCount, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens)
+		}),
+	)
+
+	ctx := context.Background()
+	input := "What's the weather in New York? You'll need to look up its city ID first."
+
+	var result string
+	err := calque.NewFlow().Use(agent).Run(ctx, input, &result)
+	if err != nil {
+		log.Printf("%s multi-shot agent error: %v", label, err)
+		return
+	}
+
+	fmt.Printf("Input: %s\n", input)
+	fmt.Printf("Result: %s\n", result)
+	fmt.Printf("[%s] Total across %d LLM calls: %d prompt + %d completion = %d tokens\n",
+		label, callCount, totalTokens.PromptTokens, totalTokens.CompletionTokens, totalTokens.TotalTokens)
 }
 
 // Helper function for basic math calculations

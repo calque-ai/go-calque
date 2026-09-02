@@ -35,6 +35,11 @@ type AgentOptions struct {
 	ToolResultFormatter ToolResultFormatterFunc
 	ToolFormatterClient Client
 	UsageHandler        func(*UsageMetadata)
+	History             []Message
+	MaxIterations       int
+	// ToolsDisabled asks a Client to keep Tools declared but refuse to call
+	// them, forcing a text answer. See runAgentLoop for why.
+	ToolsDisabled bool
 }
 
 // AgentOption interface for functional options pattern.
@@ -151,6 +156,20 @@ func WithSchemaFor[T any]() AgentOption {
 //	agent := ai.Agent(client, ai.WithToolsConfig(config))
 func WithToolsConfig(config tools.Config) AgentOption {
 	return toolsConfigOption{config: &config}
+}
+
+type maxIterationsOption struct{ maxIterations int }
+
+func (o maxIterationsOption) Apply(opts *AgentOptions) { opts.MaxIterations = o.maxIterations }
+
+// WithMaxIterations caps how many LLM<->tool round trips the agent loop makes
+// before forcing a final answer.
+//
+// Example:
+//
+//	agent := ai.Agent(client, ai.WithTools(searchTool), ai.WithMaxIterations(3))
+func WithMaxIterations(maxIterations int) AgentOption {
+	return maxIterationsOption{maxIterations: maxIterations}
 }
 
 // WithMultimodalData provides multimodal content to the agent.

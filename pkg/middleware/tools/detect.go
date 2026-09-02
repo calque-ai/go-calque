@@ -53,7 +53,7 @@ func DetectWithBufferSize(ifHandler, elseHandler calque.Handler, bufferSize int)
 
 		initialChunk := initialBuffer[:n]
 
-		if !hasToolCalls(initialChunk) {
+		if !HasToolCalls(initialChunk) {
 			// No tools detected - stream to elseHandler
 			return streamToHandler(r.Context, elseHandler, initialChunk, r, w)
 		}

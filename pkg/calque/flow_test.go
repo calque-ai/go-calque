@@ -359,16 +359,16 @@ func TestFlow_Run_HandlerError(t *testing.T) {
 func TestFlow_Run_ConcurrentHandlerError(t *testing.T) {
 	// Test that when one handler fails, the flow returns an error
 	// Note: Due to concurrent execution, any handler might fail first
-	var executionCount int64
+	var executionCount atomic.Int64
 
 	handler1 := HandlerFunc(func(_ *Request, _ *Response) error {
-		atomic.AddInt64(&executionCount, 1)
+		executionCount.Add(1)
 		time.Sleep(10 * time.Millisecond) // Small delay
 		return errors.New("handler1 failed")
 	})
 
 	handler2 := HandlerFunc(func(_ *Request, _ *Response) error {
-		atomic.AddInt64(&executionCount, 1)
+		executionCount.Add(1)
 		time.Sleep(5 * time.Millisecond) // Shorter delay, likely to complete first
 		return errors.New("handler2 failed")
 	})
@@ -389,7 +389,7 @@ func TestFlow_Run_ConcurrentHandlerError(t *testing.T) {
 	}
 
 	// Both handlers should have started (due to concurrent execution)
-	if atomic.LoadInt64(&executionCount) == 0 {
+	if executionCount.Load() == 0 {
 		t.Error("Expected at least one handler to execute")
 	}
 }
@@ -827,12 +827,12 @@ func TestFlow_Run_InvalidOutput(t *testing.T) {
 
 func TestFlow_Run_ResourceCleanup(t *testing.T) {
 	// Test that resources are cleaned up properly
-	var resourcesCleaned int64
+	var resourcesCleaned atomic.Int64
 
 	resourceHandler := HandlerFunc(func(req *Request, res *Response) error {
 		// Simulate resource acquisition
 		defer func() {
-			atomic.AddInt64(&resourcesCleaned, 1)
+			resourcesCleaned.Add(1)
 		}()
 
 		data, err := io.ReadAll(req.Data)
@@ -856,8 +856,8 @@ func TestFlow_Run_ResourceCleanup(t *testing.T) {
 	// Give some time for cleanup
 	time.Sleep(10 * time.Millisecond)
 
-	if atomic.LoadInt64(&resourcesCleaned) != 1 {
-		t.Errorf("Expected 1 resource cleanup, got %d", atomic.LoadInt64(&resourcesCleaned))
+	if resourcesCleaned.Load() != 1 {
+		t.Errorf("Expected 1 resource cleanup, got %d", resourcesCleaned.Load())
 	}
 }
 

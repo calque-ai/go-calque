@@ -3,11 +3,15 @@ package tools
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/calque-ai/go-calque/pkg/calque"
 )
@@ -21,12 +25,19 @@ type ToolCall struct {
 	Arguments string `json:"arguments,omitempty"`
 	ID        string `json:"id,omitempty"`
 	Error     string `json:"error,omitempty"`
+	// ThoughtSignature is opaque, provider-specific data that must be
+	// echoed back verbatim when this call is replayed in later history.
+	// Gemini's newer models require it on any FunctionCall part they
+	// generated; other providers leave it empty.
+	ThoughtSignature string `json:"thought_signature,omitempty"`
 }
 
 // OpenAIToolCall represents a tool call in OpenAI format
 type OpenAIToolCall struct {
-	Type     string `json:"type"`
-	Function struct {
+	Type             string `json:"type"`
+	ID               string `json:"id,omitempty"`
+	ThoughtSignature string `json:"thought_signature,omitempty"`
+	Function         struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
 	} `json:"function"`
@@ -34,16 +45,67 @@ type OpenAIToolCall struct {
 
 // ToolResult represents the result of executing a tool
 type ToolResult struct {
-	ToolCall ToolCall `json:"tool_call"`
-	Result   []byte   `json:"result"`
-	Error    string   `json:"error,omitempty"`
+	ToolCall      ToolCall           `json:"tool_call"`
+	Result        []byte             `json:"result"`
+	Error         string             `json:"error,omitempty"`
+	InputRequired *InputRequiredInfo `json:"input_required,omitempty"`
+}
+
+// Outcome identifies which of ToolResult's mutually exclusive states applies.
+type Outcome int
+
+const (
+	// OutcomeResult means the tool completed normally; Result holds its output.
+	OutcomeResult Outcome = iota
+	// OutcomeError means the tool failed; Error holds the message.
+	OutcomeError
+	// OutcomeInputRequired means the tool needs more information before it
+	// can complete; InputRequired holds the question.
+	OutcomeInputRequired
+)
+
+// Outcome reports which of InputRequired/Error/Result should be surfaced for
+// this result - InputRequired takes precedence over Error, which takes
+// precedence over Result. The single source of truth for that precedence,
+// shared by every caller that renders a ToolResult (e.g. ai.Agent's loop and
+// this package's own output formatters) so it can't drift between them.
+func (r ToolResult) Outcome() Outcome {
+	switch {
+	case r.InputRequired != nil:
+		return OutcomeInputRequired
+	case r.Error != "":
+		return OutcomeError
+	default:
+		return OutcomeResult
+	}
+}
+
+// InputRequiredInfo describes what a tool needs before it can complete.
+// Populated when a tool returns ErrInputRequired instead of a normal error.
+type InputRequiredInfo struct {
+	Question          string `json:"question"`
+	ContinuationToken string `json:"continuation_token,omitempty"`
+}
+
+// ErrInputRequired signals that a tool needs more information to complete,
+// distinct from a normal failure. Return it from a Tool's ServeFlow to
+// surface Question (and an optional ContinuationToken) on the ToolResult
+// instead of treating the call as an error.
+type ErrInputRequired struct {
+	Question          string
+	ContinuationToken string
+}
+
+func (e *ErrInputRequired) Error() string {
+	return fmt.Sprintf("input required: %s", e.Question)
 }
 
 // ToolResultJSON represents a tool result for JSON output with proper result formatting
 type ToolResultJSON struct {
-	ToolCall ToolCall        `json:"tool_call"`
-	Result   json.RawMessage `json:"result"`
-	Error    string          `json:"error,omitempty"`
+	ToolCall      ToolCall           `json:"tool_call"`
+	Result        json.RawMessage    `json:"result"`
+	Error         string             `json:"error,omitempty"`
+	InputRequired *InputRequiredInfo `json:"input_required,omitempty"`
 }
 
 // RawToolOutput represents the raw JSON output structure when RawOutput is enabled
@@ -60,6 +122,12 @@ type Config struct {
 	IncludeOriginalOutput bool
 	// RawOutput - if true, returns JSON-marshaled results instead of formatted text
 	RawOutput bool
+	// ToolTimeout per-tool execution timeout (0 = no timeout). The caller
+	// stops waiting and gets a timeout error once this elapses, but if a
+	// tool ignores ctx.Done() (a blocking call with no context-aware
+	// I/O), its goroutine keeps running in the background, Go has no way
+	// to forcibly cancel it.
+	ToolTimeout time.Duration
 }
 
 // Execute parses LLM output for tool calls and executes them using tools from Registry.
@@ -68,8 +136,13 @@ type Config struct {
 // Output: formatted tool results
 // Behavior: BUFFERED - reads entire input to parse and execute tools
 //
-// This middleware assumes tool calls are present and will error if none are found.
-// Use tools.Detect() to conditionally route inputs with/without tool calls.
+// This middleware returns an error only when no tools are registered in the
+// context. Parsing failures (input that isn't valid tool-call JSON, or JSON
+// with no tool calls) and individual tool execution failures are not handler
+// errors - both are reported inline in the output (formatted text, or
+// ToolResult.Error/RawOutput JSON) so callers - including the ai.Agent loop -
+// can inspect or react to them instead of the whole request aborting. Use
+// tools.Detect() to route inputs that may not contain tool calls at all.
 //
 // Example:
 //
@@ -84,8 +157,8 @@ func Execute() calque.Handler {
 	})
 }
 
-// ExecuteWithOptions creates an Execute middleware with custom configuration
-// This assumes tool calls are present in the input and will error if none are found
+// ExecuteWithOptions creates an Execute middleware with custom configuration.
+// See Execute for full error semantics.
 func ExecuteWithOptions(config Config) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		tools := GetTools(r.Context)
@@ -108,33 +181,13 @@ func ExecuteWithOptions(config Config) calque.Handler {
 
 // executeFromBytes executes tools directly from input bytes
 func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools []Tool, config Config) error {
-	// Parse tool calls from input
-	toolCalls := parseToolCalls(inputBytes)
+	// Parse tool calls from input. ParseToolCalls always returns at least
+	// one ToolCall - a synthetic _parse_error entry on failure.
+	toolCalls := ParseToolCalls(inputBytes)
 
-	// Error if no tools found since Execute assumes tools are present
-	if len(toolCalls) == 0 {
-		return calque.NewErr(ctx, "no tool calls found in input - use tools.Detect() to handle inputs without tools")
-	}
-
-	// Execute tool calls with configuration
-	results := executeToolCallsWithConfig(ctx, tools, toolCalls, config)
-
-	// Check for errors in tool execution
-	hasErrors := false
-	var firstError string
-	for _, result := range results {
-		if result.Error != "" {
-			hasErrors = true
-			if firstError == "" {
-				firstError = result.Error
-			}
-		}
-	}
-
-	// Handle errors always fail on tool execution errors
-	if hasErrors {
-		return calque.NewErr(ctx, fmt.Sprintf("tool execution failed: %s", firstError))
-	}
+	// Execute tool calls with configuration. Per-result errors are reported
+	// in the output rather than aborting, the caller decides what to do.
+	results := ExecuteToolCalls(ctx, tools, toolCalls, config)
 
 	// Format results based on configuration
 	var output []byte
@@ -164,7 +217,7 @@ func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools
 }
 
 // ParseToolCalls extracts tool calls from LLM output using JSON parsing (OpenAI standard)
-func parseToolCalls(output []byte) []ToolCall {
+func ParseToolCalls(output []byte) []ToolCall {
 	// Only JSON format supported (OpenAI standard)
 	return parseJSONToolCalls(output)
 }
@@ -203,20 +256,41 @@ func parseJSONToolCalls(output []byte) []ToolCall {
 			return parseErrorToolCall(output, fmt.Sprintf("Tool call %d missing function name - invalid OpenAI format", i))
 		}
 
+		id := openaiCall.ID
+		if id == "" {
+			id = generateToolCallID()
+		}
+
 		toolCalls[i] = ToolCall{
-			Name:      openaiCall.Function.Name,
-			Arguments: openaiCall.Function.Arguments,
-			ID:        fmt.Sprintf("call_%d", i),
+			Name:             openaiCall.Function.Name,
+			Arguments:        openaiCall.Function.Arguments,
+			ID:               id,
+			ThoughtSignature: openaiCall.ThoughtSignature,
 		}
 	}
 
 	return toolCalls
 }
 
-// executeToolCallsWithConfig executes multiple tool calls with configuration
-func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []ToolCall, config Config) []ToolResult {
+// generateToolCallID returns a random ID for a tool call whose provider
+// didn't supply one, unique enough to avoid collisions across turns of the
+// same multi-shot conversation (unlike a per-response positional index).
+func generateToolCallID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand failure is exceedingly rare; fall back to a
+		// timestamp-based ID rather than risk a collision on empty output.
+		return fmt.Sprintf("call_%d", time.Now().UnixNano())
+	}
+	return "call_" + hex.EncodeToString(b[:])
+}
+
+// ExecuteToolCalls executes multiple tool calls with configuration, returning
+// structured results. Individual tool errors are reported per-result, not
+// returned as a function error - callers decide how to handle failures.
+func ExecuteToolCalls(ctx context.Context, tools []Tool, toolCalls []ToolCall, config Config) []ToolResult {
 	if len(toolCalls) == 1 { // Single tool call execute directly
-		return []ToolResult{executeToolCall(ctx, tools, toolCalls[0])}
+		return []ToolResult{executeToolCall(ctx, tools, toolCalls[0], config)}
 	}
 
 	results := make([]ToolResult, len(toolCalls))
@@ -231,10 +305,10 @@ func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []T
 	var wg sync.WaitGroup
 
 	// Start workers
-	for w := 0; w < workers; w++ {
+	for range workers {
 		wg.Go(func() {
 			for i := range jobs {
-				results[i] = executeToolCall(ctx, tools, toolCalls[i])
+				results[i] = executeToolCall(ctx, tools, toolCalls[i], config)
 			}
 		})
 	}
@@ -249,8 +323,8 @@ func executeToolCallsWithConfig(ctx context.Context, tools []Tool, toolCalls []T
 	return results
 }
 
-// executeToolCall executes a single tool call
-func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolResult {
+// executeToolCall executes a single tool call, optionally bounded by config.ToolTimeout.
+func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall, config Config) ToolResult {
 	// If the tool call already has an error (e.g., from parsing), return it immediately
 	if toolCall.Error != "" {
 		return ToolResult{
@@ -275,13 +349,39 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 		}
 	}
 
-	// Execute the tool with panic recovery
+	if config.ToolTimeout <= 0 {
+		return invokeTool(ctx, tool, toolCall)
+	}
+
+	// Bound wall-clock time even for tools that ignore ctx.Done(). Run the
+	// tool in a goroutine and give up waiting once the timeout fires. The
+	// goroutine may keep running unobserved in the background. Go cannot
+	// forcibly cancel it.
+	ctx, cancel := context.WithTimeout(ctx, config.ToolTimeout)
+	defer cancel()
+
+	done := make(chan ToolResult, 1)
+	go func() { done <- invokeTool(ctx, tool, toolCall) }()
+
+	select {
+	case result := <-done:
+		return result
+	case <-ctx.Done():
+		return ToolResult{
+			ToolCall: toolCall,
+			Error:    fmt.Sprintf("Tool execution timed out after %s", config.ToolTimeout),
+		}
+	}
+}
+
+// invokeTool runs a single tool's ServeFlow with panic recovery and
+// classifies the outcome into a ToolResult.
+func invokeTool(ctx context.Context, tool Tool, toolCall ToolCall) ToolResult {
 	var result bytes.Buffer
 	args := strings.NewReader(toolCall.Arguments)
 	req := calque.NewRequest(ctx, args)
 	res := calque.NewResponse(&result)
 
-	// Execute tool with panic recovery
 	var err error
 	func() {
 		defer func() {
@@ -291,6 +391,16 @@ func executeToolCall(ctx context.Context, tools []Tool, toolCall ToolCall) ToolR
 		}()
 		err = tool.ServeFlow(req, res)
 	}()
+
+	if inputRequired, ok := errors.AsType[*ErrInputRequired](err); ok {
+		return ToolResult{
+			ToolCall: toolCall,
+			InputRequired: &InputRequiredInfo{
+				Question:          inputRequired.Question,
+				ContinuationToken: inputRequired.ContinuationToken,
+			},
+		}
+	}
 
 	if err != nil {
 		return ToolResult{
@@ -316,9 +426,10 @@ func formatRawOutput(ctx context.Context, results []ToolResult, inputBytes []byt
 		}
 
 		jsonResults[i] = ToolResultJSON{
-			ToolCall: result.ToolCall,
-			Result:   resultJSON,
-			Error:    result.Error,
+			ToolCall:      result.ToolCall,
+			Result:        resultJSON,
+			Error:         result.Error,
+			InputRequired: result.InputRequired,
 		}
 	}
 
@@ -368,9 +479,12 @@ func formatToolResults(results []ToolResult, originalOutput []byte) string {
 			fmt.Fprintf(&output, "Arguments: %s\n", result.ToolCall.Arguments)
 		}
 
-		if result.Error != "" {
+		switch result.Outcome() {
+		case OutcomeInputRequired:
+			fmt.Fprintf(&output, "Input required: %s\n", result.InputRequired.Question)
+		case OutcomeError:
 			fmt.Fprintf(&output, "Error: %s\n", result.Error)
-		} else {
+		default:
 			fmt.Fprintf(&output, "Result: %s\n", string(result.Result))
 		}
 		output.WriteString("\n")
@@ -392,8 +506,8 @@ func formatToolResultsWithOriginal(results []ToolResult, originalOutput []byte) 
 	return output.String()
 }
 
-// hasToolCalls detects if the initial chunk contains tool call patterns
-func hasToolCalls(data []byte) bool {
+// HasToolCalls detects if data contains tool call patterns
+func HasToolCalls(data []byte) bool {
 	content := string(data)
 
 	// JSON format (OpenAI standard) - high confidence pattern

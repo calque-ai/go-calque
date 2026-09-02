@@ -50,10 +50,10 @@ func TestExecute(t *testing.T) {
 		isError  bool
 	}{
 		{
-			name:    "no tool calls - pass through",
-			tools:   []Tool{calc, search},
-			input:   "This is just regular text with no tool calls.",
-			isError: true, // Should error execute assumes tool calls were detected already.
+			name:     "malformed input - not JSON tool call format",
+			tools:    []Tool{calc, search},
+			input:    "This is just regular text with no tool calls.",
+			contains: []string{"Error: Failed to parse tool call JSON"},
 		},
 		{
 			name:     "JSON tool call format",
@@ -68,16 +68,34 @@ func TestExecute(t *testing.T) {
 			contains: []string{"Tool execution results", "calculator", "4", "search", "search results for: golang tutorials"},
 		},
 		{
-			name:    "unknown tool",
-			tools:   []Tool{calc},
-			input:   `{"tool_calls": [{"type": "function", "function": {"name": "unknown_tool", "arguments": "some args"}}]}`,
-			isError: true, // Should error because tool not found
+			name:     "unknown tool",
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "unknown_tool", "arguments": "some args"}}]}`,
+			contains: []string{"Error: Tool 'unknown_tool' not found"},
 		},
 		{
 			name:    "no tools in context",
 			tools:   []Tool{},
 			input:   `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
 			isError: true, // Should error because if there are no tools available why are we running execute tools?
+		},
+		{
+			name:     "empty tool name is treated as a parse error",
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "", "arguments": "2+2"}}]}`,
+			contains: []string{"invalid OpenAI format"},
+		},
+		{
+			name:     "tool call requesting another tool call as arguments (injection-style payload)",
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"tool_calls\":[{\"type\":\"function\",\"function\":{\"name\":\"calculator\",\"arguments\":\"2+2\"}}]}"}}]}`,
+			contains: []string{"Tool execution results", "calculator"},
+		},
+		{
+			name:     "oversized arguments payload does not crash execution",
+			tools:    []Tool{calc},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "` + strings.Repeat("9", 100000) + `"}}]}`,
+			contains: []string{"Tool execution results", "calculator"},
 		},
 	}
 
@@ -146,9 +164,9 @@ func TestExecuteWithOptions(t *testing.T) {
 			config: Config{
 				MaxConcurrentTools: 1,
 			},
-			tools:       []Tool{errorTool},
-			input:       `{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
-			expectError: true, // Should always error on tool failure now
+			tools:    []Tool{errorTool},
+			input:    `{"tool_calls": [{"type": "function", "function": {"name": "error_tool", "arguments": "test"}}]}`,
+			contains: []string{"Error: Tool execution error: tool execution failed"},
 		},
 		{
 			name: "include original output",
@@ -273,7 +291,7 @@ func TestParseToolCalls(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := parseToolCalls([]byte(tt.input))
+			result := ParseToolCalls([]byte(tt.input))
 
 			if len(result) != len(tt.expected) {
 				t.Errorf("ParseToolCalls() returned %d calls, want %d", len(result), len(tt.expected))
@@ -294,6 +312,123 @@ func TestParseToolCalls(t *testing.T) {
 						t.Errorf("ParseToolCalls()[%d].ID is empty, expected non-empty", i)
 					}
 				}
+			}
+		})
+	}
+}
+
+// TestParseToolCallsGeneratedIDsAreUnique pins that fallback IDs are unique
+// per call rather than a positional index, since a positional index (e.g.
+// "call_0") collides across separate turns of the same multi-shot
+// conversation when re-parsed on each loop iteration.
+func TestParseToolCallsGeneratedIDsAreUnique(t *testing.T) {
+	turn1 := ParseToolCalls([]byte(`{"tool_calls": [{"type": "function", "function": {"name": "lookup_city_id", "arguments": "{}"}}]}`))
+	turn2 := ParseToolCalls([]byte(`{"tool_calls": [{"type": "function", "function": {"name": "get_weather_by_id", "arguments": "{}"}}]}`))
+
+	if len(turn1) != 1 || len(turn2) != 1 {
+		t.Fatalf("expected one call per turn, got %d and %d", len(turn1), len(turn2))
+	}
+	if turn1[0].ID == "" || turn2[0].ID == "" {
+		t.Fatal("expected non-empty generated IDs")
+	}
+	if turn1[0].ID == turn2[0].ID {
+		t.Errorf("expected distinct IDs across turns, both got %q", turn1[0].ID)
+	}
+
+	// Also confirm IDs are unique within a single batch of multiple calls.
+	batch := ParseToolCalls([]byte(`{"tool_calls": [
+		{"type": "function", "function": {"name": "a", "arguments": "{}"}},
+		{"type": "function", "function": {"name": "b", "arguments": "{}"}}
+	]}`))
+	if len(batch) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(batch))
+	}
+	if batch[0].ID == batch[1].ID {
+		t.Errorf("expected distinct IDs within one batch, both got %q", batch[0].ID)
+	}
+}
+
+func TestExecuteToolCallTimeout(t *testing.T) {
+	hungTool := Simple("hung", "Never returns in time", func(_ string) string {
+		time.Sleep(200 * time.Millisecond)
+		return "too late"
+	})
+
+	ctx := context.Background()
+	result := executeToolCall(ctx, []Tool{hungTool}, ToolCall{Name: "hung", Arguments: "test"}, Config{ToolTimeout: 20 * time.Millisecond})
+
+	if result.Error == "" {
+		t.Fatal("expected timeout error, got none")
+	}
+	if !strings.Contains(result.Error, "timed out") {
+		t.Errorf("expected timeout error, got: %s", result.Error)
+	}
+}
+
+func TestExecuteToolCallInputRequired(t *testing.T) {
+	askTool := HandlerFunc("ask", "Needs more info", func(_ *calque.Request, _ *calque.Response) error {
+		return &ErrInputRequired{Question: "which city?", ContinuationToken: "tok_123"}
+	})
+
+	ctx := context.Background()
+	result := executeToolCall(ctx, []Tool{askTool}, ToolCall{Name: "ask", Arguments: "test"}, Config{})
+
+	if result.Error != "" {
+		t.Errorf("expected no Error, got: %s", result.Error)
+	}
+	if result.InputRequired == nil {
+		t.Fatal("expected InputRequired to be set")
+	}
+	if result.InputRequired.Question != "which city?" {
+		t.Errorf("InputRequired.Question = %q, want %q", result.InputRequired.Question, "which city?")
+	}
+	if result.InputRequired.ContinuationToken != "tok_123" {
+		t.Errorf("InputRequired.ContinuationToken = %q, want %q", result.InputRequired.ContinuationToken, "tok_123")
+	}
+}
+
+// TestToolResultOutcome pins the precedence order (InputRequired > Error >
+// Result) that every caller rendering a ToolResult relies on - both this
+// package's own formatToolResults and ai.Agent's toolResultContent derive
+// their formatting from this single method so the order can't drift between
+// the two packages.
+func TestToolResultOutcome(t *testing.T) {
+	tests := []struct {
+		name   string
+		result ToolResult
+		want   Outcome
+	}{
+		{
+			name:   "result only",
+			result: ToolResult{Result: []byte("42")},
+			want:   OutcomeResult,
+		},
+		{
+			name:   "error only",
+			result: ToolResult{Error: "boom"},
+			want:   OutcomeError,
+		},
+		{
+			name:   "input required only",
+			result: ToolResult{InputRequired: &InputRequiredInfo{Question: "which city?"}},
+			want:   OutcomeInputRequired,
+		},
+		{
+			name:   "input required takes precedence over error",
+			result: ToolResult{Error: "boom", InputRequired: &InputRequiredInfo{Question: "which city?"}},
+			want:   OutcomeInputRequired,
+		},
+		{
+			name:   "error takes precedence over result",
+			result: ToolResult{Error: "boom", Result: []byte("42")},
+			want:   OutcomeError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.result.Outcome(); got != tt.want {
+				t.Errorf("Outcome() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -331,7 +466,7 @@ func TestExecuteToolCall(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			result := executeToolCall(ctx, tools, tt.toolCall)
+			result := executeToolCall(ctx, tools, tt.toolCall, Config{})
 
 			if tt.expectError {
 				if result.Error == "" {
@@ -478,7 +613,7 @@ func TestExecuteToolCallsConcurrency(t *testing.T) {
 						errChan <- fmt.Errorf("panic: %v", r)
 					}
 				}()
-				results := executeToolCallsWithConfig(ctx, tools, toolCalls, tt.config)
+				results := ExecuteToolCalls(ctx, tools, toolCalls, tt.config)
 				done <- results
 			}()
 

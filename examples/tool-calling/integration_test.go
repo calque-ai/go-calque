@@ -1,14 +1,25 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/ollama/ollama/api"
+
 	"github.com/calque-ai/go-calque/pkg/calque"
 	"github.com/calque-ai/go-calque/pkg/middleware/ai"
+	"github.com/calque-ai/go-calque/pkg/middleware/ai/ollama"
 	"github.com/calque-ai/go-calque/pkg/middleware/tools"
 )
 
@@ -241,45 +252,37 @@ func TestAgentWithTools(t *testing.T) {
 		return "Weather in " + input + ": Sunny, 72°F, Humidity: 45%"
 	})
 
-	// Create mock client that will use tools
-	mockClient := ai.NewMockClientWithResponses([]string{
-		`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"15+8\"}"}}]}`,
-		`{"tool_calls": [{"type": "function", "function": {"name": "current_time", "arguments": "{\"input\": \"\"}"}}]}`,
-		`{"tool_calls": [{"type": "function", "function": {"name": "weather", "arguments": "{\"input\": \"New York\"}"}}]}`,
-		`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"5+3\"}"}}]}`,
-	})
-
-	// Create agent with tools
-	agent := ai.Agent(mockClient, ai.WithTools(calculator, currentTime, weatherTool))
-
 	testCases := []struct {
-		name     string
-		input    string
-		expected []string
+		name         string
+		input        string
+		llmResponses []string
+		expected     []string
 	}{
 		{
 			name:  "Mathematical calculation request",
 			input: "What is 15 + 8? Also, what time is it?",
-			expected: []string{
-				"tool_calls",
-				"calculator",
-				"current_time",
+			llmResponses: []string{
+				`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"15+8\"}"}}]}`,
+				"15 + 8 is 23.00, and the time is 2024-01-15 14:30:25.",
 			},
+			expected: []string{"23.00", "2024-01-15 14:30:25"},
 		},
 		{
 			name:  "Weather and time request",
 			input: "What's the weather like in New York and what time is it?",
-			expected: []string{
-				"tool_calls",
-				"weather",
-				"current_time",
+			llmResponses: []string{
+				`{"tool_calls": [{"type": "function", "function": {"name": "weather", "arguments": "{\"input\": \"New York\"}"}}]}`,
+				"It's sunny in New York, and the time is 2024-01-15 14:30:25.",
 			},
+			expected: []string{"sunny", "2024-01-15 14:30:25"},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
+			mockClient := ai.NewMockClientWithResponses(tc.llmResponses)
+			agent := ai.Agent(mockClient, ai.WithTools(calculator, currentTime, weatherTool))
 
 			var result string
 			err := calque.NewFlow().Use(agent).Run(ctx, tc.input, &result)
@@ -287,10 +290,315 @@ func TestAgentWithTools(t *testing.T) {
 				t.Fatalf("Agent execution failed: %v", err)
 			}
 
-			// The mock client returns tool calls, not executed results
-			// Just verify that we get a tool call response
-			if !strings.Contains(result, "tool_calls") {
-				t.Errorf("Expected tool calls in result, got: %s", result)
+			// The loop should execute the requested tool and let the model
+			// answer in its own words using the real tool result.
+			for _, expected := range tc.expected {
+				if !strings.Contains(result, expected) {
+					t.Errorf("Expected result to contain %q, got: %s", expected, result)
+				}
+			}
+		})
+	}
+}
+
+// TestAgentMultiShotToolChain tests that the agent loop can call a second,
+// dependent tool using the first tool's result - something a single-shot
+// agent could never do, since it never fed tool results back to the model.
+func TestAgentMultiShotToolChain(t *testing.T) {
+	t.Parallel()
+
+	lookupCityID := tools.Simple("lookup_city_id", "Looks up the internal city ID for a city name", func(_ string) string {
+		return "NYC-001"
+	})
+
+	getWeatherByID := tools.Simple("get_weather_by_id", "Gets current weather using a city ID", func(_ string) string {
+		return "Weather for NYC-001: sunny, 65°F"
+	})
+
+	mockClient := ai.NewMockClientWithResponses([]string{
+		`{"tool_calls": [{"type": "function", "function": {"name": "lookup_city_id", "arguments": "{\"city\": \"New York\"}"}}]}`,
+		`{"tool_calls": [{"type": "function", "function": {"name": "get_weather_by_id", "arguments": "{\"city_id\": \"NYC-001\"}"}}]}`,
+		"The weather in New York is sunny, 65°F.",
+	})
+
+	agent := ai.Agent(mockClient, ai.WithTools(lookupCityID, getWeatherByID))
+
+	var result string
+	err := calque.NewFlow().Use(agent).Run(context.Background(), "What's the weather in New York?", &result)
+	if err != nil {
+		t.Fatalf("Agent execution failed: %v", err)
+	}
+
+	if !strings.Contains(result, "sunny") {
+		t.Errorf("Expected final answer to use the second tool's result, got: %s", result)
+	}
+
+	// Pin the actual history threading, not just the final text: turn 2 and
+	// turn 3 must have seen turn 1's tool result, and turn 3 must have seen
+	// turn 2's, or this test would pass even if history were silently dropped
+	// (as it currently is for the Gemini and Ollama clients).
+	if mockClient.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM calls, got %d", mockClient.CallCount())
+	}
+	if !ai.HistoryContainsToolResult(mockClient.HistoryAt(1), "NYC-001") {
+		t.Error("turn 2 history missing turn 1's tool result (lookup_city_id)")
+	}
+	if !ai.HistoryContainsToolResult(mockClient.HistoryAt(2), "sunny") {
+		t.Error("turn 3 history missing turn 2's tool result (get_weather_by_id)")
+	}
+}
+
+// TestOllamaMultimodalSurvivesToolLoop is a live integration test proving a
+// Reader-backed multimodal image part reaches Ollama intact on every loop
+// turn, not just the first. Before the fix, AgentOptions.MultimodalData was
+// stored directly in History[0] and every provider's historyToXxx re-reads
+// it on every turn; an io.Reader can only be read once, so turn 2+ silently
+// got empty image data (with this model/server, Ollama then rejects the
+// malformed request outright rather than accepting empty image data, so the
+// bug surfaces as an agent error rather than only as an empty-bytes
+// mismatch). This test uses a forwarding proxy in front of the real local
+// Ollama server and inspects the raw bytes it actually received on each
+// turn, rather than relying on the model correctly describing the image
+// (which depends on vision quality, not on whether the bug is fixed).
+//
+// Requires a local Ollama server (ollama serve) with a tool+vision capable
+// model pulled (ollama pull qwen3.5:2b-mlx) - skipped under `go test -short`.
+func TestOllamaMultimodalSurvivesToolLoop(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping live Ollama integration test")
+	}
+
+	imageBytes, err := os.ReadFile(filepath.Join("..", "multimodal", "image.jpg"))
+	if err != nil {
+		t.Fatalf("failed to read test image: %v", err)
+	}
+
+	// A forwarding proxy in front of the real local Ollama server, capturing
+	// each outgoing /api/chat request body so we can inspect exactly what
+	// bytes were sent on every turn, independent of how well the model
+	// describes the image.
+	var mu sync.Mutex
+	var captured []api.ChatRequest
+	const target = "http://localhost:11434"
+
+	captureServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "failed to read body", http.StatusBadRequest)
+			return
+		}
+		if r.URL.Path == "/api/chat" {
+			var req api.ChatRequest
+			if err := json.Unmarshal(body, &req); err == nil {
+				mu.Lock()
+				captured = append(captured, req)
+				mu.Unlock()
+			}
+		}
+
+		// Forward to the real Ollama server.
+		fwd, err := http.NewRequestWithContext(r.Context(), r.Method, target+r.URL.Path, bytes.NewReader(body))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		fwd.Header = r.Header.Clone()
+
+		resp, err := http.DefaultClient.Do(fwd)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+
+		for k, vals := range resp.Header {
+			for _, v := range vals {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+	defer captureServer.Close()
+
+	client, err := ollama.New("qwen3.5:2b-mlx", ollama.WithConfig(&ollama.Config{Host: captureServer.URL}))
+	if err != nil {
+		t.Fatalf("failed to create ollama client: %v", err)
+	}
+
+	// A trivial tool unrelated to the image, just to force a second LLM
+	// call - so History[0] (carrying the image) gets walked again.
+	echoTool := tools.Simple("echo", "Echoes back its input string.", func(input string) string {
+		return "echoed: " + input
+	})
+
+	multimodal := ai.Multimodal(
+		ai.Text("Call the echo tool with the word 'hello', then describe this image."),
+		ai.Image(bytes.NewReader(imageBytes), "image/jpeg"),
+	)
+	agent := ai.Agent(client, ai.WithTools(echoTool), ai.WithMultimodalData(&multimodal))
+
+	req := calque.NewRequest(context.Background(), strings.NewReader(`{"parts":[]}`))
+	out := calque.NewWriter[[]byte]()
+	res := calque.NewResponse(out)
+	if err := agent.ServeFlow(req, res); err != nil {
+		t.Fatalf("agent error = %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(captured) < 2 {
+		t.Fatalf("expected at least 2 LLM calls (tool round trip), got %d", len(captured))
+	}
+
+	for i, req := range captured {
+		if len(req.Messages) == 0 || len(req.Messages[0].Images) == 0 {
+			t.Fatalf("call %d: expected History[0] to carry the image, got none", i)
+		}
+		got := []byte(req.Messages[0].Images[0])
+		if !bytes.Equal(got, imageBytes) {
+			t.Errorf("call %d: image bytes sent to Ollama do not match the source file (len(got)=%d, len(want)=%d)", i, len(got), len(imageBytes))
+		}
+	}
+}
+
+// TestAgentMaxIterations pins that MaxIterations is the true cap on total LLM
+// calls (not calls-before-one-more-uncounted-forced-call), across the
+// meaningful boundary values: the tightest possible cap (1, zero tool-calling
+// rounds), one tool-calling round before the forced final (2), and a cap with
+// headroom (4) where the model still exhausts it. In every case a model that
+// keeps requesting tools indefinitely must still get exactly maxIterations
+// calls and a real final answer with no tools offered on the last call.
+func TestAgentMaxIterations(t *testing.T) {
+	t.Parallel()
+
+	alwaysAskAgain := tools.Simple("always_ask_again", "A tool that never satisfies the model", func(_ string) string {
+		return "keep going"
+	})
+	toolCallResponse := `{"tool_calls": [{"type": "function", "function": {"name": "always_ask_again", "arguments": "{}"}}]}`
+	finalAnswer := "I'll stop here and answer directly."
+
+	tests := []struct {
+		name          string
+		maxIterations int
+		responses     []string // one response per expected LLM call
+	}{
+		{
+			name:          "cap of 1 - zero tool-calling rounds, immediate forced answer",
+			maxIterations: 1,
+			responses:     []string{finalAnswer},
+		},
+		{
+			name:          "cap of 2 - one tool-calling round then forced answer",
+			maxIterations: 2,
+			responses:     []string{toolCallResponse, finalAnswer},
+		},
+		{
+			name:          "cap of 4 - three tool-calling rounds then forced answer",
+			maxIterations: 4,
+			responses:     []string{toolCallResponse, toolCallResponse, toolCallResponse, finalAnswer},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := ai.NewMockClientWithResponses(tt.responses)
+			agent := ai.Agent(mockClient, ai.WithTools(alwaysAskAgain), ai.WithMaxIterations(tt.maxIterations))
+
+			var result string
+			err := calque.NewFlow().Use(agent).Run(context.Background(), "Keep calling the tool forever", &result)
+			if err != nil {
+				t.Fatalf("Agent execution failed: %v", err)
+			}
+
+			if !strings.Contains(result, finalAnswer) {
+				t.Errorf("expected forced final answer, got: %s", result)
+			}
+			if mockClient.CallCount() != tt.maxIterations {
+				t.Errorf("expected exactly %d LLM calls, got %d", tt.maxIterations, mockClient.CallCount())
+			}
+			// Tools stay declared on the forced-final call - some providers
+			// (e.g. Gemini) get confused if tool declarations vanish while
+			// history still references a prior call - but ToolsDisabled
+			// tells the Client to refuse to call any of them.
+			if opts := mockClient.OptionsAt(tt.maxIterations - 1); opts != nil {
+				if len(opts.Tools) == 0 {
+					t.Error("expected tools to stay declared on the final call")
+				}
+				if !opts.ToolsDisabled {
+					t.Error("expected ToolsDisabled to be set on the final call")
+				}
+			}
+		})
+	}
+}
+
+// TestAgentMaxIterationsModelIgnoresToolsDisabled pins that the loop errors
+// instead of returning raw tool-call JSON as if it were a real answer, when
+// a model ignores ToolsDisabled on the forced-final call and requests a tool
+// anyway. ToolsDisabled is only a request to the Client - some providers
+// (e.g. Ollama) have no way to enforce it - so the loop can't assume the
+// last response is always prose.
+func TestAgentMaxIterationsModelIgnoresToolsDisabled(t *testing.T) {
+	t.Parallel()
+
+	stubborn := tools.Simple("stubborn", "A tool the model keeps calling even when asked not to", func(_ string) string {
+		return "keep going"
+	})
+	toolCallResponse := `{"tool_calls": [{"type": "function", "function": {"name": "stubborn", "arguments": "{}"}}]}`
+
+	// Every response, including the forced-final call, requests the tool -
+	// simulating a model/provider that doesn't honor ToolsDisabled.
+	mockClient := ai.NewMockClientWithResponses([]string{toolCallResponse, toolCallResponse})
+	agent := ai.Agent(mockClient, ai.WithTools(stubborn), ai.WithMaxIterations(2))
+
+	var result string
+	err := calque.NewFlow().Use(agent).Run(context.Background(), "Keep calling the tool forever", &result)
+	if err == nil {
+		t.Fatalf("expected an error, got a result instead: %s", result)
+	}
+	if !strings.Contains(err.Error(), "MaxIterations") {
+		t.Errorf("expected error to mention MaxIterations, got: %v", err)
+	}
+}
+
+// TestAgentMaxIterationsDefaultsWhenUnsetOrInvalid pins that MaxIterations
+// falls back to the package default instead of looping zero times or
+// panicking when left unset (0) or given an invalid negative value.
+func TestAgentMaxIterationsDefaultsWhenUnsetOrInvalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		maxIterations int // 0 means "don't call WithMaxIterations at all"
+	}{
+		{name: "unset"},
+		{name: "explicit zero", maxIterations: 0},
+		{name: "negative", maxIterations: -1},
+	}
+
+	calc := tools.Simple("calculator", "Math Calculator", func(_ string) string { return "4" })
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := ai.NewMockClientWithResponses([]string{
+				`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "2+2"}}]}`,
+				"The answer is 4.",
+			})
+
+			opts := []ai.AgentOption{ai.WithTools(calc)}
+			if tt.name != "unset" {
+				opts = append(opts, ai.WithMaxIterations(tt.maxIterations))
+			}
+			agent := ai.Agent(mockClient, opts...)
+
+			var result string
+			err := calque.NewFlow().Use(agent).Run(context.Background(), "What is 2+2?", &result)
+			if err != nil {
+				t.Fatalf("Agent execution failed: %v", err)
+			}
+			if !strings.Contains(result, "The answer is 4.") {
+				t.Errorf("expected the model's natural answer, got: %s", result)
 			}
 		})
 	}
@@ -516,8 +824,7 @@ func TestToolConfiguration(t *testing.T) {
 			// Create mock client
 			mockClient := ai.NewMockClientWithResponses([]string{
 				`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"5+3\"}"}}]}`,
-				`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"5+3\"}"}}]}`,
-				`{"tool_calls": [{"type": "function", "function": {"name": "calculator", "arguments": "{\"input\": \"5+3\"}"}}]}`,
+				"5+3 is 8.00.",
 			})
 
 			// Create agent with configured tools
@@ -530,13 +837,10 @@ func TestToolConfiguration(t *testing.T) {
 				t.Fatalf("Agent execution failed: %v", err)
 			}
 
-			// Verify tool calls are present
-			if !strings.Contains(result, "tool_calls") {
-				t.Errorf("Expected tool calls in result, got: %s", result)
-			}
-
-			if !strings.Contains(result, "calculator") {
-				t.Errorf("Expected calculator tool call, got: %s", result)
+			// The loop should execute the tool and return the model's answer
+			// using the real result, regardless of concurrency configuration.
+			if !strings.Contains(result, "8.00") {
+				t.Errorf("Expected result to contain the calculated value, got: %s", result)
 			}
 		})
 	}

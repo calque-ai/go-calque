@@ -276,7 +276,7 @@ func TestInputToMessages(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			messages, err := client.inputToMessages(ctx, tt.input)
+			messages, err := client.inputToMessages(ctx, tt.input, nil)
 
 			if tt.expectError {
 				if err == nil {
@@ -439,7 +439,7 @@ func TestBuildChatParams(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			params, err := client.buildChatParams(ctx, tt.input, tt.schema, tt.tools)
+			params, err := client.buildChatParams(ctx, tt.input, tt.schema, tt.tools, nil, false)
 
 			if tt.expectError {
 				if err == nil {
@@ -460,6 +460,59 @@ func TestBuildChatParams(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBuildChatParamsToolsDisabled pins that ToolsDisabled keeps Tools
+// declared on the request but sets tool_choice to "none" - the agent loop's
+// forced-final iteration relies on tools staying declared (rather than being
+// dropped) so a provider that requires them to make sense of prior tool-call
+// history behaves consistently across the loop; tool_choice:"none" is
+// OpenAI's own documented mechanism for "don't call anything, answer in
+// text" without removing the declarations.
+func TestBuildChatParamsToolsDisabled(t *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: DefaultConfig(),
+	}
+
+	tool := &mockTool{name: "test_tool", description: "A test tool"}
+	input := &ai.ClassifiedInput{Type: ai.TextInput, Text: "Hello"}
+
+	t.Run("tools disabled keeps Tools and sets tool_choice none", func(t *testing.T) {
+		params, err := client.buildChatParams(context.Background(), input, nil, []tools.Tool{tool}, nil, true)
+		if err != nil {
+			t.Fatalf("buildChatParams() error = %v", err)
+		}
+		if len(params.Tools) != 1 {
+			t.Errorf("Tools = %d entries, want 1 (should stay declared)", len(params.Tools))
+		}
+		if params.ToolChoice.OfAuto.Value != string(openai.ChatCompletionToolChoiceOptionAutoNone) {
+			t.Errorf("ToolChoice.OfAuto = %q, want %q", params.ToolChoice.OfAuto.Value, openai.ChatCompletionToolChoiceOptionAutoNone)
+		}
+	})
+
+	t.Run("tools disabled with no tools sets no tool_choice", func(t *testing.T) {
+		params, err := client.buildChatParams(context.Background(), input, nil, nil, nil, true)
+		if err != nil {
+			t.Fatalf("buildChatParams() error = %v", err)
+		}
+		if len(params.Tools) != 0 {
+			t.Errorf("Tools = %d entries, want 0", len(params.Tools))
+		}
+		if params.ToolChoice.OfAuto.Valid() {
+			t.Errorf("ToolChoice should be unset when there are no tools to disable, got %q", params.ToolChoice.OfAuto.Value)
+		}
+	})
+
+	t.Run("tools enabled leaves tool_choice unset", func(t *testing.T) {
+		params, err := client.buildChatParams(context.Background(), input, nil, []tools.Tool{tool}, nil, false)
+		if err != nil {
+			t.Fatalf("buildChatParams() error = %v", err)
+		}
+		if params.ToolChoice.OfAuto.Valid() {
+			t.Errorf("ToolChoice should be unset (defaults to auto) when tools are enabled, got %q", params.ToolChoice.OfAuto.Value)
+		}
+	})
 }
 
 // TestMultimodalToMessages tests multimodal input conversion
@@ -572,6 +625,60 @@ func TestMultimodalToMessages(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestHistoryToMessagesWithMultimodal pins that a RoleUser history message
+// carrying Multimodal data is converted into a real multi-part user message,
+// not silently dropped or flattened to plain text, once history round-trips
+// through the agent tool-calling loop.
+func TestHistoryToMessagesWithMultimodal(t *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: DefaultConfig(),
+	}
+
+	history := []ai.Message{
+		{
+			Role: ai.RoleUser,
+			Multimodal: &ai.MultimodalInput{
+				Parts: []ai.ContentPart{
+					{Type: "text", Text: "What's in this image?"},
+					{Type: "image", Data: []byte("test-image-data"), MimeType: "image/png"},
+				},
+			},
+		},
+	}
+
+	messages, err := client.historyToMessages(context.Background(), history)
+	if err != nil {
+		t.Fatalf("historyToMessages() error = %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(messages))
+	}
+	if messages[0].OfUser == nil {
+		t.Fatal("expected a user message, got none")
+	}
+	if len(messages[0].OfUser.Content.OfArrayOfContentParts) != 2 {
+		t.Errorf("expected 2 content parts (text + image), got %d", len(messages[0].OfUser.Content.OfArrayOfContentParts))
+	}
+}
+
+// TestHistoryToMessagesUnsupportedRole pins that an unrecognized ai.Role
+// errors instead of silently producing a zero-value message in the list -
+// matching gemini.Client.messageToContent and ollama.Client.historyToMessages,
+// which both reject unsupported roles the same way.
+func TestHistoryToMessagesUnsupportedRole(t *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: DefaultConfig(),
+	}
+
+	history := []ai.Message{{Role: ai.Role("bogus"), Content: "x"}}
+
+	if _, err := client.historyToMessages(context.Background(), history); err == nil {
+		t.Fatal("expected error for unsupported role, got none")
 	}
 }
 
@@ -830,7 +937,7 @@ func TestChat_Method(t *testing.T) {
 
 			// Test message conversion
 			ctx := context.Background()
-			messages, err := client.inputToMessages(ctx, input)
+			messages, err := client.inputToMessages(ctx, input, nil)
 			if err != nil {
 				t.Errorf("%s: inputToMessages() error = %v", tt.description, err)
 				return
@@ -841,7 +948,7 @@ func TestChat_Method(t *testing.T) {
 			}
 
 			// Test params building
-			params, err := client.buildChatParams(ctx, input, ai.GetSchema(opts), ai.GetTools(opts))
+			params, err := client.buildChatParams(ctx, input, ai.GetSchema(opts), ai.GetTools(opts), ai.GetHistory(opts), ai.GetToolsDisabled(opts))
 			if err != nil {
 				t.Errorf("%s: buildChatParams() error = %v", tt.description, err)
 				return

@@ -5,6 +5,7 @@ package gemini
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -226,7 +227,7 @@ func (g *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Build request configuration based on input type
-	config, err := g.buildRequestConfig(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts))
+	config, err := g.buildRequestConfig(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts), ai.GetHistory(opts), ai.GetToolsDisabled(opts))
 	if err != nil {
 		return err
 	}
@@ -324,30 +325,51 @@ func convertToolsToGeminiFunctions(toolList []tools.Tool) []*genai.FunctionDecla
 	return functions
 }
 
-// buildRequestConfig creates configuration for the request
-func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool) (*RequestConfig, error) {
+// applyTools declares tools on genaiConfig and, if toolsDisabled, forces
+// FunctionCallingConfigModeNone - Gemini's documented mechanism for "stop
+// calling tools, answer in text" - instead of dropping the declarations
+// outright. Gemini's newer models get confused by their own unresolved
+// FunctionCall/FunctionResponse history when a later turn omits tools
+// entirely, and echo back an empty FunctionCall instead of prose; keeping
+// tools declared but disabled avoids that. Reports whether any tools were
+// declared.
+func applyTools(genaiConfig *genai.GenerateContentConfig, toolList []tools.Tool, toolsDisabled bool) bool {
+	if len(toolList) == 0 {
+		return false
+	}
+
+	genaiConfig.Tools = []*genai.Tool{{FunctionDeclarations: convertToolsToGeminiFunctions(toolList)}}
+
+	if toolsDisabled {
+		genaiConfig.ToolConfig = &genai.ToolConfig{
+			FunctionCallingConfig: &genai.FunctionCallingConfig{
+				Mode: genai.FunctionCallingConfigModeNone,
+			},
+		}
+	}
+
+	return true
+}
+
+// buildRequestConfig creates configuration for the request.
+// If history is non-empty, it is round-tripped as prior chat turns instead
+// of building a single-message request from input. See applyTools for what
+// toolsDisabled does.
+func (g *Client) buildRequestConfig(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, tools []tools.Tool, history []ai.Message, toolsDisabled bool) (*RequestConfig, error) {
 	// Build config once
 	genaiConfig := g.buildGenerateConfig(schema)
+	hasTools := applyTools(genaiConfig, tools, toolsDisabled)
 
-	// Track if we have tools (needed for buffering decision)
-	hasTools := len(tools) > 0
-
-	// Add tools once
-	if hasTools {
-		geminiFunctions := convertToolsToGeminiFunctions(tools)
-		genaiConfig.Tools = []*genai.Tool{{FunctionDeclarations: geminiFunctions}}
-	}
-
-	// Create chat once
-	chat, err := g.client.Chats.Create(ctx, g.model, genaiConfig, nil)
-	if err != nil {
-		return nil, calque.WrapErr(ctx, err, "failed to create chat")
-	}
-
-	// Convert to parts once
-	parts, err := g.inputToParts(ctx, input)
+	// Convert input (or history) to parts and prior chat history once
+	priorHistory, parts, err := g.inputToContents(ctx, input, history)
 	if err != nil {
 		return nil, err
+	}
+
+	// Create chat, seeded with any prior turns
+	chat, err := g.client.Chats.Create(ctx, g.model, genaiConfig, priorHistory)
+	if err != nil {
+		return nil, calque.WrapErr(ctx, err, "failed to create chat")
 	}
 
 	return &RequestConfig{
@@ -399,9 +421,9 @@ func (g *Client) executeNonStreamingRequest(config *RequestConfig, r *calque.Req
 	g.reportUsage(opts)
 
 	// Check for function calls first
-	functionCalls := result.FunctionCalls()
-	if len(functionCalls) > 0 {
-		return g.writeFunctionCalls(functionCalls, w)
+	functionCallParts := extractFunctionCallParts(result)
+	if len(functionCallParts) > 0 {
+		return g.writeFunctionCalls(functionCallParts, w)
 	}
 
 	// Write text response
@@ -446,12 +468,33 @@ func (g *Client) executeStreamingRequest(config *RequestConfig, r *calque.Reques
 	return nil
 }
 
-// writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
-func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calque.Response) error {
-	// Convert to OpenAI format
-	toolCalls := make([]map[string]any, len(functionCalls))
+// extractFunctionCallParts returns the parts of the first candidate that
+// carry a function call, preserving each part's ThoughtSignature - unlike
+// GenerateContentResponse.FunctionCalls(), which discards it. Gemini's newer
+// models require that signature echoed back verbatim if the call is replayed
+// in later history (see assistantContent in this package).
+func extractFunctionCallParts(result *genai.GenerateContentResponse) []*genai.Part {
+	if len(result.Candidates) == 0 || result.Candidates[0].Content == nil {
+		return nil
+	}
 
-	for i, call := range functionCalls {
+	var parts []*genai.Part
+	for _, part := range result.Candidates[0].Content.Parts {
+		if part.FunctionCall != nil {
+			parts = append(parts, part)
+		}
+	}
+	return parts
+}
+
+// writeFunctionCalls formats Gemini function calls as OpenAI JSON format for the agent
+func (g *Client) writeFunctionCalls(parts []*genai.Part, w *calque.Response) error {
+	// Convert to OpenAI format
+	toolCalls := make([]map[string]any, len(parts))
+
+	for i, part := range parts {
+		call := part.FunctionCall
+
 		// Marshal ALL arguments from Gemini to JSON string
 		var argsJSON string
 		if call.Args != nil {
@@ -465,13 +508,21 @@ func (g *Client) writeFunctionCalls(functionCalls []*genai.FunctionCall, w *calq
 			argsJSON = "{}"
 		}
 
-		// OpenAI format with type and function fields
+		// OpenAI format with type and function fields; ID and
+		// thought_signature are included when Gemini supplies them - ID
+		// otherwise falls back to tools.generateToolCallID() on the
+		// receiving end, thought_signature has no fallback since it must
+		// match what the model actually returned.
 		toolCall := map[string]any{
 			"type": toolCallType,
+			"id":   call.ID,
 			toolCallType: map[string]any{
 				"name":      call.Name,
 				"arguments": argsJSON,
 			},
+		}
+		if len(part.ThoughtSignature) > 0 {
+			toolCall["thought_signature"] = base64.StdEncoding.EncodeToString(part.ThoughtSignature)
 		}
 		toolCalls[i] = toolCall
 	}
@@ -502,6 +553,130 @@ func (g *Client) inputToParts(ctx context.Context, input *ai.ClassifiedInput) ([
 	default:
 		return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported input type: %d", input.Type))
 	}
+}
+
+// inputToContents converts classified input (or, once populated, agent
+// history) into the two pieces genai.Chats.Create/SendMessage need: prior
+// turns to seed the chat with, and the parts of the final turn to send.
+//
+// If history is non-empty, it is round-tripped in full instead of building
+// a single turn from input - the raw request body is unused once History is
+// populated, matching openai.Client.inputToMessages.
+func (g *Client) inputToContents(ctx context.Context, input *ai.ClassifiedInput, history []ai.Message) (priorHistory []*genai.Content, finalParts []genai.Part, err error) {
+	if len(history) > 0 {
+		contents, err := g.historyToContents(ctx, history)
+		if err != nil {
+			return nil, nil, err
+		}
+		last := contents[len(contents)-1]
+		parts := make([]genai.Part, len(last.Parts))
+		for i, p := range last.Parts {
+			parts[i] = *p
+		}
+		return contents[:len(contents)-1], parts, nil
+	}
+
+	parts, err := g.inputToParts(ctx, input)
+	return nil, parts, err
+}
+
+// historyToContents converts agent conversation history to Gemini's native
+// []*genai.Content turn representation. Gemini's Chat is stateful, but the
+// loop in ai.runAgentLoop rebuilds the full history on every call, so
+// history is converted fresh each time rather than relying on Chat's own
+// tracking - this keeps the loop provider-agnostic.
+func (g *Client) historyToContents(ctx context.Context, history []ai.Message) ([]*genai.Content, error) {
+	contents := make([]*genai.Content, len(history))
+	for i, msg := range history {
+		content, err := g.messageToContent(ctx, msg)
+		if err != nil {
+			return nil, err
+		}
+		contents[i] = content
+	}
+	return contents, nil
+}
+
+// messageToContent converts a single ai.Message to a genai.Content turn.
+// Gemini's Content role is either "user" or "model" - RoleAssistant maps to
+// "model", and RoleSystem (not produced by the current agent loop, but part
+// of the shared Role enum) falls back to "user" since Gemini has no inline
+// system turn; system instructions are configured separately via
+// Config.SystemInstruction.
+func (g *Client) messageToContent(ctx context.Context, msg ai.Message) (*genai.Content, error) {
+	switch msg.Role {
+	case ai.RoleUser, ai.RoleSystem:
+		if msg.Multimodal != nil {
+			parts, err := g.multimodalToParts(ctx, msg.Multimodal)
+			if err != nil {
+				return nil, err
+			}
+			return genai.NewContentFromParts(partPointers(parts), genai.RoleUser), nil
+		}
+		return genai.NewContentFromText(msg.Content, genai.RoleUser), nil
+
+	case ai.RoleAssistant:
+		return assistantContent(msg), nil
+
+	case ai.RoleTool:
+		return &genai.Content{
+			Role: genai.RoleUser,
+			Parts: []*genai.Part{{
+				FunctionResponse: &genai.FunctionResponse{
+					ID:       msg.ToolCallID,
+					Name:     msg.ToolName,
+					Response: map[string]any{"output": msg.Content},
+				},
+			}},
+		}, nil
+
+	default:
+		return nil, calque.NewErr(ctx, fmt.Sprintf("unsupported message role: %s", msg.Role))
+	}
+}
+
+// assistantContent builds a "model" role Content, attaching function calls
+// when present.
+func assistantContent(msg ai.Message) *genai.Content {
+	if len(msg.ToolCalls) == 0 {
+		return genai.NewContentFromText(msg.Content, genai.RoleModel)
+	}
+
+	parts := make([]*genai.Part, len(msg.ToolCalls))
+	for i, call := range msg.ToolCalls {
+		var args map[string]any
+		if call.Arguments != "" {
+			_ = json.Unmarshal([]byte(call.Arguments), &args)
+		}
+		part := &genai.Part{
+			FunctionCall: &genai.FunctionCall{
+				ID:   call.ID,
+				Name: call.Name,
+				Args: args,
+			},
+		}
+		// Gemini requires the exact ThoughtSignature it originally returned
+		// to be echoed back when this call is replayed in history, or newer
+		// models reject the request. Decoding failure just leaves it unset
+		// rather than failing the whole turn.
+		if call.ThoughtSignature != "" {
+			if sig, err := base64.StdEncoding.DecodeString(call.ThoughtSignature); err == nil {
+				part.ThoughtSignature = sig
+			}
+		}
+		parts[i] = part
+	}
+	return genai.NewContentFromParts(parts, genai.RoleModel)
+}
+
+// partPointers converts a []genai.Part value slice to []*genai.Part, matching
+// the pointer-element shape genai.Content.Parts expects.
+func partPointers(parts []genai.Part) []*genai.Part {
+	pointers := make([]*genai.Part, len(parts))
+	for i := range parts {
+		pointers[i] = &parts[i]
+	}
+	return pointers
 }
 
 // multimodalToParts converts multimodal input to genai.Part array

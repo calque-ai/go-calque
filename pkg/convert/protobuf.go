@@ -217,10 +217,7 @@ func (cr *chunkedReader) Read(p []byte) (n int, err error) {
 
 	// Calculate how much to read
 	remaining := len(cr.data) - cr.position
-	toRead := min(cr.chunkSize, remaining)
-	if toRead > len(p) {
-		toRead = len(p)
-	}
+	toRead := min(min(cr.chunkSize, remaining), len(p))
 
 	// Copy data to buffer
 	copy(p, cr.data[cr.position:cr.position+toRead])
