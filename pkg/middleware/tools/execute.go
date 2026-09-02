@@ -25,13 +25,19 @@ type ToolCall struct {
 	Arguments string `json:"arguments,omitempty"`
 	ID        string `json:"id,omitempty"`
 	Error     string `json:"error,omitempty"`
+	// ThoughtSignature is opaque, provider-specific data that must be
+	// echoed back verbatim when this call is replayed in later history.
+	// Gemini's newer models require it on any FunctionCall part they
+	// generated; other providers leave it empty.
+	ThoughtSignature string `json:"thought_signature,omitempty"`
 }
 
 // OpenAIToolCall represents a tool call in OpenAI format
 type OpenAIToolCall struct {
-	Type     string `json:"type"`
-	ID       string `json:"id,omitempty"`
-	Function struct {
+	Type             string `json:"type"`
+	ID               string `json:"id,omitempty"`
+	ThoughtSignature string `json:"thought_signature,omitempty"`
+	Function         struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
 	} `json:"function"`
@@ -234,9 +240,10 @@ func parseJSONToolCalls(output []byte) []ToolCall {
 		}
 
 		toolCalls[i] = ToolCall{
-			Name:      openaiCall.Function.Name,
-			Arguments: openaiCall.Function.Arguments,
-			ID:        id,
+			Name:             openaiCall.Function.Name,
+			Arguments:        openaiCall.Function.Arguments,
+			ID:               id,
+			ThoughtSignature: openaiCall.ThoughtSignature,
 		}
 	}
 

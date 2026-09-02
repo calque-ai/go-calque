@@ -392,8 +392,17 @@ func TestAgentMaxIterations(t *testing.T) {
 			if mockClient.CallCount() != tt.maxIterations {
 				t.Errorf("expected exactly %d LLM calls, got %d", tt.maxIterations, mockClient.CallCount())
 			}
-			if opts := mockClient.OptionsAt(tt.maxIterations - 1); opts != nil && len(opts.Tools) != 0 {
-				t.Errorf("expected no tools offered on the final call, got %d", len(opts.Tools))
+			// Tools stay declared on the forced-final call - some providers
+			// (e.g. Gemini) get confused if tool declarations vanish while
+			// history still references a prior call - but ToolsDisabled
+			// tells the Client to refuse to call any of them.
+			if opts := mockClient.OptionsAt(tt.maxIterations - 1); opts != nil {
+				if len(opts.Tools) == 0 {
+					t.Error("expected tools to stay declared on the final call")
+				}
+				if !opts.ToolsDisabled {
+					t.Error("expected ToolsDisabled to be set on the final call")
+				}
 			}
 		})
 	}

@@ -267,6 +267,79 @@ func TestBuildGenerateConfig(t *testing.T) {
 	}
 }
 
+// TestApplyTools pins that ToolsDisabled keeps tool declarations on the
+// request but sets FunctionCallingConfigModeNone, rather than dropping Tools
+// entirely - the fix for a real bug where Gemini's newer models, given a
+// forced-final loop turn with no tools declared but history still containing
+// an unresolved FunctionCall, echoed back an empty FunctionCall instead of a
+// text answer.
+func TestApplyTools(t *testing.T) {
+	tool := tools.Simple("calculator", "Performs calculations", func(_ string) string { return "42" })
+
+	tests := []struct {
+		name          string
+		tools         []tools.Tool
+		toolsDisabled bool
+		wantHasTools  bool
+		checkFunc     func(t *testing.T, config *genai.GenerateContentConfig)
+	}{
+		{
+			name:         "no tools",
+			tools:        nil,
+			wantHasTools: false,
+			checkFunc: func(t *testing.T, config *genai.GenerateContentConfig) {
+				if config.Tools != nil {
+					t.Error("Tools should be nil when none are provided")
+				}
+			},
+		},
+		{
+			name:         "tools enabled",
+			tools:        []tools.Tool{tool},
+			wantHasTools: true,
+			checkFunc: func(t *testing.T, config *genai.GenerateContentConfig) {
+				if len(config.Tools) != 1 {
+					t.Fatalf("Tools = %d entries, want 1", len(config.Tools))
+				}
+				if config.ToolConfig != nil {
+					t.Error("ToolConfig should be unset when tools are enabled")
+				}
+			},
+		},
+		{
+			name:          "tools disabled",
+			tools:         []tools.Tool{tool},
+			toolsDisabled: true,
+			wantHasTools:  true,
+			checkFunc: func(t *testing.T, config *genai.GenerateContentConfig) {
+				if len(config.Tools) != 1 {
+					t.Fatalf("Tools = %d entries, want 1 (should stay declared)", len(config.Tools))
+				}
+				if config.ToolConfig == nil || config.ToolConfig.FunctionCallingConfig == nil {
+					t.Fatal("ToolConfig.FunctionCallingConfig should be set when tools are disabled")
+				}
+				if config.ToolConfig.FunctionCallingConfig.Mode != genai.FunctionCallingConfigModeNone {
+					t.Errorf("Mode = %v, want %v", config.ToolConfig.FunctionCallingConfig.Mode, genai.FunctionCallingConfigModeNone)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &genai.GenerateContentConfig{}
+			hasTools := applyTools(config, tt.tools, tt.toolsDisabled)
+
+			if hasTools != tt.wantHasTools {
+				t.Errorf("applyTools() = %v, want %v", hasTools, tt.wantHasTools)
+			}
+			if tt.checkFunc != nil {
+				tt.checkFunc(t, config)
+			}
+		})
+	}
+}
+
 func TestInputToParts(t *testing.T) {
 	client := &Client{}
 
@@ -418,6 +491,279 @@ func TestInputToParts(t *testing.T) {
 	}
 }
 
+// TestHistoryToContents pins how each ai.Message role maps to Gemini's
+// native []*genai.Content turn representation, since this is the mechanism
+// that lets the multi-shot tool-calling loop in ai.runAgentLoop drive Gemini.
+func TestHistoryToContents(t *testing.T) {
+	client := &Client{}
+
+	tests := []struct {
+		name      string
+		history   []ai.Message
+		expectErr bool
+		checkFunc func(t *testing.T, contents []*genai.Content)
+	}{
+		{
+			name:      "user message",
+			history:   []ai.Message{{Role: ai.RoleUser, Content: "What's the weather?"}},
+			checkFunc: checkUserTextContent,
+		},
+		{
+			name: "user message with multimodal image",
+			history: []ai.Message{
+				{
+					Role: ai.RoleUser,
+					Multimodal: &ai.MultimodalInput{
+						Parts: []ai.ContentPart{
+							{Type: "text", Text: "What's in this image?"},
+							{Type: "image", Data: []byte("test-image-data"), MimeType: "image/png"},
+						},
+					},
+				},
+			},
+			checkFunc: checkUserMultimodalContent,
+		},
+		{
+			name:      "system message falls back to user role",
+			history:   []ai.Message{{Role: ai.RoleSystem, Content: "Answer concisely."}},
+			checkFunc: checkSystemFallsBackToUser,
+		},
+		{
+			name:      "assistant message without tool calls",
+			history:   []ai.Message{{Role: ai.RoleAssistant, Content: "Sure, one moment."}},
+			checkFunc: checkAssistantTextContent,
+		},
+		{
+			name: "assistant message with tool calls",
+			history: []ai.Message{
+				{
+					Role:      ai.RoleAssistant,
+					ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "get_weather", Arguments: `{"city":"nyc"}`}},
+				},
+			},
+			checkFunc: checkAssistantFunctionCall,
+		},
+		{
+			name:      "tool result message",
+			history:   []ai.Message{{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"}},
+			checkFunc: checkToolFunctionResponse,
+		},
+		{
+			name: "full tool-calling round trip",
+			history: []ai.Message{
+				{Role: ai.RoleUser, Content: "What's the weather in NYC?"},
+				{Role: ai.RoleAssistant, ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "get_weather", Arguments: `{"city":"nyc"}`}}},
+				{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"},
+			},
+			checkFunc: checkFullToolRoundTrip,
+		},
+		{
+			name:      "unsupported role",
+			history:   []ai.Message{{Role: ai.Role("bogus"), Content: "x"}},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			contents, err := client.historyToContents(context.Background(), tt.history)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Fatal("expected error, got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("historyToContents() error = %v", err)
+			}
+			if tt.checkFunc != nil {
+				tt.checkFunc(t, contents)
+			}
+		})
+	}
+}
+
+func checkUserTextContent(t *testing.T, contents []*genai.Content) {
+	t.Helper()
+	if len(contents) != 1 {
+		t.Fatalf("len(contents) = %d, want 1", len(contents))
+	}
+	if contents[0].Role != genai.RoleUser {
+		t.Errorf("role = %v, want %v", contents[0].Role, genai.RoleUser)
+	}
+	if len(contents[0].Parts) != 1 || contents[0].Parts[0].Text != "What's the weather?" {
+		t.Errorf("parts = %+v, want single text part", contents[0].Parts)
+	}
+}
+
+func checkUserMultimodalContent(t *testing.T, contents []*genai.Content) {
+	t.Helper()
+	if len(contents) != 1 {
+		t.Fatalf("len(contents) = %d, want 1", len(contents))
+	}
+	if len(contents[0].Parts) != 2 {
+		t.Fatalf("len(parts) = %d, want 2 (text + image)", len(contents[0].Parts))
+	}
+	if contents[0].Parts[1].InlineData == nil {
+		t.Error("second part should carry InlineData for the image")
+	}
+}
+
+func checkSystemFallsBackToUser(t *testing.T, contents []*genai.Content) {
+	t.Helper()
+	if contents[0].Role != genai.RoleUser {
+		t.Errorf("role = %v, want %v (Gemini has no inline system turn)", contents[0].Role, genai.RoleUser)
+	}
+}
+
+func checkAssistantTextContent(t *testing.T, contents []*genai.Content) {
+	t.Helper()
+	if contents[0].Role != genai.RoleModel {
+		t.Errorf("role = %v, want %v", contents[0].Role, genai.RoleModel)
+	}
+	if len(contents[0].Parts) != 1 || contents[0].Parts[0].Text != "Sure, one moment." {
+		t.Errorf("parts = %+v, want single text part", contents[0].Parts)
+	}
+}
+
+func checkAssistantFunctionCall(t *testing.T, contents []*genai.Content) {
+	t.Helper()
+	if contents[0].Role != genai.RoleModel {
+		t.Errorf("role = %v, want %v", contents[0].Role, genai.RoleModel)
+	}
+	if len(contents[0].Parts) != 1 || contents[0].Parts[0].FunctionCall == nil {
+		t.Fatalf("parts = %+v, want single FunctionCall part", contents[0].Parts)
+	}
+	fc := contents[0].Parts[0].FunctionCall
+	if fc.ID != "call_1" || fc.Name != "get_weather" {
+		t.Errorf("FunctionCall = %+v, want ID=call_1 Name=get_weather", fc)
+	}
+	if fc.Args["city"] != "nyc" {
+		t.Errorf("FunctionCall.Args = %+v, want city=nyc", fc.Args)
+	}
+}
+
+func checkToolFunctionResponse(t *testing.T, contents []*genai.Content) {
+	t.Helper()
+	if contents[0].Role != genai.RoleUser {
+		t.Errorf("role = %v, want %v", contents[0].Role, genai.RoleUser)
+	}
+	if len(contents[0].Parts) != 1 || contents[0].Parts[0].FunctionResponse == nil {
+		t.Fatalf("parts = %+v, want single FunctionResponse part", contents[0].Parts)
+	}
+	fr := contents[0].Parts[0].FunctionResponse
+	if fr.ID != "call_1" || fr.Name != "get_weather" {
+		t.Errorf("FunctionResponse = %+v, want ID=call_1 Name=get_weather", fr)
+	}
+	if fr.Response["output"] != "72F and sunny" {
+		t.Errorf("FunctionResponse.Response = %+v, want output=72F and sunny", fr.Response)
+	}
+}
+
+func checkFullToolRoundTrip(t *testing.T, contents []*genai.Content) {
+	t.Helper()
+	if len(contents) != 3 {
+		t.Fatalf("len(contents) = %d, want 3", len(contents))
+	}
+	wantRoles := []string{genai.RoleUser, genai.RoleModel, genai.RoleUser}
+	for i, want := range wantRoles {
+		if contents[i].Role != want {
+			t.Errorf("contents[%d].Role = %v, want %v", i, contents[i].Role, want)
+		}
+	}
+}
+
+// TestThoughtSignatureRoundTrip pins the full path that fixes a real API
+// error: Gemini's newer models attach an opaque ThoughtSignature to a
+// FunctionCall part and reject any later turn that replays that call without
+// echoing the exact same signature back. The path is: writeFunctionCalls
+// base64-encodes it into the shared tool_calls JSON -> the shared
+// tools.ParseToolCalls (same parser agent.go uses) reads it back onto
+// ToolCall.ThoughtSignature -> assistantContent decodes it back onto the
+// rebuilt FunctionCall part when that turn is replayed in history.
+func TestThoughtSignatureRoundTrip(t *testing.T) {
+	client := &Client{}
+	rawSignature := []byte{0xDE, 0xAD, 0xBE, 0xEF}
+
+	parts := []*genai.Part{
+		{
+			FunctionCall:     &genai.FunctionCall{ID: "call_1", Name: "get_weather", Args: map[string]any{"city": "nyc"}},
+			ThoughtSignature: rawSignature,
+		},
+	}
+
+	var response strings.Builder
+	w := calque.NewResponse(&response)
+	if err := client.writeFunctionCalls(parts, w); err != nil {
+		t.Fatalf("writeFunctionCalls() error = %v", err)
+	}
+
+	calls := tools.ParseToolCalls([]byte(response.String()))
+	if len(calls) != 1 {
+		t.Fatalf("ParseToolCalls() returned %d calls, want 1", len(calls))
+	}
+	if calls[0].ThoughtSignature == "" {
+		t.Fatal("parsed ToolCall.ThoughtSignature is empty, want the encoded signature")
+	}
+
+	history := []ai.Message{{Role: ai.RoleAssistant, ToolCalls: calls}}
+	contents, err := client.historyToContents(context.Background(), history)
+	if err != nil {
+		t.Fatalf("historyToContents() error = %v", err)
+	}
+
+	got := contents[0].Parts[0].ThoughtSignature
+	if string(got) != string(rawSignature) {
+		t.Errorf("reattached ThoughtSignature = %v, want %v", got, rawSignature)
+	}
+}
+
+// TestInputToContents pins that inputToContents falls back to the raw input
+// only when history is empty, and otherwise round-trips the full history,
+// splitting it into prior turns (for Chats.Create) and the final message's
+// parts (for SendMessage) - matching openai.Client.inputToMessages.
+func TestInputToContents(t *testing.T) {
+	client := &Client{}
+
+	t.Run("empty history falls back to input", func(t *testing.T) {
+		input := &ai.ClassifiedInput{Type: ai.TextInput, Text: "hello"}
+
+		prior, parts, err := client.inputToContents(context.Background(), input, nil)
+		if err != nil {
+			t.Fatalf("inputToContents() error = %v", err)
+		}
+		if prior != nil {
+			t.Errorf("prior history = %+v, want nil", prior)
+		}
+		if len(parts) != 1 || parts[0].Text != "hello" {
+			t.Errorf("parts = %+v, want single text part 'hello'", parts)
+		}
+	})
+
+	t.Run("history splits into prior turns and final parts", func(t *testing.T) {
+		history := []ai.Message{
+			{Role: ai.RoleUser, Content: "first"},
+			{Role: ai.RoleAssistant, Content: "second"},
+			{Role: ai.RoleUser, Content: "third"},
+		}
+
+		prior, parts, err := client.inputToContents(context.Background(), nil, history)
+		if err != nil {
+			t.Fatalf("inputToContents() error = %v", err)
+		}
+		if len(prior) != 2 {
+			t.Fatalf("len(prior) = %d, want 2", len(prior))
+		}
+		if prior[0].Parts[0].Text != "first" || prior[1].Parts[0].Text != "second" {
+			t.Errorf("prior = %+v, want [first, second]", prior)
+		}
+		if len(parts) != 1 || parts[0].Text != "third" {
+			t.Errorf("final parts = %+v, want single text part 'third'", parts)
+		}
+	})
+}
+
 func TestConvertToolsToGeminiFunctions(t *testing.T) {
 	// Create a simple mock tool
 	tool := tools.Simple("calculator", "Performs calculations", func(_ string) string {
@@ -444,6 +790,16 @@ func TestConvertToolsToGeminiFunctions(t *testing.T) {
 	}
 }
 
+// partsFromFunctionCalls wraps each FunctionCall in a bare Part, for tests
+// that only care about name/args formatting and don't need ThoughtSignature.
+func partsFromFunctionCalls(calls []*genai.FunctionCall) []*genai.Part {
+	parts := make([]*genai.Part, len(calls))
+	for i, call := range calls {
+		parts[i] = &genai.Part{FunctionCall: call}
+	}
+	return parts
+}
+
 func TestWriteFunctionCalls(t *testing.T) {
 	client := &Client{}
 
@@ -465,7 +821,7 @@ func TestWriteFunctionCalls(t *testing.T) {
 	var response strings.Builder
 	w := calque.NewResponse(&response)
 
-	err := client.writeFunctionCalls(functionCalls, w)
+	err := client.writeFunctionCalls(partsFromFunctionCalls(functionCalls), w)
 	if err != nil {
 		t.Errorf("writeFunctionCalls() error = %v", err)
 		return
@@ -528,7 +884,7 @@ func TestWriteFunctionCallsEmptyArgs(t *testing.T) {
 	var response strings.Builder
 	w := calque.NewResponse(&response)
 
-	err := client.writeFunctionCalls(functionCalls, w)
+	err := client.writeFunctionCalls(partsFromFunctionCalls(functionCalls), w)
 	if err != nil {
 		t.Errorf("writeFunctionCalls() error = %v", err)
 		return
@@ -702,7 +1058,7 @@ func testFunctionCallFormatting(t *testing.T, functionCalls []*genai.FunctionCal
 	var response strings.Builder
 	w := calque.NewResponse(&response)
 
-	err := client.writeFunctionCalls(functionCalls, w)
+	err := client.writeFunctionCalls(partsFromFunctionCalls(functionCalls), w)
 	if expectError {
 		if err == nil {
 			t.Errorf("%s: expected error but got none", description)
@@ -934,7 +1290,7 @@ func TestFunctionCallOutputFormat(t *testing.T) {
 			w := calque.NewResponse(&response)
 
 			// Write function calls in OpenAI format
-			err := client.writeFunctionCalls(tt.functionCalls, w)
+			err := client.writeFunctionCalls(partsFromFunctionCalls(tt.functionCalls), w)
 			if err != nil {
 				t.Fatalf("%s: writeFunctionCalls() error = %v", tt.description, err)
 			}
@@ -1021,7 +1377,7 @@ func TestFunctionCallsWithTextResponse(t *testing.T) {
 	var response strings.Builder
 	w := calque.NewResponse(&response)
 
-	err := client.writeFunctionCalls(functionCalls, w)
+	err := client.writeFunctionCalls(partsFromFunctionCalls(functionCalls), w)
 	if err != nil {
 		t.Fatalf("writeFunctionCalls() error = %v", err)
 	}

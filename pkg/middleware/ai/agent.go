@@ -111,12 +111,17 @@ func runAgentLoop(client Client, agentOpts *AgentOptions, r *calque.Request, inp
 		lastIteration := i == maxIterations-1
 
 		// Clone agentOpts per turn so every current and future field is
-		// carried through by default; only History (and Tools/ToolsConfig/
-		// MultimodalData on the final iteration) are overridden explicitly.
+		// carried through by default; only History (and ToolsDisabled/
+		// ToolsConfig/MultimodalData on the final iteration) are overridden
+		// explicitly. Tools itself stays populated even on the final
+		// iteration - ToolsDisabled asks the Client to keep tools declared
+		// but refuse to call them, since some providers (Gemini) misbehave
+		// if tool declarations vanish while history still references a
+		// prior call.
 		turnOpts := *agentOpts
 		turnOpts.History = history
 		if lastIteration {
-			turnOpts.Tools = nil
+			turnOpts.ToolsDisabled = true
 			turnOpts.ToolsConfig = nil
 			turnOpts.MultimodalData = nil
 		}
@@ -145,6 +150,7 @@ func runAgentLoop(client Client, agentOpts *AgentOptions, r *calque.Request, inp
 			history = append(history, Message{
 				Role:       RoleTool,
 				ToolCallID: result.ToolCall.ID,
+				ToolName:   result.ToolCall.Name,
 				Content:    toolResultContent(result),
 			})
 		}

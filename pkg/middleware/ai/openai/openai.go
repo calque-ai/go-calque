@@ -241,7 +241,7 @@ func (c *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 	}
 
 	// Build request parameters
-	params, err := c.buildChatParams(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts), ai.GetHistory(opts))
+	params, err := c.buildChatParams(r.Context, input, ai.GetSchema(opts), ai.GetTools(opts), ai.GetHistory(opts), ai.GetToolsDisabled(opts))
 	if err != nil {
 		return err
 	}
@@ -251,7 +251,7 @@ func (c *Client) Chat(r *calque.Request, w *calque.Response, opts *ai.AgentOptio
 }
 
 // buildChatParams creates OpenAI chat completion parameters
-func (c *Client) buildChatParams(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, toolList []tools.Tool, history []ai.Message) (openai.ChatCompletionNewParams, error) {
+func (c *Client) buildChatParams(ctx context.Context, input *ai.ClassifiedInput, schema *ai.ResponseFormat, toolList []tools.Tool, history []ai.Message, toolsDisabled bool) (openai.ChatCompletionNewParams, error) {
 	// Convert input to messages
 	messages, err := c.inputToMessages(ctx, input, history)
 	if err != nil {
@@ -274,6 +274,15 @@ func (c *Client) buildChatParams(ctx context.Context, input *ai.ClassifiedInput,
 			return openai.ChatCompletionNewParams{}, err
 		}
 		params.Tools = tools
+
+		// ToolsDisabled keeps tools declared but forces a text answer via
+		// tool_choice: "none" - OpenAI's documented mechanism for this,
+		// rather than dropping Tools entirely.
+		if toolsDisabled {
+			params.ToolChoice = openai.ChatCompletionToolChoiceOptionUnionParam{
+				OfAuto: openai.String(string(openai.ChatCompletionToolChoiceOptionAutoNone)),
+			}
+		}
 	}
 
 	return params, nil

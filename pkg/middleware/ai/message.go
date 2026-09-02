@@ -16,7 +16,9 @@ const (
 // Message is one turn in a multi-shot tool-calling conversation.
 //
 // ToolCalls is set on an assistant message that requested tools; ToolCallID
-// is set on a tool message and must match the ToolCall.ID it answers.
+// and ToolName are set on a tool message and must match the ToolCall.ID/Name
+// it answers. ToolName is required by providers (e.g. Gemini) that correlate
+// a tool result to its call by function name rather than by ID alone.
 // Multimodal is set on a user message carrying non-text content (images,
 // audio, video) alongside or instead of Content; io.Reader-backed parts are
 // read once when the message is first sent to a provider, so Multimodal
@@ -27,5 +29,6 @@ type Message struct {
 	Content    string
 	ToolCalls  []tools.ToolCall
 	ToolCallID string
+	ToolName   string
 	Multimodal *MultimodalInput
 }

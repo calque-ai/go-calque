@@ -120,3 +120,8 @@ func GetHistory(opts *AgentOptions) []Message {
 	}
 	return nil
 }
+
+// GetToolsDisabled reports whether AgentOptions.ToolsDisabled is set, false if opts is nil.
+func GetToolsDisabled(opts *AgentOptions) bool {
+	return opts != nil && opts.ToolsDisabled
+}

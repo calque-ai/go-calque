@@ -439,7 +439,7 @@ func TestBuildChatParams(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			params, err := client.buildChatParams(ctx, tt.input, tt.schema, tt.tools, nil)
+			params, err := client.buildChatParams(ctx, tt.input, tt.schema, tt.tools, nil, false)
 
 			if tt.expectError {
 				if err == nil {
@@ -460,6 +460,59 @@ func TestBuildChatParams(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBuildChatParamsToolsDisabled pins that ToolsDisabled keeps Tools
+// declared on the request but sets tool_choice to "none" - the agent loop's
+// forced-final iteration relies on tools staying declared (rather than being
+// dropped) so a provider that requires them to make sense of prior tool-call
+// history behaves consistently across the loop; tool_choice:"none" is
+// OpenAI's own documented mechanism for "don't call anything, answer in
+// text" without removing the declarations.
+func TestBuildChatParamsToolsDisabled(t *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: DefaultConfig(),
+	}
+
+	tool := &mockTool{name: "test_tool", description: "A test tool"}
+	input := &ai.ClassifiedInput{Type: ai.TextInput, Text: "Hello"}
+
+	t.Run("tools disabled keeps Tools and sets tool_choice none", func(t *testing.T) {
+		params, err := client.buildChatParams(context.Background(), input, nil, []tools.Tool{tool}, nil, true)
+		if err != nil {
+			t.Fatalf("buildChatParams() error = %v", err)
+		}
+		if len(params.Tools) != 1 {
+			t.Errorf("Tools = %d entries, want 1 (should stay declared)", len(params.Tools))
+		}
+		if params.ToolChoice.OfAuto.Value != string(openai.ChatCompletionToolChoiceOptionAutoNone) {
+			t.Errorf("ToolChoice.OfAuto = %q, want %q", params.ToolChoice.OfAuto.Value, openai.ChatCompletionToolChoiceOptionAutoNone)
+		}
+	})
+
+	t.Run("tools disabled with no tools sets no tool_choice", func(t *testing.T) {
+		params, err := client.buildChatParams(context.Background(), input, nil, nil, nil, true)
+		if err != nil {
+			t.Fatalf("buildChatParams() error = %v", err)
+		}
+		if len(params.Tools) != 0 {
+			t.Errorf("Tools = %d entries, want 0", len(params.Tools))
+		}
+		if params.ToolChoice.OfAuto.Valid() {
+			t.Errorf("ToolChoice should be unset when there are no tools to disable, got %q", params.ToolChoice.OfAuto.Value)
+		}
+	})
+
+	t.Run("tools enabled leaves tool_choice unset", func(t *testing.T) {
+		params, err := client.buildChatParams(context.Background(), input, nil, []tools.Tool{tool}, nil, false)
+		if err != nil {
+			t.Fatalf("buildChatParams() error = %v", err)
+		}
+		if params.ToolChoice.OfAuto.Valid() {
+			t.Errorf("ToolChoice should be unset (defaults to auto) when tools are enabled, got %q", params.ToolChoice.OfAuto.Value)
+		}
+	})
 }
 
 // TestMultimodalToMessages tests multimodal input conversion
@@ -878,7 +931,7 @@ func TestChat_Method(t *testing.T) {
 			}
 
 			// Test params building
-			params, err := client.buildChatParams(ctx, input, ai.GetSchema(opts), ai.GetTools(opts), ai.GetHistory(opts))
+			params, err := client.buildChatParams(ctx, input, ai.GetSchema(opts), ai.GetTools(opts), ai.GetHistory(opts), ai.GetToolsDisabled(opts))
 			if err != nil {
 				t.Errorf("%s: buildChatParams() error = %v", tt.description, err)
 				return
