@@ -4,7 +4,7 @@
   <img src=".github/images/go-calque.webp" alt="Go-Calque" width="400">
 
   <p>
-    <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/badge/Pre--release-v0.6.0-orange?style=flat" alt="Pre-release"></a>
+    <a href="https://github.com/calque-ai/go-calque/releases"><img src="https://img.shields.io/badge/Pre--release-v0.7.0-orange?style=flat" alt="Pre-release"></a>
     <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.26+-blue.svg?style=flat" alt="Go Version"></a>
     <a href="https://pkg.go.dev/github.com/calque-ai/go-calque"><img src="https://pkg.go.dev/badge/github.com/calque-ai/go-calque.svg" alt="Go Reference"></a>
     <a href="https://github.com/calque-ai/go-calque/actions/workflows/ci.yml"><img src="https://github.com/calque-ai/go-calque/workflows/CI/badge.svg" alt="Build Status" height="20"></a>
