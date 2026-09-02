@@ -124,11 +124,9 @@ type Config struct {
 	RawOutput bool
 	// ToolTimeout per-tool execution timeout (0 = no timeout). The caller
 	// stops waiting and gets a timeout error once this elapses, but if a
-	// tool ignores ctx.Done() (e.g. a blocking call with no context-aware
+	// tool ignores ctx.Done() (a blocking call with no context-aware
 	// I/O), its goroutine keeps running in the background, Go has no way
-	// to forcibly cancel it. For ToolTimeout to actually bound the tool's
-	// own resource usage, not just how long the caller waits, tools should
-	// respect ctx cancellation in any blocking work they perform.
+	// to forcibly cancel it.
 	ToolTimeout time.Duration
 }
 
@@ -138,13 +136,13 @@ type Config struct {
 // Output: formatted tool results
 // Behavior: BUFFERED - reads entire input to parse and execute tools
 //
-// This middleware errors only if no tool calls are found in the input or no
-// tools are registered - use tools.Detect() to conditionally route inputs
-// with/without tool calls. Once tool calls are found, individual tool
-// failures do not error the handler: each failing call's error is reported
-// inline in the formatted output (or as ToolResult.Error/RawOutput JSON) so
-// callers - including the ai.Agent loop - can inspect or react to it instead
-// of the whole request aborting.
+// This middleware returns an error only when no tools are registered in the
+// context. Parsing failures (input that isn't valid tool-call JSON, or JSON
+// with no tool calls) and individual tool execution failures are not handler
+// errors - both are reported inline in the output (formatted text, or
+// ToolResult.Error/RawOutput JSON) so callers - including the ai.Agent loop -
+// can inspect or react to them instead of the whole request aborting. Use
+// tools.Detect() to route inputs that may not contain tool calls at all.
 //
 // Example:
 //
@@ -160,8 +158,7 @@ func Execute() calque.Handler {
 }
 
 // ExecuteWithOptions creates an Execute middleware with custom configuration.
-// This assumes tool calls are present in the input and will error if none are
-// found (or if no tools are registered) - see Execute for full error semantics.
+// See Execute for full error semantics.
 func ExecuteWithOptions(config Config) calque.Handler {
 	return calque.HandlerFunc(func(r *calque.Request, w *calque.Response) error {
 		tools := GetTools(r.Context)
@@ -184,13 +181,9 @@ func ExecuteWithOptions(config Config) calque.Handler {
 
 // executeFromBytes executes tools directly from input bytes
 func executeFromBytes(ctx context.Context, inputBytes []byte, w io.Writer, tools []Tool, config Config) error {
-	// Parse tool calls from input
+	// Parse tool calls from input. ParseToolCalls always returns at least
+	// one ToolCall - a synthetic _parse_error entry on failure.
 	toolCalls := ParseToolCalls(inputBytes)
-
-	// Error if no tools found since Execute assumes tools are present
-	if len(toolCalls) == 0 {
-		return calque.NewErr(ctx, "no tool calls found in input - use tools.Detect() to handle inputs without tools")
-	}
 
 	// Execute tool calls with configuration. Per-result errors are reported
 	// in the output rather than aborting, the caller decides what to do.
