@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/invopop/jsonschema"
@@ -23,15 +24,20 @@ const (
 type MockClient struct {
 	response         string
 	responses        []string // Multiple responses for sequential calls
-	callCount        int      // Track which response to return
 	streamDelay      time.Duration
 	shouldError      bool
 	errorMessage     string
 	simulateTools    bool // Whether to simulate tool calls
 	toolCalls        []MockToolCall
-	simulateJSONMode bool            // Whether to simulate structured JSON output
-	historyLog       [][]Message     // History received on each Chat() call, in order
-	optsLog          []*AgentOptions // AgentOptions received on each Chat() call, in order
+	simulateJSONMode bool // Whether to simulate structured JSON output
+
+	// mu guards the fields below, mutated on every Chat() call - the
+	// ai.Agent loop and callers like TestMockClientConcurrency can invoke
+	// Chat() from multiple goroutines concurrently.
+	mu         sync.Mutex
+	callCount  int             // Track which response to return
+	historyLog [][]Message     // History received on each Chat() call, in order
+	optsLog    []*AgentOptions // AgentOptions received on each Chat() call, in order
 }
 
 // MockToolCall represents a simulated tool call for testing
@@ -89,14 +95,12 @@ func (m *MockClient) Chat(req *calque.Request, res *calque.Response, opts *Agent
 	var toolList []tools.Tool
 	var schema *ResponseFormat
 
-	m.optsLog = append(m.optsLog, opts)
 	if opts != nil {
 		toolList = opts.Tools
 		schema = opts.Schema
-		m.historyLog = append(m.historyLog, opts.History)
-	} else {
-		m.historyLog = append(m.historyLog, nil)
 	}
+	m.logCall(opts)
+
 	// Check if we should return an error (for testing error handling)
 	if m.shouldError {
 		return calque.NewErr(req.Context, fmt.Sprintf("mock error: %s", m.errorMessage))
@@ -122,10 +126,9 @@ func (m *MockClient) Chat(req *calque.Request, res *calque.Response, opts *Agent
 		return m.streamResponse(response, req, res)
 	}
 
-	// If tools are provided and we're configured to simulate tool calls
-	// Only simulate tool calls on the first call (callCount == 0)
-	if len(toolList) > 0 && m.simulateTools && len(m.toolCalls) > 0 && m.callCount == 0 {
-		m.callCount++ // Increment for next call
+	// If tools are provided and we're configured to simulate tool calls,
+	// only on the first call.
+	if len(toolList) > 0 && m.simulateTools && len(m.toolCalls) > 0 && m.takeFirstCall() {
 		return m.simulateToolCalls(res)
 	}
 
@@ -284,6 +287,8 @@ func (m *MockClient) generateMockFromSchema(schema *jsonschema.Schema, input str
 func (m *MockClient) getNextResponse(input string) string {
 	// If we have multiple responses, use sequential calling
 	if len(m.responses) > 0 {
+		m.mu.Lock()
+		defer m.mu.Unlock()
 		if m.callCount >= len(m.responses) {
 			// Out of responses, return an error message or last response
 			return fmt.Sprintf("Mock error: no more responses available (called %d times)", m.callCount)
@@ -302,8 +307,35 @@ func (m *MockClient) getNextResponse(input string) string {
 	return fmt.Sprintf("Mock response to: %s", input)
 }
 
+// logCall records opts (and its History) for the current Chat() call, for
+// later inspection via HistoryAt/OptionsAt/CallCount.
+func (m *MockClient) logCall(opts *AgentOptions) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.optsLog = append(m.optsLog, opts)
+	var history []Message
+	if opts != nil {
+		history = opts.History
+	}
+	m.historyLog = append(m.historyLog, history)
+}
+
+// takeFirstCall reports whether this is the first Chat() call since
+// creation or the last Reset, and atomically marks it as taken.
+func (m *MockClient) takeFirstCall() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.callCount != 0 {
+		return false
+	}
+	m.callCount++
+	return true
+}
+
 // Reset resets the call count (useful for testing)
 func (m *MockClient) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.callCount = 0
 	m.historyLog = nil
 	m.optsLog = nil
@@ -315,6 +347,8 @@ func (m *MockClient) Reset() {
 // ai.Agent tool-calling loop) actually threads conversation history through
 // to the client on each turn, rather than dropping it.
 func (m *MockClient) HistoryAt(callIndex int) []Message {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if callIndex < 0 || callIndex >= len(m.historyLog) {
 		return nil
 	}
@@ -326,6 +360,8 @@ func (m *MockClient) HistoryAt(callIndex int) []Message {
 // call. Use this to assert that fields like Schema or Tools were actually
 // passed through on a given turn.
 func (m *MockClient) OptionsAt(callIndex int) *AgentOptions {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if callIndex < 0 || callIndex >= len(m.optsLog) {
 		return nil
 	}
@@ -334,6 +370,8 @@ func (m *MockClient) OptionsAt(callIndex int) *AgentOptions {
 
 // CallCount returns the number of times Chat() has been invoked.
 func (m *MockClient) CallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return len(m.historyLog)
 }
 
