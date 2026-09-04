@@ -544,9 +544,39 @@ func TestHistoryToContents(t *testing.T) {
 			checkFunc: checkAssistantFunctionCall,
 		},
 		{
-			name:      "tool result message",
-			history:   []ai.Message{{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"}},
+			name: "tool result message",
+			history: []ai.Message{
+				{Role: ai.RoleAssistant, ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "get_weather", Arguments: `{"city":"nyc"}`}}},
+				{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"},
+			},
 			checkFunc: checkToolFunctionResponse,
+		},
+		{
+			name:      "tool result with no preceding assistant turn",
+			history:   []ai.Message{{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"}},
+			expectErr: true,
+		},
+		{
+			name: "tool result count does not match prior tool call count",
+			history: []ai.Message{
+				{
+					Role: ai.RoleAssistant,
+					ToolCalls: []tools.ToolCall{
+						{ID: "call_1", Name: "get_status", Arguments: `{}`},
+						{ID: "call_2", Name: "get_sensors", Arguments: `{}`},
+					},
+				},
+				{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_status", Content: "online"},
+			},
+			expectErr: true,
+		},
+		{
+			name: "tool result ID does not match any prior tool call",
+			history: []ai.Message{
+				{Role: ai.RoleAssistant, ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "get_weather", Arguments: `{"city":"nyc"}`}}},
+				{Role: ai.RoleTool, ToolCallID: "call_wrong", ToolName: "get_weather", Content: "72F and sunny"},
+			},
+			expectErr: true,
 		},
 		{
 			name: "full tool-calling round trip",
@@ -663,13 +693,17 @@ func checkAssistantFunctionCall(t *testing.T, contents []*genai.Content) {
 
 func checkToolFunctionResponse(t *testing.T, contents []*genai.Content) {
 	t.Helper()
-	if contents[0].Role != genai.RoleUser {
-		t.Errorf("role = %v, want %v", contents[0].Role, genai.RoleUser)
+	if len(contents) != 2 {
+		t.Fatalf("len(contents) = %d, want 2 (assistant turn + tool-result turn)", len(contents))
 	}
-	if len(contents[0].Parts) != 1 || contents[0].Parts[0].FunctionResponse == nil {
-		t.Fatalf("parts = %+v, want single FunctionResponse part", contents[0].Parts)
+	toolContent := contents[1]
+	if toolContent.Role != genai.RoleUser {
+		t.Errorf("role = %v, want %v", toolContent.Role, genai.RoleUser)
 	}
-	fr := contents[0].Parts[0].FunctionResponse
+	if len(toolContent.Parts) != 1 || toolContent.Parts[0].FunctionResponse == nil {
+		t.Fatalf("parts = %+v, want single FunctionResponse part", toolContent.Parts)
+	}
+	fr := toolContent.Parts[0].FunctionResponse
 	if fr.ID != "call_1" || fr.Name != "get_weather" {
 		t.Errorf("FunctionResponse = %+v, want ID=call_1 Name=get_weather", fr)
 	}

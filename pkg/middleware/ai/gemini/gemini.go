@@ -602,7 +602,11 @@ func (g *Client) historyToContents(ctx context.Context, history []ai.Message) ([
 			for j < len(history) && history[j].Role == ai.RoleTool {
 				j++
 			}
-			contents = append(contents, toolResultsContent(history[i:j]))
+			run := history[i:j]
+			if err := validateToolResultRun(ctx, history, i, run); err != nil {
+				return nil, err
+			}
+			contents = append(contents, toolResultsContent(run))
 			i = j - 1
 			continue
 		}
@@ -614,6 +618,37 @@ func (g *Client) historyToContents(ctx context.Context, history []ai.Message) ([
 		contents = append(contents, content)
 	}
 	return contents, nil
+}
+
+// validateToolResultRun checks that a contiguous run of ai.RoleTool messages
+// starting at history[runStart] answers exactly the FunctionCalls requested
+// by the immediately preceding assistant turn - same IDs, same count. This
+// never fires for history built by ai.runAgentLoop (its append site keeps
+// the two in lockstep), but historyToContents also accepts arbitrary
+// caller-built history, so a mismatched run - dropped, duplicated, or
+// misordered tool results - is rejected here with a specific error instead
+// of silently producing a malformed request that Gemini would reject later
+// with a vaguer one.
+func validateToolResultRun(ctx context.Context, history []ai.Message, runStart int, run []ai.Message) error {
+	if runStart == 0 || history[runStart-1].Role != ai.RoleAssistant || len(history[runStart-1].ToolCalls) == 0 {
+		return calque.NewErr(ctx, "tool result message has no preceding assistant tool call turn")
+	}
+
+	calls := history[runStart-1].ToolCalls
+	if len(run) != len(calls) {
+		return calque.NewErr(ctx, fmt.Sprintf("tool result count (%d) does not match prior tool call count (%d)", len(run), len(calls)))
+	}
+
+	wantIDs := make(map[string]bool, len(calls))
+	for _, call := range calls {
+		wantIDs[call.ID] = true
+	}
+	for _, msg := range run {
+		if !wantIDs[msg.ToolCallID] {
+			return calque.NewErr(ctx, fmt.Sprintf("tool result ID %q does not match any tool call in the prior turn", msg.ToolCallID))
+		}
+	}
+	return nil
 }
 
 // messageToContent converts a single non-tool-result ai.Message to a
