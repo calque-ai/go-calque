@@ -303,6 +303,23 @@ func TestHistoryToMessages(t *testing.T) {
 			checkFunc: checkFullToolRoundTrip,
 		},
 		{
+			name: "parallel tool calls stay one message per result",
+			history: []ai.Message{
+				{
+					Role: ai.RoleAssistant,
+					ToolCalls: []tools.ToolCall{
+						{ID: "call_1", Name: "get_status", Arguments: `{}`},
+						{ID: "call_2", Name: "get_sensors", Arguments: `{}`},
+						{ID: "call_3", Name: "get_video", Arguments: `{}`},
+					},
+				},
+				{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_status", Content: "online"},
+				{Role: ai.RoleTool, ToolCallID: "call_2", ToolName: "get_sensors", Content: "nominal"},
+				{Role: ai.RoleTool, ToolCallID: "call_3", ToolName: "get_video", Content: "streaming"},
+			},
+			checkFunc: checkParallelToolCalls,
+		},
+		{
 			name:      "unsupported role",
 			history:   []ai.Message{{Role: ai.Role("bogus"), Content: "x"}},
 			expectErr: true,
@@ -409,6 +426,38 @@ func checkToolResultMessage(t *testing.T, messages []api.Message) {
 	}
 	if messages[0].Content != "72F and sunny" {
 		t.Errorf("content = %v, want '72F and sunny'", messages[0].Content)
+	}
+}
+
+// checkParallelToolCalls pins that Ollama's []api.Message list format -
+// unlike Gemini's, which requires all FunctionResponse parts for a
+// parallel-call turn batched into a single Content (see
+// gemini.checkParallelToolResultsFold) - accepts one tool-role message per
+// result with no folding: historyToMessages stays a strict 1:1
+// index-preserving conversion, matched by each message's own ToolCallID.
+func checkParallelToolCalls(t *testing.T, messages []api.Message) {
+	t.Helper()
+	if len(messages) != 4 {
+		t.Fatalf("len(messages) = %d, want 4 (1 assistant turn + 3 tool-result messages)", len(messages))
+	}
+	if messages[0].Role != "assistant" || len(messages[0].ToolCalls) != 3 {
+		t.Fatalf("messages[0] = role=%v ToolCalls=%d, want assistant with 3 ToolCalls", messages[0].Role, len(messages[0].ToolCalls))
+	}
+
+	wantIDs := []string{"call_1", "call_2", "call_3"}
+	wantNames := []string{"get_status", "get_sensors", "get_video"}
+	wantContent := []string{"online", "nominal", "streaming"}
+	for i, wantID := range wantIDs {
+		msg := messages[i+1]
+		if msg.Role != "tool" {
+			t.Errorf("messages[%d].Role = %v, want tool", i+1, msg.Role)
+		}
+		if msg.ToolCallID != wantID || msg.ToolName != wantNames[i] {
+			t.Errorf("messages[%d] = ToolCallID=%v ToolName=%v, want ID=%s Name=%s", i+1, msg.ToolCallID, msg.ToolName, wantID, wantNames[i])
+		}
+		if msg.Content != wantContent[i] {
+			t.Errorf("messages[%d].Content = %v, want %s", i+1, msg.Content, wantContent[i])
+		}
 	}
 }
 

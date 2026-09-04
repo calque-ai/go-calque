@@ -544,9 +544,39 @@ func TestHistoryToContents(t *testing.T) {
 			checkFunc: checkAssistantFunctionCall,
 		},
 		{
-			name:      "tool result message",
-			history:   []ai.Message{{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"}},
+			name: "tool result message",
+			history: []ai.Message{
+				{Role: ai.RoleAssistant, ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "get_weather", Arguments: `{"city":"nyc"}`}}},
+				{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"},
+			},
 			checkFunc: checkToolFunctionResponse,
+		},
+		{
+			name:      "tool result with no preceding assistant turn",
+			history:   []ai.Message{{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"}},
+			expectErr: true,
+		},
+		{
+			name: "tool result count does not match prior tool call count",
+			history: []ai.Message{
+				{
+					Role: ai.RoleAssistant,
+					ToolCalls: []tools.ToolCall{
+						{ID: "call_1", Name: "get_status", Arguments: `{}`},
+						{ID: "call_2", Name: "get_sensors", Arguments: `{}`},
+					},
+				},
+				{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_status", Content: "online"},
+			},
+			expectErr: true,
+		},
+		{
+			name: "tool result ID does not match any prior tool call",
+			history: []ai.Message{
+				{Role: ai.RoleAssistant, ToolCalls: []tools.ToolCall{{ID: "call_1", Name: "get_weather", Arguments: `{"city":"nyc"}`}}},
+				{Role: ai.RoleTool, ToolCallID: "call_wrong", ToolName: "get_weather", Content: "72F and sunny"},
+			},
+			expectErr: true,
 		},
 		{
 			name: "full tool-calling round trip",
@@ -556,6 +586,23 @@ func TestHistoryToContents(t *testing.T) {
 				{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_weather", Content: "72F and sunny"},
 			},
 			checkFunc: checkFullToolRoundTrip,
+		},
+		{
+			name: "parallel tool results fold into one Content",
+			history: []ai.Message{
+				{
+					Role: ai.RoleAssistant,
+					ToolCalls: []tools.ToolCall{
+						{ID: "call_1", Name: "get_status", Arguments: `{}`},
+						{ID: "call_2", Name: "get_sensors", Arguments: `{}`},
+						{ID: "call_3", Name: "get_video", Arguments: `{}`},
+					},
+				},
+				{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_status", Content: "online"},
+				{Role: ai.RoleTool, ToolCallID: "call_2", ToolName: "get_sensors", Content: "nominal"},
+				{Role: ai.RoleTool, ToolCallID: "call_3", ToolName: "get_video", Content: "streaming"},
+			},
+			checkFunc: checkParallelToolResultsFold,
 		},
 		{
 			name:      "unsupported role",
@@ -646,18 +693,63 @@ func checkAssistantFunctionCall(t *testing.T, contents []*genai.Content) {
 
 func checkToolFunctionResponse(t *testing.T, contents []*genai.Content) {
 	t.Helper()
-	if contents[0].Role != genai.RoleUser {
-		t.Errorf("role = %v, want %v", contents[0].Role, genai.RoleUser)
+	if len(contents) != 2 {
+		t.Fatalf("len(contents) = %d, want 2 (assistant turn + tool-result turn)", len(contents))
 	}
-	if len(contents[0].Parts) != 1 || contents[0].Parts[0].FunctionResponse == nil {
-		t.Fatalf("parts = %+v, want single FunctionResponse part", contents[0].Parts)
+	toolContent := contents[1]
+	if toolContent.Role != genai.RoleUser {
+		t.Errorf("role = %v, want %v", toolContent.Role, genai.RoleUser)
 	}
-	fr := contents[0].Parts[0].FunctionResponse
+	if len(toolContent.Parts) != 1 || toolContent.Parts[0].FunctionResponse == nil {
+		t.Fatalf("parts = %+v, want single FunctionResponse part", toolContent.Parts)
+	}
+	fr := toolContent.Parts[0].FunctionResponse
 	if fr.ID != "call_1" || fr.Name != "get_weather" {
 		t.Errorf("FunctionResponse = %+v, want ID=call_1 Name=get_weather", fr)
 	}
 	if fr.Response["output"] != "72F and sunny" {
 		t.Errorf("FunctionResponse.Response = %+v, want output=72F and sunny", fr.Response)
+	}
+}
+
+// checkParallelToolResultsFold pins the fix for a real Gemini API error:
+// "Please ensure that the number of function response parts is equal to the
+// number of function call parts of the function call turn." Gemini requires
+// all FunctionResponse parts answering a parallel-call turn to be batched
+// into a single Content, matching the FunctionCall part count from the
+// assistant turn that requested them - one Content per result (as OpenAI's
+// wire format allows) is rejected.
+func checkParallelToolResultsFold(t *testing.T, contents []*genai.Content) {
+	t.Helper()
+	if len(contents) != 2 {
+		t.Fatalf("len(contents) = %d, want 2 (assistant turn + folded tool-results turn)", len(contents))
+	}
+	if contents[0].Role != genai.RoleModel || len(contents[0].Parts) != 3 {
+		t.Fatalf("contents[0] = role=%v parts=%d, want RoleModel with 3 FunctionCall parts", contents[0].Role, len(contents[0].Parts))
+	}
+
+	toolContent := contents[1]
+	if toolContent.Role != genai.RoleUser {
+		t.Errorf("contents[1].Role = %v, want %v", toolContent.Role, genai.RoleUser)
+	}
+	if len(toolContent.Parts) != 3 {
+		t.Fatalf("len(contents[1].Parts) = %d, want 3 FunctionResponse parts", len(toolContent.Parts))
+	}
+
+	wantIDs := []string{"call_1", "call_2", "call_3"}
+	wantNames := []string{"get_status", "get_sensors", "get_video"}
+	wantOutputs := []string{"online", "nominal", "streaming"}
+	for i, part := range toolContent.Parts {
+		if part.FunctionResponse == nil {
+			t.Fatalf("contents[1].Parts[%d] = %+v, want FunctionResponse part", i, part)
+		}
+		fr := part.FunctionResponse
+		if fr.ID != wantIDs[i] || fr.Name != wantNames[i] {
+			t.Errorf("Parts[%d].FunctionResponse = %+v, want ID=%s Name=%s", i, fr, wantIDs[i], wantNames[i])
+		}
+		if fr.Response["output"] != wantOutputs[i] {
+			t.Errorf("Parts[%d].FunctionResponse.Response = %+v, want output=%s", i, fr.Response, wantOutputs[i])
+		}
 	}
 }
 

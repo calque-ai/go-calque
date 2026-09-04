@@ -665,6 +665,61 @@ func TestHistoryToMessagesWithMultimodal(t *testing.T) {
 	}
 }
 
+// TestHistoryToMessagesParallelToolCalls pins that OpenAI's wire format -
+// unlike Gemini's, which requires all FunctionResponse parts for a
+// parallel-call turn batched into a single Content (see
+// gemini.checkParallelToolResultsFold) - accepts one ToolMessage per result
+// with no folding: historyToMessages stays a strict 1:1 index-preserving
+// conversion, matched by each ToolMessage's own tool_call_id.
+func TestHistoryToMessagesParallelToolCalls(t *testing.T) {
+	client := &Client{
+		model:  shared.ChatModel(testModel),
+		config: DefaultConfig(),
+	}
+
+	history := []ai.Message{
+		{
+			Role: ai.RoleAssistant,
+			ToolCalls: []tools.ToolCall{
+				{ID: "call_1", Name: "get_status", Arguments: `{}`},
+				{ID: "call_2", Name: "get_sensors", Arguments: `{}`},
+				{ID: "call_3", Name: "get_video", Arguments: `{}`},
+			},
+		},
+		{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_status", Content: "online"},
+		{Role: ai.RoleTool, ToolCallID: "call_2", ToolName: "get_sensors", Content: "nominal"},
+		{Role: ai.RoleTool, ToolCallID: "call_3", ToolName: "get_video", Content: "streaming"},
+	}
+
+	messages, err := client.historyToMessages(context.Background(), history)
+	if err != nil {
+		t.Fatalf("historyToMessages() error = %v", err)
+	}
+	if len(messages) != 4 {
+		t.Fatalf("len(messages) = %d, want 4 (1 assistant turn + 3 tool-result messages)", len(messages))
+	}
+
+	assistantMsg := messages[0].OfAssistant
+	if assistantMsg == nil || len(assistantMsg.ToolCalls) != 3 {
+		t.Fatalf("messages[0] = %+v, want assistant message with 3 ToolCalls", messages[0])
+	}
+
+	wantIDs := []string{"call_1", "call_2", "call_3"}
+	wantContent := []string{"online", "nominal", "streaming"}
+	for i, wantID := range wantIDs {
+		toolMsg := messages[i+1].OfTool
+		if toolMsg == nil {
+			t.Fatalf("messages[%d] = %+v, want tool message", i+1, messages[i+1])
+		}
+		if toolMsg.ToolCallID != wantID {
+			t.Errorf("messages[%d].ToolCallID = %s, want %s", i+1, toolMsg.ToolCallID, wantID)
+		}
+		if toolMsg.Content.OfString.Value != wantContent[i] {
+			t.Errorf("messages[%d].Content = %s, want %s", i+1, toolMsg.Content.OfString.Value, wantContent[i])
+		}
+	}
+}
+
 // TestHistoryToMessagesUnsupportedRole pins that an unrecognized ai.Role
 // errors instead of silently producing a zero-value message in the list -
 // matching gemini.Client.messageToContent and ollama.Client.historyToMessages,
