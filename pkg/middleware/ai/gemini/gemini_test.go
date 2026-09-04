@@ -558,6 +558,23 @@ func TestHistoryToContents(t *testing.T) {
 			checkFunc: checkFullToolRoundTrip,
 		},
 		{
+			name: "parallel tool results fold into one Content",
+			history: []ai.Message{
+				{
+					Role: ai.RoleAssistant,
+					ToolCalls: []tools.ToolCall{
+						{ID: "call_1", Name: "get_status", Arguments: `{}`},
+						{ID: "call_2", Name: "get_sensors", Arguments: `{}`},
+						{ID: "call_3", Name: "get_video", Arguments: `{}`},
+					},
+				},
+				{Role: ai.RoleTool, ToolCallID: "call_1", ToolName: "get_status", Content: "online"},
+				{Role: ai.RoleTool, ToolCallID: "call_2", ToolName: "get_sensors", Content: "nominal"},
+				{Role: ai.RoleTool, ToolCallID: "call_3", ToolName: "get_video", Content: "streaming"},
+			},
+			checkFunc: checkParallelToolResultsFold,
+		},
+		{
 			name:      "unsupported role",
 			history:   []ai.Message{{Role: ai.Role("bogus"), Content: "x"}},
 			expectErr: true,
@@ -658,6 +675,47 @@ func checkToolFunctionResponse(t *testing.T, contents []*genai.Content) {
 	}
 	if fr.Response["output"] != "72F and sunny" {
 		t.Errorf("FunctionResponse.Response = %+v, want output=72F and sunny", fr.Response)
+	}
+}
+
+// checkParallelToolResultsFold pins the fix for a real Gemini API error:
+// "Please ensure that the number of function response parts is equal to the
+// number of function call parts of the function call turn." Gemini requires
+// all FunctionResponse parts answering a parallel-call turn to be batched
+// into a single Content, matching the FunctionCall part count from the
+// assistant turn that requested them - one Content per result (as OpenAI's
+// wire format allows) is rejected.
+func checkParallelToolResultsFold(t *testing.T, contents []*genai.Content) {
+	t.Helper()
+	if len(contents) != 2 {
+		t.Fatalf("len(contents) = %d, want 2 (assistant turn + folded tool-results turn)", len(contents))
+	}
+	if contents[0].Role != genai.RoleModel || len(contents[0].Parts) != 3 {
+		t.Fatalf("contents[0] = role=%v parts=%d, want RoleModel with 3 FunctionCall parts", contents[0].Role, len(contents[0].Parts))
+	}
+
+	toolContent := contents[1]
+	if toolContent.Role != genai.RoleUser {
+		t.Errorf("contents[1].Role = %v, want %v", toolContent.Role, genai.RoleUser)
+	}
+	if len(toolContent.Parts) != 3 {
+		t.Fatalf("len(contents[1].Parts) = %d, want 3 FunctionResponse parts", len(toolContent.Parts))
+	}
+
+	wantIDs := []string{"call_1", "call_2", "call_3"}
+	wantNames := []string{"get_status", "get_sensors", "get_video"}
+	wantOutputs := []string{"online", "nominal", "streaming"}
+	for i, part := range toolContent.Parts {
+		if part.FunctionResponse == nil {
+			t.Fatalf("contents[1].Parts[%d] = %+v, want FunctionResponse part", i, part)
+		}
+		fr := part.FunctionResponse
+		if fr.ID != wantIDs[i] || fr.Name != wantNames[i] {
+			t.Errorf("Parts[%d].FunctionResponse = %+v, want ID=%s Name=%s", i, fr, wantIDs[i], wantNames[i])
+		}
+		if fr.Response["output"] != wantOutputs[i] {
+			t.Errorf("Parts[%d].FunctionResponse.Response = %+v, want output=%s", i, fr.Response, wantOutputs[i])
+		}
 	}
 }
 
