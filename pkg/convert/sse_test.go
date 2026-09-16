@@ -703,6 +703,41 @@ func TestSSEConverter_FromReader_ErrorCases(t *testing.T) {
 	}
 }
 
+// TestSSEConverter_FromReader_ErrClosedPipe verifies that a closed-pipe read,
+// as produced when calque.Flow force-closes pipes during error teardown, is
+// treated as a silent stop rather than surfaced as an SSE error event.
+func TestSSEConverter_FromReader_ErrClosedPipe(t *testing.T) {
+	modes := []struct {
+		name string
+		mode SSEChunkMode
+	}{
+		{"word", SSEChunkByWord},
+		{"char", SSEChunkByChar},
+		{"line", SSEChunkByLine},
+		{"none", SSEChunkNone},
+	}
+
+	for _, tt := range modes {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			mock := newMockResponseWriter()
+			sse := ToSSE(mock).WithChunkMode(tt.mode)
+
+			err := sse.FromReader(&errorReader{err: io.ErrClosedPipe})
+			if err != nil {
+				t.Errorf("Expected nil error for ErrClosedPipe, got: %v", err)
+			}
+
+			events := parseSSEEvents(t, mock.Body.String())
+			for _, e := range events {
+				if e.Event == testError {
+					t.Errorf("Expected no error event for ErrClosedPipe, got: %+v", e)
+				}
+			}
+		})
+	}
+}
+
 func TestSSEConverter_WriteError(t *testing.T) {
 	tests := []struct {
 		name string
