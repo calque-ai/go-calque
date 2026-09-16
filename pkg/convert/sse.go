@@ -3,6 +3,7 @@ package convert
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -398,6 +399,10 @@ func (s *SSEConverter) streamByWord(reader io.Reader) error {
 		}
 
 		if err != nil {
+			// Flow teardown closes this pipe on error; the real error surfaces elsewhere.
+			if errors.Is(err, io.ErrClosedPipe) {
+				return nil
+			}
 			return s.sendError(err)
 		}
 	}
@@ -456,6 +461,10 @@ func (s *SSEConverter) streamByChar(reader io.Reader) error {
 		}
 
 		if err != nil {
+			// Flow teardown closes this pipe on error; the real error surfaces elsewhere.
+			if errors.Is(err, io.ErrClosedPipe) {
+				return nil
+			}
 			return s.sendError(err)
 		}
 	}
@@ -491,6 +500,10 @@ func (s *SSEConverter) streamByLine(reader io.Reader) error {
 		}
 
 		if err != nil {
+			// Flow teardown closes this pipe on error; the real error surfaces elsewhere.
+			if errors.Is(err, io.ErrClosedPipe) {
+				return nil
+			}
 			return s.sendError(err)
 		}
 	}
@@ -500,6 +513,10 @@ func (s *SSEConverter) streamByLine(reader io.Reader) error {
 func (s *SSEConverter) streamComplete(reader io.Reader) error {
 	data, err := io.ReadAll(reader)
 	if err != nil {
+		// Flow teardown closes this pipe on error; the real error surfaces elsewhere.
+		if errors.Is(err, io.ErrClosedPipe) {
+			return nil
+		}
 		return s.sendError(err)
 	}
 
